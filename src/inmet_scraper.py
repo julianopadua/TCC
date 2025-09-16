@@ -1,109 +1,104 @@
+# src/inmet_scraper.py
+# =============================================================================
+# INMET SCRAPER — DOWNLOAD E EXTRAÇÃO DE HISTÓRICOS (ZIP -> CSV)
+# Depende de: requests, beautifulsoup4 (opcional lxml), utils.py
+# =============================================================================
+from __future__ import annotations
+
+from pathlib import Path
 import os
-import requests
-from bs4 import BeautifulSoup
-import zipfile
-from datetime import datetime
-import yaml
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-config_dir = os.path.join(script_dir, "config.yaml")
+from utils import (
+    loadConfig,
+    get_logger,
+    get_path,
+    ensure_dir,
+    get_requests_session,
+    list_zip_links_from_page,
+    stream_download,
+    unzip_all_in_dir,
+    get_inmet_paths,
+    get_bdqueimadas_paths,
+)
 
-# load configuration
-with open(config_dir, 'r') as config_file:
-    config = yaml.safe_load(config_file)
 
-# Get raw data path from config
-raw_data_path = config["paths"]["data_raw"]
+# -----------------------------------------------------------------------------
+# [SEÇÃO 1] CONFIG E CONSTANTES
+# -----------------------------------------------------------------------------
+cfg = loadConfig()
+log = get_logger("inmet.scraper")
 
-# Create INMET directory if it doesn't exist
-inmet_path = os.path.join(script_dir, raw_data_path, "INMET")
-os.makedirs(inmet_path, exist_ok=True)
+# Base URL do INMET (usa fallback se não estiver no config.yaml)
+INMET_BASE_URL = (
+    cfg.get("inmet", {}).get("base_url")
+    or "https://portal.inmet.gov.br/dadoshistoricos"
+)
 
-csv_output_path = os.path.join(script_dir, inmet_path, "csv")
-os.makedirs(csv_output_path, exist_ok=True)
+# Pastas (raw/csv) para INMET
+INMET_RAW_DIR, INMET_CSV_DIR = get_inmet_paths()
 
-# Base URL for INMET historical data
-inmet_base_url = "https://portal.inmet.gov.br/dadoshistoricos"
 
-def download_inmet_data():
-    # Acessa a página com os links dos arquivos ZIP
-    response = requests.get("https://portal.inmet.gov.br/dadoshistoricos")
-    response.raise_for_status()
+# -----------------------------------------------------------------------------
+# [SEÇÃO 2] FUNÇÕES DE ALTO NÍVEL (PIPELINE)
+# -----------------------------------------------------------------------------
+def discover_inmet_zip_links(base_url: str = INMET_BASE_URL) -> list[str]:
+    """
+    Lê a página de dados históricos do INMET e retorna links absolutos para .zip.
+    """
+    session = get_requests_session()
+    links = list_zip_links_from_page(base_url, session=session)
+    log.info(f"{len(links)} arquivos .zip encontrados em {base_url}")
+    return links
 
-    soup = BeautifulSoup(response.text, "html.parser")
 
-    # Encontra todos os links para arquivos .zip
-    zip_links = soup.find_all("a", href=True)
-    zip_links = [link["href"] for link in zip_links if link["href"].endswith(".zip")]
-
-    print(f"{len(zip_links)} arquivos encontrados para download.")
-
-    for link in zip_links:
-        filename = os.path.basename(link)
-        file_path = os.path.join(inmet_path, filename)
-
-        # Pula se o arquivo já existe
-        if os.path.exists(file_path):
-            print(f"[SKIP] {filename} já existe.")
+def download_inmet_archives(links: list[str]) -> None:
+    """
+    Faz download dos .zip do INMET para o diretório raw configurado.
+    """
+    session = get_requests_session()
+    for url in links:
+        fname = os.path.basename(url.split("?")[0])
+        dest = Path(INMET_RAW_DIR) / fname
+        if dest.exists():
+            log.info(f"[SKIP] {fname} já existe em {dest}")
             continue
-
-        print(f"[DOWNLOADING] {filename}...")
         try:
-            zip_response = requests.get(link, stream=True)
-            zip_response.raise_for_status()
+            log.info(f"[DOWNLOADING] {fname}")
+            stream_download(url, dest, session=session, log=log)
+        except Exception as e:  # pragma: no cover
+            log.error(f"[ERROR] Falha ao baixar {fname}: {e}")
 
-            # Salva o arquivo .zip
-            with open(file_path, "wb") as f:
-                for chunk in zip_response.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
 
-            print(f"[SUCCESS] {filename} salvo em {file_path}")
-        except Exception as e:
-            print(f"[ERROR] Falha ao baixar {filename}: {e}")
+def extract_inmet_archives() -> None:
+    """
+    Extrai todos os .zip do diretório raw/INMET para raw/INMET/csv/<nome_do_zip>.
+    """
+    unzip_all_in_dir(INMET_RAW_DIR, INMET_CSV_DIR, make_subdir_from_zip=True, log=log)
 
-def unzip_inmet_files():
-    for filename in os.listdir(inmet_path):
-        if filename.endswith(".zip"):
-            zip_path = os.path.join(inmet_path, filename)
-            extract_dir = os.path.join(csv_output_path, filename.replace(".zip", ""))
 
-            if os.path.exists(extract_dir):
-                print(f"[SKIP] Arquivos de {filename} já extraídos.")
-                continue
+def extract_bdqueimadas_archives() -> None:
+    """
+    Procura zips em raw/BDQUEIMADAS e extrai para raw/BDQUEIMADAS/csv/<nome_do_zip>.
+    Útil para o caso 'Brasil_sat_ref' ou quaisquer zips colocados no raw do provedor.
+    """
+    BDQ_RAW, BDQ_CSV = get_bdqueimadas_paths()
+    unzip_all_in_dir(BDQ_RAW, BDQ_CSV, make_subdir_from_zip=True, log=log)
 
-            try:
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(extract_dir)
-                print(f"[SUCCESS] {filename} extraído para {extract_dir}")
-            except zipfile.BadZipFile:
-                print(f"[ERROR] {filename} está corrompido ou não é um ZIP válido.")
 
-def unzip_br_focos_files():
-    brasil_zip_path = os.path.join(script_dir, config["paths"]["data_raw"], "Brasil_sat_ref")
-    brasil_zip_path = os.path.abspath(brasil_zip_path)
+# -----------------------------------------------------------------------------
+# [SEÇÃO 3] MAIN
+# -----------------------------------------------------------------------------
+def main() -> None:
+    ensure_dir(INMET_RAW_DIR)
+    ensure_dir(INMET_CSV_DIR)
 
-    csv_output_path = os.path.join(brasil_zip_path, "csv")
-    os.makedirs(csv_output_path, exist_ok=True)
+    links = discover_inmet_zip_links()
+    download_inmet_archives(links)
+    extract_inmet_archives()
 
-    for filename in os.listdir(brasil_zip_path):
-        if filename.endswith(".zip"):
-            zip_path = os.path.join(brasil_zip_path, filename)
-            extract_dir = os.path.join(csv_output_path, filename.replace(".zip", ""))
-
-            if os.path.exists(extract_dir):
-                print(f"[SKIP] {filename} já extraído.")
-                continue
-
-            try:
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(extract_dir)
-                print(f"[SUCCESS] {filename} extraído em {extract_dir}")
-            except zipfile.BadZipFile:
-                print(f"[ERROR] {filename} corrompido ou não é um ZIP válido.")
+    # Opcional: descomente se quiser extrair também BDQueimadas que já estiverem em raw
+    # extract_bdqueimadas_archives()
 
 
 if __name__ == "__main__":
-    download_inmet_data() 
-    unzip_inmet_files()
-    unzip_br_focos_files()
+    main()

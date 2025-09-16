@@ -1,7 +1,61 @@
-# configuration parameters
+# config.yaml — raiz do projeto
+
+project:
+  name: "TCC Previsão de Queimadas"
+  version: "0.1.0"
+  timezone: "America/Sao_Paulo"
+  random_seed: 42
+
 paths:
-  data_raw: ../data/raw
-  data_processed: ../data/processed
-  images: ../images
-  report: ../report
-  addons: ../addons
+  # Observação: utils.py resolve estes caminhos para absolutos com base na raiz do projeto
+  src: "./src"
+  addons: "./addons"
+  images: "./images"
+  doc: "./doc"
+  logs: "./logs"
+  data:
+    raw: "./data/raw"
+    processed: "./data/processed"
+    external: "./data/external"   # dados de terceiros (p.ex., shapes/biomas)
+    interim: "./data/interim"     # artefatos temporários (limpeza/validação)
+  providers:
+    bdqueimadas:
+      raw: "./data/raw/BDQUEIMADAS"
+      processed: "./data/processed/BDQUEIMADAS"
+    inmet:
+      raw: "./data/raw/INMET"
+      processed: "./data/processed/INMET"
+
+filenames:
+  patterns:
+    bdqueimadas_export: "exportador_{export_date}_ref_{ref_year}.csv"
+    inmet_csv: "inmet_{year}.csv"
+
+io:
+  create_missing_dirs: true   # utils.py cria os diretórios se não existirem
+  encoding: "utf-8"
+
+logging:
+  level: "INFO"
+  file: "./logs/app.log"
+  max_bytes: 5242880   # ~5 MB
+  backup_count: 3
+
+bdqueimadas:
+  base_url: "https://terrabrasilis.dpi.inpe.br/queimadas/bdqueimadas"
+  filters:
+    continente: "América do Sul"
+    pais: "Brasil"
+    estados: "__ALL__"
+    municipios: []     # vazio = não filtra
+    ucs_tis: []        # vazio = não filtra
+    satelite: "Aqua Tarde"  # satélite de referência
+    biomas: "__ALL__"
+  export:
+    format: "csv"
+    delivery: "email"
+
+inmet:
+  dataset: "estacoes_automaticas_diarias"     # placeholder para referência
+  years: [2000, 2001, 2002, 2003, 2004, 2005] # opcional; pode ser sobrescrito no código
+  filename_template: "inmet_{year}.csv"

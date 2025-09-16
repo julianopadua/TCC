@@ -1,0 +1,81 @@
+2025-09-16 17:02:13,225 INFO [debug] Config carregada com sucesso.
+2025-09-16 17:02:13,225 INFO [debug] data.processed = D:\Projetos\TCC\data\processed
+2025-09-16 17:09:24,556 INFO [inmet.scraper] 26 arquivos .zip encontrados em https://portal.inmet.gov.br/dadoshistoricos
+2025-09-16 17:09:24,556 INFO [inmet.scraper] [DOWNLOADING] 2000.zip
+2025-09-16 17:09:25,061 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2000.zip (0.53 MB)
+2025-09-16 17:09:25,061 INFO [inmet.scraper] [DOWNLOADING] 2001.zip
+2025-09-16 17:09:25,257 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2001.zip (1.62 MB)
+2025-09-16 17:09:25,258 INFO [inmet.scraper] [DOWNLOADING] 2002.zip
+2025-09-16 17:09:25,408 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2002.zip (3.51 MB)
+2025-09-16 17:09:25,409 INFO [inmet.scraper] [DOWNLOADING] 2003.zip
+2025-09-16 17:09:25,937 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2003.zip (8.58 MB)
+2025-09-16 17:09:25,938 INFO [inmet.scraper] [DOWNLOADING] 2004.zip
+2025-09-16 17:09:26,243 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2004.zip (8.80 MB)
+2025-09-16 17:09:26,243 INFO [inmet.scraper] [DOWNLOADING] 2005.zip
+2025-09-16 17:09:26,647 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2005.zip (10.94 MB)
+2025-09-16 17:09:26,647 INFO [inmet.scraper] [DOWNLOADING] 2006.zip
+2025-09-16 17:09:27,265 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2006.zip (16.59 MB)
+2025-09-16 17:09:27,265 INFO [inmet.scraper] [DOWNLOADING] 2007.zip
+2025-09-16 17:09:28,774 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2007.zip (42.30 MB)
+2025-09-16 17:09:28,774 INFO [inmet.scraper] [DOWNLOADING] 2008.zip
+2025-09-16 17:09:31,594 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2008.zip (75.95 MB)
+2025-09-16 17:09:31,595 INFO [inmet.scraper] [DOWNLOADING] 2009.zip
+2025-09-16 17:09:34,495 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2009.zip (88.29 MB)
+2025-09-16 17:09:34,495 INFO [inmet.scraper] [DOWNLOADING] 2010.zip
+2025-09-16 17:09:37,448 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2010.zip (90.17 MB)
+2025-09-16 17:09:37,449 INFO [inmet.scraper] [DOWNLOADING] 2011.zip
+2025-09-16 17:09:40,735 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2011.zip (92.55 MB)
+2025-09-16 17:09:40,735 INFO [inmet.scraper] [DOWNLOADING] 2012.zip
+2025-09-16 17:09:44,977 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2012.zip (97.77 MB)
+2025-09-16 17:09:44,978 INFO [inmet.scraper] [DOWNLOADING] 2013.zip
+2025-09-16 17:09:49,250 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2013.zip (99.63 MB)
+2025-09-16 17:09:49,250 INFO [inmet.scraper] [DOWNLOADING] 2014.zip
+2025-09-16 17:09:53,232 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2014.zip (98.91 MB)
+2025-09-16 17:09:53,232 INFO [inmet.scraper] [DOWNLOADING] 2015.zip
+2025-09-16 17:09:57,199 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2015.zip (97.97 MB)
+2025-09-16 17:09:57,199 INFO [inmet.scraper] [DOWNLOADING] 2016.zip
+2025-09-16 17:10:01,245 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2016.zip (102.44 MB)
+2025-09-16 17:10:01,245 INFO [inmet.scraper] [DOWNLOADING] 2017.zip
+2025-09-16 17:10:04,547 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2017.zip (109.68 MB)
+2025-09-16 17:10:04,548 INFO [inmet.scraper] [DOWNLOADING] 2018.zip
+2025-09-16 17:10:09,613 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2018.zip (117.90 MB)
+2025-09-16 17:10:09,614 INFO [inmet.scraper] [DOWNLOADING] 2019.zip
+2025-09-16 17:10:14,381 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2019.zip (117.56 MB)
+2025-09-16 17:10:14,382 INFO [inmet.scraper] [DOWNLOADING] 2020.zip
+2025-09-16 17:10:18,506 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2020.zip (103.65 MB)
+2025-09-16 17:10:18,506 INFO [inmet.scraper] [DOWNLOADING] 2021.zip
+2025-09-16 17:10:21,342 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2021.zip (80.57 MB)
+2025-09-16 17:10:21,342 INFO [inmet.scraper] [DOWNLOADING] 2022.zip
+2025-09-16 17:10:24,543 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2022.zip (90.36 MB)
+2025-09-16 17:10:24,543 INFO [inmet.scraper] [DOWNLOADING] 2023.zip
+2025-09-16 17:10:29,520 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2023.zip (107.07 MB)
+2025-09-16 17:10:29,520 INFO [inmet.scraper] [DOWNLOADING] 2024.zip
+2025-09-16 17:10:34,101 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2024.zip (102.77 MB)
+2025-09-16 17:10:34,101 INFO [inmet.scraper] [DOWNLOADING] 2025.zip
+2025-09-16 17:10:36,742 INFO [inmet.scraper] [DOWNLOADED] D:\Projetos\TCC\data\raw\INMET\2025.zip (60.61 MB)
+2025-09-16 17:10:36,771 INFO [inmet.scraper] [UNZIP] 2000.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2000
+2025-09-16 17:10:36,816 INFO [inmet.scraper] [UNZIP] 2001.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2001
+2025-09-16 17:10:36,899 INFO [inmet.scraper] [UNZIP] 2002.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2002
+2025-09-16 17:10:37,088 INFO [inmet.scraper] [UNZIP] 2003.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2003
+2025-09-16 17:10:37,303 INFO [inmet.scraper] [UNZIP] 2004.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2004
+2025-09-16 17:10:37,752 INFO [inmet.scraper] [UNZIP] 2005.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2005
+2025-09-16 17:10:38,479 INFO [inmet.scraper] [UNZIP] 2006.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2006
+2025-09-16 17:10:39,867 INFO [inmet.scraper] [UNZIP] 2007.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2007
+2025-09-16 17:10:42,774 INFO [inmet.scraper] [UNZIP] 2008.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2008
+2025-09-16 17:10:46,133 INFO [inmet.scraper] [UNZIP] 2009.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2009
+2025-09-16 17:10:48,945 INFO [inmet.scraper] [UNZIP] 2010.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2010
+2025-09-16 17:10:53,961 INFO [inmet.scraper] [UNZIP] 2011.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2011
+2025-09-16 17:10:57,586 INFO [inmet.scraper] [UNZIP] 2012.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2012
+2025-09-16 17:11:02,142 INFO [inmet.scraper] [UNZIP] 2013.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2013
+2025-09-16 17:11:06,323 INFO [inmet.scraper] [UNZIP] 2014.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2014
+2025-09-16 17:11:10,649 INFO [inmet.scraper] [UNZIP] 2015.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2015
+2025-09-16 17:11:15,325 INFO [inmet.scraper] [UNZIP] 2016.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2016
+2025-09-16 17:11:20,533 INFO [inmet.scraper] [UNZIP] 2017.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2017
+2025-09-16 17:11:26,149 INFO [inmet.scraper] [UNZIP] 2018.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2018
+2025-09-16 17:11:31,212 INFO [inmet.scraper] [UNZIP] 2019.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2019
+2025-09-16 17:11:35,574 INFO [inmet.scraper] [UNZIP] 2020.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2020
+2025-09-16 17:11:39,651 INFO [inmet.scraper] [UNZIP] 2021.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2021
+2025-09-16 17:11:43,595 INFO [inmet.scraper] [UNZIP] 2022.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2022
+2025-09-16 17:11:48,513 INFO [inmet.scraper] [UNZIP] 2023.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2023
+2025-09-16 17:11:53,106 INFO [inmet.scraper] [UNZIP] 2024.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2024
+2025-09-16 17:11:55,938 INFO [inmet.scraper] [UNZIP] 2025.zip -> D:\Projetos\TCC\data\raw\INMET\csv\2025
