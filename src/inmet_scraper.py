@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 import os
 
+
 from utils import (
     loadConfig,
     get_logger,
@@ -84,6 +85,26 @@ def extract_bdqueimadas_archives() -> None:
     BDQ_RAW, BDQ_CSV = get_bdqueimadas_paths()
     unzip_all_in_dir(BDQ_RAW, BDQ_CSV, make_subdir_from_zip=True, log=log)
 
+# -----------------------------------------------------------------------------
+# [SEÇÃO 2.5] Consolidação pós-extração (CSV -> processed/INMET/inmet_{year}.csv)
+# -----------------------------------------------------------------------------
+from utils import process_inmet_years  # importe no topo do arquivo, junto com os demais
+
+def consolidate_inmet_after_extract(years: list[int] | None = None, overwrite: bool = False) -> None:
+    """
+    Consolida os CSVs extraídos do INMET em um único CSV por ano no diretório processed.
+    Se `years` não for fornecido, usa lista do config.yaml ou infere pelos diretórios em INMET_CSV_DIR.
+    """
+    yrs = years or cfg.get("inmet", {}).get("years")
+    if not yrs:
+        # tenta inferir por diretórios com nome numérico
+        yrs = sorted({int(p.name) for p in INMET_CSV_DIR.iterdir() if p.is_dir() and p.name.isdigit()})
+        if not yrs:
+            log.warning("[WARN] Não foi possível inferir anos a partir de INMET/csv.")
+            return
+    log.info(f"[CONSOLIDATE] Anos: {yrs}")
+    process_inmet_years(yrs, overwrite=overwrite)
+
 
 # -----------------------------------------------------------------------------
 # [SEÇÃO 3] MAIN
@@ -96,7 +117,10 @@ def main() -> None:
     download_inmet_archives(links)
     extract_inmet_archives()
 
-    # Opcional: descomente se quiser extrair também BDQueimadas que já estiverem em raw
+    # Consolidação dos CSVs extraídos em processed/INMET
+    consolidate_inmet_after_extract(overwrite=False)
+
+    # Opcional: também extrair BDQueimadas, se desejar
     # extract_bdqueimadas_archives()
 
 

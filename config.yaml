@@ -57,5 +57,5 @@ bdqueimadas:
 
 inmet:
   dataset: "estacoes_automaticas_diarias"     # placeholder para referência
-  years: [2000, 2001, 2002, 2003, 2004, 2005] # opcional; pode ser sobrescrito no código
+  years: [] # opcional; pode ser sobrescrito no código
   filename_template: "inmet_{year}.csv"

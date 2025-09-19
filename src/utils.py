@@ -11,6 +11,19 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple, Optional
 from urllib.parse import urljoin
+from typing import Iterable, Optional
+import re
+import pandas as pd
+import zipfile
+
+import requests
+from requests.adapters import HTTPAdapter
+try:
+    # urllib3 >= 2
+    from urllib3.util.retry import Retry
+except Exception:  # pragma: no cover
+    # Fallback (deve existir)
+    from urllib3.util.retry import Retry  # type: ignore
 
 import yaml
 
@@ -208,14 +221,6 @@ def get_requests_session(retries: int = 3, backoff: float = 0.5):
     """
     Cria uma sessão requests com retries exponenciais para GET/POST.
     """
-    import requests
-    from requests.adapters import HTTPAdapter
-    try:
-        # urllib3 >= 2
-        from urllib3.util.retry import Retry
-    except Exception:  # pragma: no cover
-        # Fallback (deve existir)
-        from urllib3.util.retry import Retry  # type: ignore
 
     s = requests.Session()
     retry = Retry(
@@ -297,7 +302,6 @@ def unzip_file(zip_path: Path | str, out_dir: Path | str, skip_if_exists: bool =
     """
     Extrai um .zip para um diretório específico. Retorna lista de arquivos extraídos.
     """
-    import zipfile
 
     zip_path = Path(zip_path)
     out_dir = Path(out_dir)
@@ -353,10 +357,181 @@ def get_bdqueimadas_paths() -> Tuple[Path, Path]:
 
 
 # -----------------------------------------------------------------------------
-# [SEÇÃO 7] MAIN DE TESTE (OPCIONAL)
+# [SEÇÃO 7] INMET — Leitura & Consolidação de CSVs (ZIP extraídos -> CSV anual)
+# -----------------------------------------------------------------------------
+
+# Colunas a remover (iguais às do script antigo)
+_INMET_DROP_COLS = [
+    "PRESSÃO ATMOSFERICA MAX.NA HORA ANT. (AUT) (mB)",
+    "PRESSÃO ATMOSFERICA MIN. NA HORA ANT. (AUT) (mB)",
+    "TEMPERATURA MÁXIMA NA HORA ANT. (AUT) (°C)",
+    "TEMPERATURA MÍNIMA NA HORA ANT. (AUT) (°C)",
+    "TEMPERATURA ORVALHO MAX. NA HORA ANT. (AUT) (°C)",
+    "TEMPERATURA ORVALHO MIN. NA HORA ANT. (AUT) (°C)",
+    "UMIDADE REL. MAX. NA HORA ANT. (AUT) (%)",
+    "UMIDADE REL. MIN. NA HORA ANT. (AUT) (%)",
+]
+
+def _inmet_year_dir(year: int) -> Optional[Path]:
+    """
+    Detecta o diretório onde estão os CSVs daquele ano, tolerando variações:
+      - <raw>/INMET/csv/<year>/<year>/
+      - <raw>/INMET/csv/<year>/
+      - ou uma subpasta profundamente aninhada que termine com .../<year>
+    Retorna None se não encontrar.
+    """
+    _, csv_root = get_inmet_paths()
+    y = str(year)
+    cand1 = csv_root / y / y
+    cand2 = csv_root / y
+    if cand1.is_dir():
+        return cand1
+    if cand2.is_dir():
+        return cand2
+    # busca profunda
+    for p in csv_root.rglob("*"):
+        if p.is_dir() and p.name == y:
+            return p
+    return None
+
+
+def _parse_inmet_header(fp: Path):
+    """
+    Lê as primeiras linhas do arquivo INMET para extrair:
+      - linha de cabeçalho (linha 9 do arquivo original, index 8)
+      - cidade (linha 3, index 2), latitude (5), longitude (6) — com tolerância
+    Retorna (header_list, cidade, latitude, longitude)
+    """
+    header, cidade, lat, lon = [], None, None, None
+    try:
+        with fp.open("r", encoding="latin1", errors="ignore") as f:
+            lines = f.readlines()
+        # Proteção caso o arquivo seja curto
+        if len(lines) > 8:
+            header_line = lines[8].strip()
+            header = [h.strip() for h in header_line.split(";") if h.strip() != ""]
+        if len(lines) > 2:
+            parts = [p.strip() for p in lines[2].split(";")]
+            if len(parts) > 1:
+                cidade = parts[1] or None
+        if len(lines) > 4:
+            parts = [p.strip() for p in lines[4].split(";")]
+            if len(parts) > 1:
+                lat = parts[1] or None
+        if len(lines) > 5:
+            parts = [p.strip() for p in lines[5].split(";")]
+            if len(parts) > 1:
+                lon = parts[1] or None
+    except Exception as e:
+        get_logger("inmet.load").warning(f"[WARN] Falha lendo header de {fp}: {e}")
+    return header, cidade, lat, lon
+
+
+def process_inmet_year(year: int, drop_cols: Optional[list[str]] = None, overwrite: bool = False) -> Optional[Path]:
+    """
+    Consolida todos os CSVs das estações do ano `year` em um único CSV processado.
+    Regras derivadas do script original:
+      - lê cabeçalho na linha 9 (index 8)
+      - adiciona colunas ANO, CIDADE, LATITUDE, LONGITUDE
+      - remove colunas configuradas
+      - lida com desalinhamento de colunas criando COLUNA_EXTRA_n ou pulando se faltar
+    """
+
+    log = get_logger("inmet.load")
+    drop_cols = drop_cols or _INMET_DROP_COLS
+
+    year_dir = _inmet_year_dir(year)
+    if not year_dir:
+        log.warning(f"[WARN] Pasta do ano {year} não encontrada em INMET/csv.")
+        return None
+
+    proc_dir = get_path("paths", "providers", "inmet", "processed")
+    ensure_dir(proc_dir)
+
+    # Nome de saída a partir do config (fallback padrão)
+    cfg = loadConfig()
+    patt = (cfg.get("filenames", {})
+              .get("patterns", {})
+              .get("inmet_csv", "inmet_{year}.csv"))
+    out_path = Path(proc_dir) / patt.format(year=year)
+
+    if out_path.exists() and not overwrite:
+        log.info(f"[SKIP] {out_path.name} já existe.")
+        return out_path
+
+    # Coleta de arquivos .CSV (case-insensitive)
+    files = sorted([*year_dir.glob("*.CSV"), *year_dir.glob("*.csv")])
+    if not files:
+        log.warning(f"[WARN] Nenhum .CSV encontrado em {year_dir}")
+        return None
+
+    dfs = []
+    for fp in files:
+        try:
+            header, cidade, lat, lon = _parse_inmet_header(fp)
+            df = pd.read_csv(
+                fp, sep=";", skiprows=9, encoding="latin1",
+                engine="python", on_bad_lines="skip"
+            )
+
+            # Ajuste de desalinhamento entre header e dados
+            if df.shape[1] > len(header):
+                log.warning(f"[WARN] Colunas extras detectadas em: {fp.name}")
+                while len(header) < df.shape[1]:
+                    header.append(f"COLUNA_EXTRA_{len(header)+1}")
+            elif df.shape[1] < len(header):
+                log.warning(f"[WARN] Header maior que colunas de dados em {fp.name}. Pulando.")
+                continue
+
+            df.columns = header
+
+            # Metadados fixos
+            df["ANO"] = year
+            df["CIDADE"] = cidade
+            df["LATITUDE"] = lat
+            df["LONGITUDE"] = lon
+
+            # Remoções
+            cols_exist = [c for c in drop_cols if c in df.columns]
+            if cols_exist:
+                df.drop(columns=cols_exist, inplace=True, errors="ignore")
+
+            df = df.loc[:, ~df.columns.str.startswith("COLUNA_EXTRA")]
+
+            dfs.append(df)
+            get_logger("inmet.load").info(f"[READ] {fp.name}")
+        except Exception as e:
+            log.error(f"[ERROR] {fp} -> {e}")
+
+    if not dfs:
+        log.warning(f"[WARN] Nenhum dado válido para {year}.")
+        return None
+
+    final = pd.concat(dfs, ignore_index=True)
+    final.to_csv(out_path, index=False, encoding="utf-8")
+    log.info(f"[WRITE] {out_path}")
+    return out_path
+
+
+def process_inmet_years(years: Iterable[int], overwrite: bool = False) -> list[Path]:
+    """
+    Processa múltiplos anos de uma vez, sem interação (sem input()).
+    """
+    out: list[Path] = []
+    for y in years:
+        p = process_inmet_year(int(y), overwrite=overwrite)
+        if p:
+            out.append(p)
+    return out
+
+
+# -----------------------------------------------------------------------------
+# [SEÇÃO 8] MAIN DE TESTE (OPCIONAL)
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
     cfg = loadConfig()
     log = get_logger("utils.test")
-    log.info("Config carregada.")
-    log.info(f"Raiz: {get_path('paths', 'root') if 'root' in cfg.get('paths', {}) else _ROOT_CACHE}")
+    years = cfg.get("inmet", {}).get("years", list(range(2000, 2026)))
+    log.info(f"Processando anos de teste: {years}")
+    process_inmet_years(years, overwrite=False)
+
