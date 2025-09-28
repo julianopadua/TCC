@@ -14,7 +14,7 @@ import plotly.express as px
 import streamlit as st
 
 # utilitários centrais do projeto
-from ..utils import loadConfig, get_path
+from utils import loadConfig, get_path
 
 # dicionário de metadados das colunas (descrições)
 from webapp.columns_meta import INMET_COLS_DESC, BDQ_COLS_DESC
