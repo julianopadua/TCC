@@ -15,6 +15,11 @@ from typing import Iterable, Optional
 import re
 import pandas as pd
 import zipfile
+from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+except Exception:
+    ZoneInfo = None  # fallback: timezone local
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -155,11 +160,28 @@ def _create_all_paths(cfg: Dict[str, Any]) -> None:
         except Exception as e:
             print(f"[WARN] Falha ao criar diretório: {d} -> {e}", file=sys.stderr)
 
+def _now_tz():
+    """Agora no fuso do config.project.timezone (fallback: local)."""
+    cfg = loadConfig()
+    tzname = (cfg.get("project", {}) or {}).get("timezone")
+    tz = ZoneInfo(tzname) if (ZoneInfo and tzname) else None
+    return datetime.now(tz) if tz else datetime.now()
+
+def _build_daily_log_file(kind: str) -> Path:
+    """
+    Retorna o caminho do arquivo de log do dia:
+      logs/log_YYYYMMDD/{kind}_HHMMSS.log
+    """
+    base_logs = get_path("paths", "logs")  # usa paths.logs do config
+    now = _now_tz()
+    day_dir = ensure_dir(Path(base_logs) / f"log_{now:%Y%m%d}")
+    return day_dir / f"{kind}_{now:%H%M%S}.log"
+
 
 # -----------------------------------------------------------------------------
 # [SEÇÃO 2] LOGGING
 # -----------------------------------------------------------------------------
-def get_logger(name: str = "app") -> logging.Logger:
+def get_logger(name: str = "app", *, kind: str | None = None, per_run_file: bool = False) -> logging.Logger:
     """
     Retorna um logger configurado conforme 'logging' no config.yaml.
     Cria handler de console e de arquivo (rotativo) se 'logging.file' existir.
@@ -182,15 +204,22 @@ def get_logger(name: str = "app") -> logging.Logger:
     sh.setFormatter(fmt)
     logger.addHandler(sh)
 
-    # Arquivo (rotativo)
-    log_file = log_cfg.get("file")
-    if log_file:
-        max_bytes = int(log_cfg.get("max_bytes", 5_000_000))
-        backup = int(log_cfg.get("backup_count", 5))
-        fh = RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup, encoding="utf-8")
+    # Arquivo (rotativo ou diário por execução)
+    log_file_cfg = (cfg.get("logging", {}) or {}).get("file")  # fallback do config
+    if per_run_file and kind:
+        log_path = _build_daily_log_file(kind)
+    else:
+        log_path = Path(log_file_cfg) if log_file_cfg else None
+
+    if log_path:
+        # mantém RotatingFileHandler (ok mesmo com filename único por execução)
+        max_bytes = int((cfg.get("logging", {}) or {}).get("max_bytes", 5_000_000))
+        backup = int((cfg.get("logging", {}) or {}).get("backup_count", 5))
+        fh = RotatingFileHandler(log_path, maxBytes=max_bytes, backupCount=backup, encoding="utf-8")
         fh.setLevel(level)
         fh.setFormatter(fmt)
         logger.addHandler(fh)
+
 
     return logger
 
@@ -423,7 +452,7 @@ def _parse_inmet_header(fp: Path):
             if len(parts) > 1:
                 lon = parts[1] or None
     except Exception as e:
-        get_logger("inmet.load").warning(f"[WARN] Falha lendo header de {fp}: {e}")
+        get_logger("inmet.load", kind="load", per_run_file=True).warning(f"[WARN] Falha lendo header de {fp}: {e}")
     return header, cidade, lat, lon
 
 
@@ -437,7 +466,7 @@ def process_inmet_year(year: int, drop_cols: Optional[list[str]] = None, overwri
       - lida com desalinhamento de colunas criando COLUNA_EXTRA_n ou pulando se faltar
     """
 
-    log = get_logger("inmet.load")
+    log = get_logger("inmet.load", kind="load", per_run_file=True)
     drop_cols = drop_cols or _INMET_DROP_COLS
 
     year_dir = _inmet_year_dir(year)
@@ -499,7 +528,7 @@ def process_inmet_year(year: int, drop_cols: Optional[list[str]] = None, overwri
             df = df.loc[:, ~df.columns.str.startswith("COLUNA_EXTRA")]
 
             dfs.append(df)
-            get_logger("inmet.load").info(f"[READ] {fp.name}")
+            log.info(f"[READ] {fp.name}")
         except Exception as e:
             log.error(f"[ERROR] {fp} -> {e}")
 
@@ -530,7 +559,7 @@ def process_inmet_years(years: Iterable[int], overwrite: bool = False) -> list[P
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
     cfg = loadConfig()
-    log = get_logger("utils.test")
+    log = get_logger("utils.test", kind="load", per_run_file=True)
     years = cfg.get("inmet", {}).get("years", list(range(2000, 2026)))
     log.info(f"Processando anos de teste: {years}")
     process_inmet_years(years, overwrite=False)

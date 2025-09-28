@@ -1,0 +1,55 @@
+2025-09-28 17:34:25,235 INFO [inmet.consolidate] [REFCOLS] 15 colunas
+2025-09-28 17:34:25,236 INFO [inmet.consolidate] [CONSOLIDATE] 26 arquivo(s) em lotes de 3 -> D:\Projetos\TCC\data\consolidated\INMET\inmet_all_years.csv
+2025-09-28 17:34:25,236 INFO [inmet.consolidate] [BATCH] anos=[2000, 2001, 2002]
+2025-09-28 17:34:25,236 INFO [inmet.consolidate]   [READ] inmet_2000.csv
+2025-09-28 17:34:25,302 INFO [inmet.consolidate]   [READ] inmet_2001.csv
+2025-09-28 17:34:25,467 INFO [inmet.consolidate]   [READ] inmet_2002.csv
+2025-09-28 17:34:27,797 INFO [inmet.consolidate]   [APPEND] +514164 linhas (acumulado: 514164)
+2025-09-28 17:34:27,817 INFO [inmet.consolidate] [BATCH] anos=[2003, 2004, 2005]
+2025-09-28 17:34:27,818 INFO [inmet.consolidate]   [READ] inmet_2003.csv
+2025-09-28 17:34:28,821 INFO [inmet.consolidate]   [READ] inmet_2004.csv
+2025-09-28 17:34:30,005 INFO [inmet.consolidate]   [READ] inmet_2005.csv
+2025-09-28 17:34:42,032 INFO [inmet.consolidate]   [APPEND] +2981110 linhas (acumulado: 3495274)
+2025-09-28 17:34:42,182 INFO [inmet.consolidate] [BATCH] anos=[2006, 2007, 2008]
+2025-09-28 17:34:42,182 INFO [inmet.consolidate]   [READ] inmet_2006.csv
+2025-09-28 17:34:50,622 INFO [inmet.consolidate]   [READ] inmet_2007.csv
+2025-09-28 17:34:55,364 INFO [inmet.consolidate]   [READ] inmet_2008.csv
+2025-09-28 17:35:44,193 INFO [inmet.consolidate]   [APPEND] +10832624 linhas (acumulado: 14327898)
+2025-09-28 17:35:44,660 INFO [inmet.consolidate] [BATCH] anos=[2009, 2010, 2011]
+2025-09-28 17:35:44,660 INFO [inmet.consolidate]   [READ] inmet_2009.csv
+2025-09-28 17:35:55,142 INFO [inmet.consolidate]   [READ] inmet_2010.csv
+2025-09-28 17:36:05,834 INFO [inmet.consolidate]   [READ] inmet_2011.csv
+2025-09-28 17:37:43,557 INFO [inmet.consolidate]   [APPEND] +23052256 linhas (acumulado: 37380154)
+2025-09-28 17:37:44,826 INFO [inmet.consolidate] [BATCH] anos=[2012, 2013, 2014]
+2025-09-28 17:37:44,826 INFO [inmet.consolidate]   [READ] inmet_2012.csv
+2025-09-28 17:37:56,082 INFO [inmet.consolidate]   [READ] inmet_2013.csv
+2025-09-28 17:38:06,879 INFO [inmet.consolidate]   [READ] inmet_2014.csv
+2025-09-28 17:39:54,979 INFO [inmet.consolidate]   [APPEND] +24583584 linhas (acumulado: 61963738)
+2025-09-28 17:39:56,365 INFO [inmet.consolidate] [BATCH] anos=[2015, 2016, 2017]
+2025-09-28 17:39:56,365 INFO [inmet.consolidate]   [READ] inmet_2015.csv
+2025-09-28 17:40:08,563 INFO [inmet.consolidate]   [READ] inmet_2016.csv
+2025-09-28 17:40:20,775 INFO [inmet.consolidate]   [READ] inmet_2017.csv
+2025-09-28 17:42:16,259 INFO [inmet.consolidate]   [APPEND] +26675968 linhas (acumulado: 88639706)
+2025-09-28 17:42:17,821 INFO [inmet.consolidate] [BATCH] anos=[2018, 2019, 2020]
+2025-09-28 17:42:17,821 INFO [inmet.consolidate]   [READ] inmet_2018.csv
+2025-09-28 17:42:32,069 INFO [inmet.consolidate]   [READ] inmet_2019.csv
+2025-09-28 17:42:45,447 WARNING [inmet.consolidate]   [WARN] colunas diferentes em inmet_2019.csv; reindexando.
+2025-09-28 17:42:47,006 INFO [inmet.consolidate]   [READ] inmet_2020.csv
+2025-09-28 17:43:00,279 WARNING [inmet.consolidate]   [WARN] colunas diferentes em inmet_2020.csv; reindexando.
+2025-09-28 17:45:44,386 INFO [inmet.consolidate]   [APPEND] +30837268 linhas (acumulado: 119476974)
+2025-09-28 17:45:45,950 INFO [inmet.consolidate] [BATCH] anos=[2021, 2022, 2023]
+2025-09-28 17:45:45,950 INFO [inmet.consolidate]   [READ] inmet_2021.csv
+2025-09-28 17:45:58,569 WARNING [inmet.consolidate]   [WARN] colunas diferentes em inmet_2021.csv; reindexando.
+2025-09-28 17:46:00,120 INFO [inmet.consolidate]   [READ] inmet_2022.csv
+2025-09-28 17:46:11,640 WARNING [inmet.consolidate]   [WARN] colunas diferentes em inmet_2022.csv; reindexando.
+2025-09-28 17:46:13,054 INFO [inmet.consolidate]   [READ] inmet_2023.csv
+2025-09-28 17:46:18,759 WARNING [inmet.consolidate]   [WARN] colunas diferentes em inmet_2023.csv; reindexando.
+2025-09-28 17:48:43,439 INFO [inmet.consolidate]   [APPEND] +25003476 linhas (acumulado: 144480450)
+2025-09-28 17:48:45,116 INFO [inmet.consolidate] [BATCH] anos=[2024, 2025]
+2025-09-28 17:48:45,117 INFO [inmet.consolidate]   [READ] inmet_2024.csv
+2025-09-28 17:48:57,792 WARNING [inmet.consolidate]   [WARN] colunas diferentes em inmet_2024.csv; reindexando.
+2025-09-28 17:48:59,358 INFO [inmet.consolidate]   [READ] inmet_2025.csv
+2025-09-28 17:49:13,016 WARNING [inmet.consolidate]   [WARN] colunas diferentes em inmet_2025.csv; reindexando.
+2025-09-28 17:50:45,027 INFO [inmet.consolidate]   [APPEND] +16479024 linhas (acumulado: 160959474)
+2025-09-28 17:50:46,050 INFO [inmet.consolidate] [DONE] D:\Projetos\TCC\data\consolidated\INMET\inmet_all_years.csv (linhas totais: 160959474)
+2025-09-28 17:50:46,428 INFO [inmet.consolidate] [DONE] Consolidado em: D:\Projetos\TCC\data\consolidated\INMET\inmet_all_years.csv

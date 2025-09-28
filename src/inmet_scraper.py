@@ -27,7 +27,7 @@ from utils import (
 # [SEÇÃO 1] CONFIG E CONSTANTES
 # -----------------------------------------------------------------------------
 cfg = loadConfig()
-log = get_logger("inmet.scraper")
+log = get_logger("inmet.scraper", kind="scraper", per_run_file=True)
 
 # Base URL do INMET (usa fallback se não estiver no config.yaml)
 INMET_BASE_URL = (
