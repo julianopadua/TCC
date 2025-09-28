@@ -16,8 +16,7 @@ paths:
   data:
     raw: "./data/raw"
     processed: "./data/processed"
-    external: "./data/external"   # dados de terceiros (p.ex., shapes/biomas)
-    interim: "./data/interim"     # artefatos temporários (limpeza/validação)
+    external: "./data/consolidated"
   providers:
     bdqueimadas:
       raw: "./data/raw/BDQUEIMADAS"
