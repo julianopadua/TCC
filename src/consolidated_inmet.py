@@ -2,14 +2,13 @@
 # =============================================================================
 # INMET — CONSOLIDAÇÃO incremental (processed/INMET/inmet_{ano}.csv -> consolidated/INMET)
 # Junta os CSVs em lotes de 3 arquivos por vez, anexando ao arquivo final.
-# Dep.: pandas, utils.py (loadConfig, get_logger, get_path, ensure_dir)
+# Dep.: utils.py (loadConfig, get_logger, get_path, ensure_dir)
 # =============================================================================
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 import re
-import pandas as pd
 import csv
 import sys
 
@@ -20,7 +19,7 @@ from utils import (
     ensure_dir,
 )
 
-# Permite campos muito longos quando o fallback usa engine="python"
+# Permite campos muito longos para o parser csv do Python (caso necessário)
 try:
     csv.field_size_limit(sys.maxsize)
 except OverflowError:
@@ -60,44 +59,55 @@ def list_inmet_year_files(processed_dir: Path) -> List[Tuple[int, Path]]:
     return pairs
 
 # -----------------------------------------------------------------------------
-# [SEÇÃO 3] IO & CONSISTÊNCIA
+# [SEÇÃO 3] HELPERS (STREAMING SEM PANDAS)
 # -----------------------------------------------------------------------------
-def _read_header_cols(csv_path: Path, encoding: str = "utf-8") -> List[str]:
-    # usa engine C primeiro (rápido); se der ruim, cai para python
-    try:
-        return list(pd.read_csv(csv_path, nrows=0, encoding=encoding).columns)
-    except Exception:
-        return list(pd.read_csv(csv_path, nrows=0, encoding=encoding, engine="python").columns)
-
-def _read_year_df(csv_path: Path, encoding: str = "utf-8") -> pd.DataFrame:
-    """
-    Leitura resiliente:
-      1) tenta engine padrão (C);
-      2) fallback para engine="python" + on_bad_lines="skip".
-    """
-    try:
-        return pd.read_csv(csv_path, encoding=encoding)
-    except Exception:
-        return pd.read_csv(
-            csv_path,
-            encoding=encoding,
-            engine="python",
-            on_bad_lines="skip",
-        )
-
-def _reindex_like(df: pd.DataFrame, ref_cols: List[str]) -> pd.DataFrame:
-    for c in ref_cols:
-        if c not in df.columns:
-            df[c] = pd.NA
-    # ignora colunas extras e ordena conforme ref
-    return df[ref_cols]
-
 def _batched(lst: List[Tuple[int, Path]], n: int = 3) -> Iterable[List[Tuple[int, Path]]]:
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
 
+def _read_first_line(p: Path, encoding: str = "utf-8") -> str:
+    """Lê a 1ª linha (header) de um CSV exatamente como está no arquivo."""
+    with p.open("r", encoding=encoding, errors="replace", newline="") as fh:
+        return fh.readline()
+
+def _append_csv_skip_header(src: Path, dst_fh, encoding: str = "utf-8") -> int:
+    """
+    Copia o conteúdo de `src` para um arquivo de destino já aberto, pulando a 1ª linha (header).
+    Retorna o nº de linhas copiadas.
+    """
+    rows = 0
+    with src.open("r", encoding=encoding, errors="replace", newline="") as s:
+        _ = s.readline()  # skip header
+        for line in s:
+            dst_fh.write(line)
+            rows += 1
+    return rows
+
+def _normalize_dates_text_inplace(csv_path: Path, encoding: str = "utf-8") -> None:
+    """
+    Passada final: substitui '/' por '-' SOMENTE no primeiro campo (coluna DATA) de cada linha.
+    Não usa parser CSV (robusto a aspas malformadas). Mantém o header intocado.
+    """
+    tmp = csv_path.with_suffix(".tmp")
+    with csv_path.open("r", encoding=encoding, errors="replace", newline="") as r, \
+         tmp.open("w", encoding=encoding, newline="") as w:
+        first = True
+        for line in r:
+            if first:
+                w.write(line)      # preserva o header original do 1º arquivo
+                first = False
+                continue
+            idx = line.find(",")   # assume DATA é a 1ª coluna
+            if idx > 0:
+                token = line[:idx]
+                if "/" in token:
+                    token = token.replace("/", "-")
+                line = token + line[idx:]
+            w.write(line)
+    tmp.replace(csv_path)
+
 # -----------------------------------------------------------------------------
-# [SEÇÃO 4] CONSOLIDAÇÃO (LOTE DE 3)
+# [SEÇÃO 4] CONSOLIDAÇÃO (LOTE DE 3, HEADER DO 1º ARQUIVO)
 # -----------------------------------------------------------------------------
 def consolidate_inmet(
     output_filename: str = "inmet_all_years.csv",
@@ -105,32 +115,33 @@ def consolidate_inmet(
     overwrite: bool = False,
     encoding: str = "utf-8",
     batch_size: int = 3,
+    normalize_dates: bool = True,  # padroniza DATA para YYYY-MM-DD no final
 ) -> Path:
     """
     Consolida CSVs anuais (processed/INMET/inmet_{ano}.csv) em um único CSV
     (consolidated/INMET/<output_filename>), processando em lotes de `batch_size`.
+    - Usa o header do 1º arquivo apenas.
+    - Demais arquivos são "colados" sem header (linha 1 é pulada).
+    - Sem reindex/rename; é colagem pura.
     """
     log = get_logger("inmet.consolidate", kind="load", per_run_file=True)
-    cfg = loadConfig()
+    _ = loadConfig()  # garante paths resolvidos
 
     processed_dir = get_inmet_processed_dir()
     out_dir = get_inmet_consolidated_dir()
     out_path = out_dir / output_filename
 
-    all_year_files = list_inmet_year_files(processed_dir)
+    year_files = list_inmet_year_files(processed_dir)
     if years:
         yrs = {int(y) for y in years}
-        year_files = [(y, p) for (y, p) in all_year_files if y in yrs]
-    else:
-        year_files = all_year_files
+        year_files = [(y, p) for (y, p) in year_files if y in yrs]
 
     if not year_files:
         raise FileNotFoundError("Nenhum inmet_{ano}.csv encontrado para consolidar.")
 
-    # Colunas de referência
+    # Header do 1º arquivo
     _, first_path = year_files[0]
-    ref_cols = _read_header_cols(first_path, encoding=encoding)
-    log.info(f"[REFCOLS] {len(ref_cols)} colunas")
+    header = _read_first_line(first_path, encoding=encoding)
 
     # Saída
     ensure_dir(out_path.parent)
@@ -142,41 +153,24 @@ def consolidate_inmet(
             return out_path
 
     total_rows = 0
-    first_write = True
     log.info(f"[CONSOLIDATE] {len(year_files)} arquivo(s) em lotes de {batch_size} -> {out_path}")
 
-    for batch in _batched(year_files, batch_size):
-        anos = [y for y, _ in batch]
-        log.info(f"[BATCH] anos={anos}")
+    # Abre o destino uma vez, grava header do 1º arquivo
+    with out_path.open("w", encoding=encoding, newline="") as out_fh:
+        out_fh.write(header)
 
-        frames: List[pd.DataFrame] = []
-        for y, path in batch:
-            log.info(f"  [READ] {path.name}")
-            df = _read_year_df(path, encoding=encoding)
-            if list(df.columns) != ref_cols:
-                log.warning(f"  [WARN] colunas diferentes em {path.name}; reindexando.")
-                df = _reindex_like(df, ref_cols)
-            frames.append(df)
+        for batch in _batched(year_files, batch_size):
+            anos = [y for y, _ in batch]
+            log.info(f"[BATCH] anos={anos}")
+            for y, path in batch:
+                log.info(f"  [APPEND] {path.name}")
+                added = _append_csv_skip_header(path, out_fh, encoding=encoding)
+                total_rows += added
+                log.info(f"    +{added} linhas (acumulado: {total_rows})")
 
-        if not frames:
-            continue
-
-        batch_df = pd.concat(frames, ignore_index=True)
-        batch_rows = len(batch_df)
-
-        batch_df.to_csv(
-            out_path,
-            mode="w" if first_write else "a",
-            index=False,
-            header=first_write,
-            encoding=encoding,
-        )
-        first_write = False
-        total_rows += batch_rows
-        log.info(f"  [APPEND] +{batch_rows} linhas (acumulado: {total_rows})")
-
-        # libera memória cedo
-        del batch_df, frames
+    if normalize_dates:
+        log.info("[NORMALIZE] Padronizando DATA para YYYY-MM-DD (primeira coluna)...")
+        _normalize_dates_text_inplace(out_path, encoding=encoding)
 
     log.info(f"[DONE] {out_path} (linhas totais: {total_rows})")
     return out_path
@@ -193,6 +187,7 @@ if __name__ == "__main__":
             overwrite=True,    # sobrescreve se já existir
             encoding="utf-8",
             batch_size=3,      # junta de 3 em 3
+            normalize_dates=True,
         )
         log.info(f"[DONE] Consolidado em: {out}")
     except Exception as e:

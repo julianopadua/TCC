@@ -135,3 +135,4 @@ python src/load_inmet_csv_data.py
 * **Conflitos de versão:** atualize `pip` e reinstale `-r requirements.txt`. Se usar Python 3.12+, mantenha as versões pinadas deste repositório.
 
 ---
+
