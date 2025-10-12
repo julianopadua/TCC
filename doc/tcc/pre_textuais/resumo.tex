@@ -1,0 +1,11 @@
+% !TEX root = ./main.tex
+\begin{resumo}
+Este Trabalho de Conclusão de Curso avalia comparativamente algoritmos de aprendizado de máquina para \textit{prever a ocorrência diária de queimadas} a partir de variáveis climáticas obtidas do \textit{Banco de Dados Queimadas} (INPE) e das estações meteorológicas do INMET. Propomos um pipeline reprodutível de extração, limpeza, análise exploratória e processamento: integração INMET–INPE em grade diária, checagem de consistência, imputação de lacunas, e engenharia de atributos com agregados e defasagens (acumulados de precipitação em 7–30 dias, extremos de temperatura, umidade e vento). 
+
+Comparamos modelos Random Forest, XGBoost, SVM (RBF) e MLP, tratando o desbalanceamento com \textit{class weights} e SMOTE–Tomek. A avaliação usa validação por blocos espaço–temporais e \textit{hold-out} temporal recente, reportando PR-AUC, F1, precisão–revocação e AUC-ROC, além de curvas de detecção precoce. Para interpretabilidade, aplicamos SHAP (árvores) e \textit{Integrated Gradients} (MLP), identificando a contribuição de variáveis climáticas na ignição. 
+
+Os resultados discutem compromissos entre desempenho e custo operacional (falsos alarmes versus acertos), bem como limitações decorrentes da resolução e da estrutura dos dados. O estudo fornece diretrizes práticas para uso de dados INMET e INPE em sistemas de alerta, com ênfase no Cerrado e possibilidade de extensão a outros biomas.
+\vspace{1em}
+
+\textbf{Palavras-chave}: queimadas; aprendizado de máquina; INMET; INPE; previsão; Cerrado; PR-AUC; SHAP.
+\end{resumo}

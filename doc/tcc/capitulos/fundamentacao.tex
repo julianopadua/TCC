@@ -1,0 +1,21 @@
+% !TEX root = ./main.tex
+
+\chapter{Fundamentação Teórica}
+
+\section{Modelos Estatísticos e Ensembles}
+Estudos pioneiros apontam Random Forest como técnica robusta para classificação binária da ocorrência de focos. Em solo chinês, \cite{pang2022china} compararam quatro algoritmos e registraram AUC de 0,96 para RF em série de quatorze anos. No Paquistão, \cite{shahzad2024pakistan} confirmaram vantagem do mesmo algoritmo, com acurácia de 87\,\% diante de condições agroclimáticas diversificadas.
+
+\section{Abordagens Híbridas e Espaço-Temporais}
+Para o Alasca, \cite{ahajjam2025wildfire} propuseram combinação de clustering espaço-temporal, seleção de atributos via algoritmo genético e Histogram Gradient Boosting. O framework elevou a acurácia da previsão diária de ignição para 0,92 e permitiu estimar área queimada e duração com erro médio inferior a 20\,\%.
+
+\section{Estudos Nacionais}
+Freitas et~al.~\cite{freitas2025xingu} utilizaram Random Forest e XGBoost para estimar suscetibilidade a incêndios na APA Triunfo do Xingu (Pará), alcançando precisão superior a 0,9 e destacando a influência de variáveis de precipitação acumulada e densidade de estradas.
+
+\section{Qualidade dos Dados e Redução de Alarmes Falsos}
+\cite{giuseppe2025global} avaliaram três arquiteturas (Random Forest, XGBoost, rede neural rasa) em resolução de 9 km, demonstrando que a inclusão de combustível e ignições reduz em 30\,\% o \textit{false-alarm rate} dos índices meteorológicos tradicionais.
+
+\section{Explicabilidade e Transparência}
+\cite{cilli2022xai} aplicaram valores de Shapley para interpretar um Random Forest treinado no sul da Europa, identificando Fire Weather Index e NDVI como variáveis críticas. Complementarmente, \cite{shmuel2025lightning} treinaram modelos explicáveis para incêndios causados por raios.
+
+\section{Revisões e Desafios}
+A revisão sistemática de \cite{andrianarivony2024review} aponta que CNNs multi-escala e ConvLSTM alcançam F1 acima de 0,95 na propagação em curto prazo, mas ressaltam desafios de generalização~\cite{illarionova2025geo}.

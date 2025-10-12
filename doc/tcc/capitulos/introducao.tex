@@ -1,0 +1,23 @@
+% !TEX root = ./main.tex
+
+\chapter{Introdução}
+
+As queimadas afetam ciclicamente a biodiversidade, a saúde pública e a economia. A literatura indica avanços significativos com o uso de aprendizado de máquina (ML) na previsão do fogo. Modelos Random Forest e SVM alcançaram acurácias superiores a 85\,\% em cenários do Paquistão~\cite{shahzad2024pakistan} e da China~\cite{pang2022china}, mesmo quando treinados apenas com dados climáticos diários e índices de vegetação. Em escala global, abordagens que incorporam combustível e fontes de ignição reduziram drasticamente falsos alarmes~\cite{giuseppe2025global}. Revisões recentes mostram que arquiteturas profundas, como CNNs e ConvLSTM, obtêm melhor desempenho na propagação do fogo, mas enfatizam a necessidade de dados de alta qualidade para treinamento~\cite{andrianarivony2024review}. No contexto brasileiro, um estudo conduzido na APA Triunfo do Xingu aplicou Random Forest e XGBoost para mapear suscetibilidade a incêndios, comprovando a relevância de variáveis climáticas e de pressão antrópica~\cite{freitas2025xingu}.
+
+\section{Motivação}
+
+No bioma Cerrado, entre 2001 e 2023, mais de 370\,mil focos de calor foram detectados apenas pelos sensores MODIS. A previsão robusta de queimadas diárias pode reduzir custos de combate, mitigar emissões de CO\textsubscript{2} e preservar serviços ecossistêmicos. Apesar de avanços internacionais, poucos trabalhos nacionais integram dados meteorológicos de alta resolução com modelos recentes de ML; o estudo de Freitas et~al.~\cite{freitas2025xingu} é uma das raras exceções. Esse contexto motiva a presente pesquisa, que busca sistematizar, avaliar e comparar técnicas de ML capazes de antecipar a ignição com antecedência suficiente para suporte à tomada de decisão.
+
+\section{Objetivos}
+
+\subsection{Objetivo Geral}
+Comparar o desempenho e a interpretabilidade de diferentes algoritmos de aprendizado de máquina na previsão diária de focos de queimadas no Cerrado, utilizando variáveis climáticas provenientes do INMET integradas aos registros do BD Queimadas (INPE).
+
+\subsection{Objetivos Específicos}
+\begin{itemize}
+    \item Construir um \textit{dataset} diário (2005--2025) combinando variáveis meteorológicas e focos de calor georreferenciados;
+    \item Treinar e avaliar modelos Random Forest~\cite{breiman2001randomForest}, XGBoost~\cite{chen2016xgboost}, SVM~\cite{cortes1995svm} e redes neurais multicamadas~\cite{rumelhart1986backprop};
+    \item Investigar a influência de grupos de variáveis (temperatura, umidade, precipitação, vento, índices de vegetação);
+    \item Aplicar técnicas de explicabilidade (SHAP) para identificar os fatores climáticos mais determinantes;
+    \item Propor diretrizes para implementação de um sistema de alerta operacional.
+\end{itemize}

@@ -1,0 +1,11 @@
+% !TEX root = ./main.tex
+\begin{resumo}[Abstract]
+\begin{otherlanguage*}{english}
+This undergraduate thesis presents a comparative study of machine-learning algorithms to \textit{predict daily wildfire occurrence} using climatic variables derived exclusively from the INPE Fire Database (hotspots) and INMET weather stations. We design a reproducible pipeline for data extraction, cleaning, exploratory analysis, and processing: daily gridding and INMET–INPE integration, consistency checks, gap filling, and feature engineering with lagged and aggregated signals (e.g., 7–30-day precipitation sums, temperature extremes, humidity, and wind).
+
+We compare Random Forest, XGBoost, SVM (RBF), and MLP, addressing class imbalance with \textit{class weights} and SMOTE–Tomek. Model assessment adopts spatio-temporal block validation plus a recent temporal hold-out, reporting PR-AUC, F1, precision–recall and ROC-AUC, as well as early-detection curves. For interpretability, we apply SHAP (tree models) and \textit{Integrated Gradients} (MLP) to quantify the contribution of climatic drivers to ignition risk.
+
+Results discuss performance–operational trade-offs (false alarms vs. hits) and limitations related to data resolution and structure. The study provides practical guidance for building alert systems with INMET and INPE data—emphasizing the Cerrado—while remaining extensible to other Brazilian biomes.
+Keywords: wildfires; machine learning; INMET; INPE; prediction; Cerrado; PR-AUC; SHAP.
+\end{otherlanguage*}
+\end{resumo}

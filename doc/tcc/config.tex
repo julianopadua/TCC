@@ -1,0 +1,103 @@
+% !TEX root = main.tex
+\documentclass[12pt,openright,twoside,a4paper]{abntex2}
+
+% Margens padrão da UFSCar
+\usepackage[top=3cm,bottom=2cm,left=3cm,right=2cm]{geometry}
+
+% Pacotes essenciais
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{graphicx}
+\usepackage{amsmath, amssymb}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{ragged2e}
+\usepackage{indentfirst}
+\usepackage[alf]{abntex2cite}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usepackage{listings}
+\usepackage{libertine}
+\usepackage[libertine]{newtxmath}
+
+% Hiperlinks
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=black
+}
+
+% Informações institucionais (para capa e folha de rosto)
+\titulo{Análise Comparativa do Desempenho de Modelos de Machine Learning na Previsão de Queimadas Utilizando Variáveis Climáticas}
+\autor{Juliano Eleno Silva Pádua}
+\local{São Carlos - SP}
+\data{2025}
+\instituicao{
+  Universidade Federal de São Carlos\\
+  Centro de Ciências Exatas e de Tecnologia -- CCET\\
+  Departamento de Computação -- DC\\
+  Curso de Bacharelado em Engenharia de Computação
+}
+\orientador{Prof. Dr. Alexandre Levada}
+\tipotrabalho{Trabalho de Conclusão de Curso}
+
+% ===== Capa (modelo UFSCar) =====
+\renewcommand{\imprimircapa}{
+  \begin{center}
+    {\ABNTEXchapterfont\large\MakeUppercase\imprimirinstituicao}
+    \vspace*{4cm}
+
+    {\ABNTEXchapterfont\bfseries\LARGE\imprimirtitulo}
+    \vspace*{5cm}
+
+    {\large\imprimirautor}
+    \vspace*{6cm}
+
+    {\large\imprimirlocal}\\
+    {\large\imprimirdata}
+  \end{center}
+}
+
+% ===== Folha de rosto (modelo UFSCar) =====
+\makeatletter
+\renewcommand{\folhaderostocontent}{
+  \begin{center}
+    % Autor no topo
+    {\large \imprimirautor}
+
+    \vspace*{6cm}
+    % Título centralizado
+    {\ABNTEXchapterfont\bfseries\Large \imprimirtitulo \par}
+
+    \vspace*{3cm}
+  \end{center}
+
+  % Bloco descritivo justificado à direita
+  \noindent\hfill
+  \begin{minipage}{0.52\textwidth}
+    \justifying
+    \SingleSpacing
+    \noindent Trabalho de Conclusão de Curso apresentado ao curso de Engenharia de Computação da Universidade Federal de São Carlos, como requisito parcial para a obtenção do título de Bacharel em Engenharia de Computação.
+
+    \vspace{1em}
+    \noindent Orientação: \imprimirorientador
+  \end{minipage}
+
+
+  \vfill
+
+  % Cidade/UF e ano no rodapé
+  \begin{center}
+    {\large \imprimirlocal}\\[2pt]
+    {\large \imprimirdata}
+  \end{center}
+}
+\makeatother

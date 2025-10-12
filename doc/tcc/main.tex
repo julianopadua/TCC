@@ -1,0 +1,34 @@
+% !TEX TS-program = pdflatex
+\input{config.tex}
+
+% caminho padrão para figuras
+\graphicspath{{imagens/}}
+
+\begin{document}
+
+\imprimircapa
+\imprimirfolhaderosto*
+
+% ===== Elementos pré-textuais =====
+\input{pre_textuais/dedicatoria.tex}
+\input{pre_textuais/agradecimentos.tex}
+\input{pre_textuais/epigrafe.tex}
+\input{pre_textuais/resumo.tex}
+\input{pre_textuais/abstract.tex}
+
+\listoffigures
+\listoftables
+\tableofcontents
+
+% ===== Corpo do trabalho =====
+\input{capitulos/introducao.tex}
+\input{capitulos/fundamentacao.tex}
+\input{capitulos/metodologia.tex}
+\input{capitulos/resultados.tex}
+\input{pre_textuais/conclusao.tex} % (se a conclusão estiver em pre_textuais)
+% \input{capitulos/conclusao.tex}  % (use esta linha se você mover a conclusão para "capitulos/")
+
+% ===== Referências =====
+\bibliography{ref}
+
+\end{document}

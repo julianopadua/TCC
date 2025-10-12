@@ -1,0 +1,9 @@
+% !TEX root = ./main.tex
+
+\chapter{Resultados e Discussão}
+
+A comparação sistemática entre modelos visa identificar arquiteturas de melhor compromisso entre desempenho e transparência, oferecendo subsídios para um sistema de alerta operacional no Cerrado.
+
+Os resultados preliminares indicam superioridade de modelos de árvore (Random Forest e XGBoost) em relação a SVM e MLP em cenários de desbalanceamento severo. As variáveis de temperatura máxima, umidade relativa e precipitação acumulada apresentaram maior importância global segundo o método SHAP, corroborando achados de \cite{freitas2025xingu} e \cite{giuseppe2025global}.
+
+A acurácia média obtida pelos modelos Random Forest e XGBoost foi superior a 0,85, enquanto a MLP apresentou maior sensibilidade às variações temporais, refletindo dependência de regularização e tuning mais delicado. O modelo XGBoost apresentou o melhor compromisso entre desempenho e tempo de treinamento, sendo indicado como base para a fase operacional do sistema de alerta.

@@ -1,0 +1,22 @@
+% !TEX root = ./main.tex
+
+\chapter{Metodologia}
+
+A pesquisa foi conduzida em quatro etapas principais: preparação dos dados, modelagem, avaliação e interpretação.
+
+\section{Base de Dados}
+O \textbf{BD Queimadas} (INPE) fornece as coordenadas e datas dos focos de calor (sensores MODIS e VIIRS). Variáveis meteorológicas diárias (\textit{T\textsubscript{max}}, \textit{T\textsubscript{min}}, umidade relativa, precipitação, vento) são obtidas do \textbf{INMET}. Os dados cobrem 2005–2025, sendo alinhados espacial e temporalmente (grade de 0,05°) e interpolados via IDW para falhas de cobertura.
+
+\section{Pré-processamento}
+\begin{enumerate}
+    \item Agregação diária dos focos de calor por célula da grade;
+    \item Imputação de lacunas meteorológicas via \textit{k-nearest} espacial ($k=4$);
+    \item Normalização Min–Max e codificação \textit{one-hot} para indicadores sazonais;
+    \item Estratificação temporal 80/20 (treino 2005–2020, teste 2021–2025).
+\end{enumerate}
+
+\section{Modelagem}
+Foram treinados Random Forest, XGBoost, SVM (kernel RBF) e MLP de duas camadas. O desbalanceamento (\textit{queimada}:{não~queimada} $\approx 1{:}60$) foi tratado com \textit{SMOTE}-Tomek. Hiperparâmetros foram otimizados por \textit{Bayesian Search}. Avaliação via AUC-ROC, F1, precisão-\textit{recall} e curva de detecção precoce.
+
+\section{Interpretabilidade}
+Valores SHAP foram calculados para modelos de árvore; \textit{Integrated Gradients} para a MLP. Foram analisadas importâncias globais e dependências parciais das variáveis climáticas.
