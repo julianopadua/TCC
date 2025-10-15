@@ -1,0 +1,4 @@
+2025-10-12 20:07:36,697 INFO [inmet.eda] [OPEN] Amostra inicial para inferir tipos: inmet_all_years.csv
+2025-10-12 20:07:36,908 INFO [inmet.eda] [INFO] Colunas numéricas iniciais: ['RADIACAO GLOBAL (KJ/m²)', 'UMIDADE RELATIVA DO AR, HORARIA (%)', 'VENTO, DIREÇÃO HORARIA (gr) (° (gr))', 'ANO'] ...
+2025-10-12 20:07:36,908 INFO [inmet.eda] [READ] Leitura incremental em chunks=250000
+2025-10-12 20:07:53,869 INFO [inmet.eda] [CHUNK 10] linhas acumuladas: 2,500,000

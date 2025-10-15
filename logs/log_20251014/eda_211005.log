@@ -1,0 +1,4 @@
+2025-10-14 21:10:05,313 INFO [inmet.eda] [READ] Leitura incremental em chunks=250000
+2025-10-14 21:10:22,115 INFO [inmet.eda] [CHUNK 10] linhas acumuladas: 2,500,000
+2025-10-14 21:10:39,923 INFO [inmet.eda] [CHUNK 20] linhas acumuladas: 5,000,000
+2025-10-14 21:10:58,290 INFO [inmet.eda] [CHUNK 30] linhas acumuladas: 7,500,000

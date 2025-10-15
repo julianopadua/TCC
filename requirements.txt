@@ -1,10 +1,22 @@
+# Núcleo de dados
 pandas>=2.2.3; python_version >= "3.13"
 pandas>=2.2.2; python_version < "3.13"
+numpy>=2.1.1
+
+# Visualização
 matplotlib==3.8.4
+seaborn>=0.13.2
+plotly>=5.23.0
+streamlit>=1.38.0
+
+# Serialização / Formatos
+pyarrow>=17.0.0
+
+# Utilidades / Configuração
 PyYAML>=6.0.1
 python-dateutil==2.9.0.post0
+
+# Web / Scraping
 requests==2.32.3
 beautifulsoup4>=4.12.3
 lxml>=5.2.2
-streamlit>=1.38.0
-plotly>=5.23.0

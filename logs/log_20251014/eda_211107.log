@@ -1,0 +1,8 @@
+2025-10-14 21:11:07,609 INFO [inmet.eda] [READ] Leitura incremental em chunks=250000; limite para estudo = 2,500,000 linhas
+2025-10-14 21:11:24,117 INFO [inmet.eda] [CHUNK 10] linhas acumuladas: 2,500,000
+2025-10-14 21:11:24,460 INFO [inmet.eda] [REPORT] Montando resumo por coluna...
+2025-10-14 21:11:32,608 INFO [inmet.eda] [DONE] Linhas processadas no estudo: 2,500,000
+2025-10-14 21:11:32,608 INFO [inmet.eda] [OUT] Resumo colunas: D:\Projetos\TCC\data\processed\EDA\INMET\column_summary.csv
+2025-10-14 21:11:32,609 INFO [inmet.eda] [OUT] Top categoricas: D:\Projetos\TCC\data\processed\EDA\INMET\categorical_top_values.json
+2025-10-14 21:11:32,609 INFO [inmet.eda] [OUT] Amostra: D:\Projetos\TCC\data\processed\EDA\INMET\sample.parquet
+2025-10-14 21:11:32,609 INFO [inmet.eda] [OUT] Imagens: D:\Projetos\TCC\images\eda\inmet
