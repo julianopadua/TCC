@@ -1,0 +1,18 @@
+2025-10-17 18:53:14,238 INFO [bdqueimadas.consolidate] [2012] MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-17 18:53:14,238 INFO [bdqueimadas.consolidate] [2012] PROC:    focos_br_ref_2012.csv
+2025-10-17 18:53:14,239 INFO [bdqueimadas.consolidate] [PHASE] Lendo MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-17 18:53:14,467 INFO [bdqueimadas.consolidate]   linhas lidas (manual): 217,234  | tempo=0.23s
+2025-10-17 18:53:14,468 INFO [bdqueimadas.consolidate] [PHASE] Normalizando MANUAL (datas, chaves, strings)
+2025-10-17 18:53:15,830 INFO [bdqueimadas.consolidate]   normalização (manual) ok | tempo=1.36s
+2025-10-17 18:53:15,830 INFO [bdqueimadas.consolidate] [PHASE] Lendo PROCESSADO: focos_br_ref_2012.csv
+2025-10-17 18:53:16,240 INFO [bdqueimadas.consolidate]   linhas lidas (proc): 217,234  | tempo=0.41s
+2025-10-17 18:53:16,241 INFO [bdqueimadas.consolidate] [PHASE] Normalizando PROCESSADO (datas, chaves, strings)
+2025-10-17 18:53:17,638 INFO [bdqueimadas.consolidate]   normalização (proc) ok | tempo=1.40s
+2025-10-17 18:53:17,638 INFO [bdqueimadas.consolidate] [PHASE] MERGE bruto por __KEY
+2025-10-17 18:53:18,396 INFO [bdqueimadas.consolidate]   linhas pós-merge: 3,987,166 | hits (id_bdq!=NaN): 3,987,166 | tempo=0.76s
+2025-10-17 18:53:18,396 INFO [bdqueimadas.consolidate] [PHASE] DESAMBIGUAÇÃO por grupos (KEY+FRP+RiscoFogo+coords)
+2025-10-17 18:53:19,244 INFO [bdqueimadas.consolidate]   grupos a resolver: 217,234
+2025-10-17 18:53:23,711 INFO [bdqueimadas.consolidate]   progresso desambiguação:   2.30% (5,000/217,234)
+2025-10-17 18:53:26,934 INFO [bdqueimadas.consolidate]   progresso desambiguação:   4.60% (10,000/217,234)
+2025-10-17 18:53:30,463 INFO [bdqueimadas.consolidate]   progresso desambiguação:   6.90% (15,000/217,234)
+2025-10-17 18:53:34,452 INFO [bdqueimadas.consolidate]   progresso desambiguação:   9.21% (20,000/217,234)

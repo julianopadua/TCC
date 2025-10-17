@@ -1,0 +1,48 @@
+2025-10-17 18:11:59,654 INFO [bdqueimadas.scraper] [TARGET] data/raw/ID_BDQUEIMADAS
+2025-10-17 18:11:59,854 INFO [bdqueimadas.scraper] 22 .zip detectados em https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/anual/Brasil_sat_ref/
+2025-10-17 18:11:59,855 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2003.zip já existe.
+2025-10-17 18:11:59,855 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2004.zip já existe.
+2025-10-17 18:11:59,856 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2005.zip já existe.
+2025-10-17 18:11:59,856 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2006.zip já existe.
+2025-10-17 18:11:59,856 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2007.zip já existe.
+2025-10-17 18:11:59,856 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2008.zip já existe.
+2025-10-17 18:11:59,857 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2009.zip já existe.
+2025-10-17 18:11:59,857 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2010.zip já existe.
+2025-10-17 18:11:59,857 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2011.zip já existe.
+2025-10-17 18:11:59,857 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2012.zip já existe.
+2025-10-17 18:11:59,858 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2013.zip já existe.
+2025-10-17 18:11:59,858 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2014.zip já existe.
+2025-10-17 18:11:59,858 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2015.zip já existe.
+2025-10-17 18:11:59,858 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2016.zip já existe.
+2025-10-17 18:11:59,859 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2017.zip já existe.
+2025-10-17 18:11:59,859 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2018.zip já existe.
+2025-10-17 18:11:59,859 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2019.zip já existe.
+2025-10-17 18:11:59,859 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2020.zip já existe.
+2025-10-17 18:11:59,859 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2021.zip já existe.
+2025-10-17 18:11:59,859 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2022.zip já existe.
+2025-10-17 18:11:59,860 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2023.zip já existe.
+2025-10-17 18:11:59,860 INFO [bdqueimadas.scraper] [SKIP] focos_br_ref_2024.zip já existe.
+2025-10-17 18:11:59,860 INFO [bdqueimadas.scraper] [OK] 22 arquivo(s) disponíveis em data/raw/ID_BDQUEIMADAS
+2025-10-17 18:12:00,033 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2003.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2003
+2025-10-17 18:12:00,177 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2004.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2004
+2025-10-17 18:12:00,316 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2005.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2005
+2025-10-17 18:12:00,408 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2006.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2006
+2025-10-17 18:12:00,553 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2007.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2007
+2025-10-17 18:12:00,630 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2008.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2008
+2025-10-17 18:12:00,690 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2009.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2009
+2025-10-17 18:12:00,810 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2010.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2010
+2025-10-17 18:12:00,871 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2011.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2011
+2025-10-17 18:12:00,970 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2012.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2012
+2025-10-17 18:12:01,098 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2013.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2013
+2025-10-17 18:12:01,193 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2014.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2014
+2025-10-17 18:12:01,331 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2015.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2015
+2025-10-17 18:12:01,570 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2016.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2016
+2025-10-17 18:12:01,804 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2017.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2017
+2025-10-17 18:12:01,906 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2018.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2018
+2025-10-17 18:12:02,152 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2019.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2019
+2025-10-17 18:12:02,475 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2020.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2020
+2025-10-17 18:12:02,616 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2021.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2021
+2025-10-17 18:12:02,859 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2022.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2022
+2025-10-17 18:12:03,195 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2023.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2023
+2025-10-17 18:12:03,571 INFO [bdqueimadas.scraper] [UNZIP] focos_br_ref_2024.zip -> D:\Projetos\TCC\data\processed\BDQUEIMADAS\focos_br_ref_2024
+2025-10-17 18:12:03,571 INFO [bdqueimadas.scraper] [EXTRACTED] Arquivos extraídos em: D:\Projetos\TCC\data\processed\BDQUEIMADAS

@@ -1,0 +1,88 @@
+2025-10-17 18:40:00,277 INFO [bdqueimadas.consolidate] [2012] MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-17 18:40:00,277 INFO [bdqueimadas.consolidate] [2012] PROC:    focos_br_ref_2012.csv
+2025-10-17 18:40:00,277 INFO [bdqueimadas.consolidate] [PHASE] Lendo MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-17 18:40:00,502 INFO [bdqueimadas.consolidate]   linhas lidas (manual): 217,234  | tempo=0.23s
+2025-10-17 18:40:00,503 INFO [bdqueimadas.consolidate] [PHASE] Normalizando MANUAL (datas, chaves, strings)
+2025-10-17 18:40:01,846 INFO [bdqueimadas.consolidate]   normalização (manual) ok | tempo=1.34s
+2025-10-17 18:40:01,847 INFO [bdqueimadas.consolidate] [PHASE] Lendo PROCESSADO: focos_br_ref_2012.csv
+2025-10-17 18:40:02,203 INFO [bdqueimadas.consolidate]   linhas lidas (proc): 217,234  | tempo=0.36s
+2025-10-17 18:40:02,203 INFO [bdqueimadas.consolidate] [PHASE] Normalizando PROCESSADO (datas, chaves, strings)
+2025-10-17 18:40:03,553 INFO [bdqueimadas.consolidate]   normalização (proc) ok | tempo=1.35s
+2025-10-17 18:40:03,553 INFO [bdqueimadas.consolidate] [PHASE] MERGE bruto por __KEY
+2025-10-17 18:40:04,326 INFO [bdqueimadas.consolidate]   linhas pós-merge: 3,987,166 | hits (id_bdq!=NaN): 3,987,166 | tempo=0.77s
+2025-10-17 18:40:04,326 INFO [bdqueimadas.consolidate] [PHASE] DESAMBIGUAÇÃO por grupos (KEY+FRP+RiscoFogo+coords)
+2025-10-17 18:40:05,226 INFO [bdqueimadas.consolidate]   grupos a resolver: 217,234
+2025-10-17 18:40:10,130 INFO [bdqueimadas.consolidate]   progresso desambiguação:   2.30% (5,000/217,234)
+2025-10-17 18:40:13,252 INFO [bdqueimadas.consolidate]   progresso desambiguação:   4.60% (10,000/217,234)
+2025-10-17 18:40:16,752 INFO [bdqueimadas.consolidate]   progresso desambiguação:   6.90% (15,000/217,234)
+2025-10-17 18:40:20,602 INFO [bdqueimadas.consolidate]   progresso desambiguação:   9.21% (20,000/217,234)
+2025-10-17 18:40:24,917 INFO [bdqueimadas.consolidate]   progresso desambiguação:  11.51% (25,000/217,234)
+2025-10-17 18:40:30,443 INFO [bdqueimadas.consolidate]   progresso desambiguação:  13.81% (30,000/217,234)
+2025-10-17 18:40:35,611 INFO [bdqueimadas.consolidate]   progresso desambiguação:  16.11% (35,000/217,234)
+2025-10-17 18:40:42,859 INFO [bdqueimadas.consolidate]   progresso desambiguação:  18.41% (40,000/217,234)
+2025-10-17 18:40:48,669 INFO [bdqueimadas.consolidate]   progresso desambiguação:  20.71% (45,000/217,234)
+2025-10-17 18:40:56,069 INFO [bdqueimadas.consolidate]   progresso desambiguação:  23.02% (50,000/217,234)
+2025-10-17 18:41:04,697 INFO [bdqueimadas.consolidate]   progresso desambiguação:  25.32% (55,000/217,234)
+2025-10-17 18:41:15,285 INFO [bdqueimadas.consolidate]   progresso desambiguação:  27.62% (60,000/217,234)
+2025-10-17 18:41:27,685 INFO [bdqueimadas.consolidate]   progresso desambiguação:  29.92% (65,000/217,234)
+2025-10-17 18:41:39,314 INFO [bdqueimadas.consolidate]   progresso desambiguação:  32.22% (70,000/217,234)
+2025-10-17 18:41:49,463 INFO [bdqueimadas.consolidate]   progresso desambiguação:  34.52% (75,000/217,234)
+2025-10-17 18:42:01,052 INFO [bdqueimadas.consolidate]   progresso desambiguação:  36.83% (80,000/217,234)
+2025-10-17 18:42:10,882 INFO [bdqueimadas.consolidate]   progresso desambiguação:  39.13% (85,000/217,234)
+2025-10-17 18:42:19,327 INFO [bdqueimadas.consolidate]   progresso desambiguação:  41.43% (90,000/217,234)
+2025-10-17 18:42:27,120 INFO [bdqueimadas.consolidate]   progresso desambiguação:  43.73% (95,000/217,234)
+2025-10-17 18:42:36,358 INFO [bdqueimadas.consolidate]   progresso desambiguação:  46.03% (100,000/217,234)
+2025-10-17 18:42:47,893 INFO [bdqueimadas.consolidate]   progresso desambiguação:  48.33% (105,000/217,234)
+2025-10-17 18:42:56,965 INFO [bdqueimadas.consolidate]   progresso desambiguação:  50.64% (110,000/217,234)
+2025-10-17 18:43:08,546 INFO [bdqueimadas.consolidate]   progresso desambiguação:  52.94% (115,000/217,234)
+2025-10-17 18:43:15,302 INFO [bdqueimadas.consolidate]   progresso desambiguação:  55.24% (120,000/217,234)
+2025-10-17 18:43:23,261 INFO [bdqueimadas.consolidate]   progresso desambiguação:  57.54% (125,000/217,234)
+2025-10-17 18:43:32,995 INFO [bdqueimadas.consolidate]   progresso desambiguação:  59.84% (130,000/217,234)
+2025-10-17 18:43:42,256 INFO [bdqueimadas.consolidate]   progresso desambiguação:  62.14% (135,000/217,234)
+2025-10-17 18:43:49,956 INFO [bdqueimadas.consolidate]   progresso desambiguação:  64.45% (140,000/217,234)
+2025-10-17 18:43:55,391 INFO [bdqueimadas.consolidate]   progresso desambiguação:  66.75% (145,000/217,234)
+2025-10-17 18:44:02,294 INFO [bdqueimadas.consolidate]   progresso desambiguação:  69.05% (150,000/217,234)
+2025-10-17 18:44:08,621 INFO [bdqueimadas.consolidate]   progresso desambiguação:  71.35% (155,000/217,234)
+2025-10-17 18:44:15,654 INFO [bdqueimadas.consolidate]   progresso desambiguação:  73.65% (160,000/217,234)
+2025-10-17 18:44:21,576 INFO [bdqueimadas.consolidate]   progresso desambiguação:  75.95% (165,000/217,234)
+2025-10-17 18:44:26,059 INFO [bdqueimadas.consolidate]   progresso desambiguação:  78.26% (170,000/217,234)
+2025-10-17 18:44:31,261 INFO [bdqueimadas.consolidate]   progresso desambiguação:  80.56% (175,000/217,234)
+2025-10-17 18:44:37,532 INFO [bdqueimadas.consolidate]   progresso desambiguação:  82.86% (180,000/217,234)
+2025-10-17 18:44:42,673 INFO [bdqueimadas.consolidate]   progresso desambiguação:  85.16% (185,000/217,234)
+2025-10-17 18:44:47,813 INFO [bdqueimadas.consolidate]   progresso desambiguação:  87.46% (190,000/217,234)
+2025-10-17 18:44:55,496 INFO [bdqueimadas.consolidate]   progresso desambiguação:  89.76% (195,000/217,234)
+2025-10-17 18:45:01,267 INFO [bdqueimadas.consolidate]   progresso desambiguação:  92.07% (200,000/217,234)
+2025-10-17 18:45:06,248 INFO [bdqueimadas.consolidate]   progresso desambiguação:  94.37% (205,000/217,234)
+2025-10-17 18:45:11,522 INFO [bdqueimadas.consolidate]   progresso desambiguação:  96.67% (210,000/217,234)
+2025-10-17 18:45:15,891 INFO [bdqueimadas.consolidate]   progresso desambiguação:  98.97% (215,000/217,234)
+2025-10-17 18:45:17,461 INFO [bdqueimadas.consolidate]   progresso desambiguação: 100.00% (217,234/217,234)
+2025-10-17 18:45:41,495 INFO [bdqueimadas.consolidate]   desambiguação concluída | linhas=217,234 | tempo=336.27s
+2025-10-17 18:45:41,495 INFO [bdqueimadas.consolidate] [PHASE] VALIDAÇÃO por raio geográfico (<= 3000 m)
+2025-10-17 18:45:51,900 INFO [bdqueimadas.consolidate]   progresso raio: 100.00% (217,234/217,234)
+2025-10-17 18:45:52,082 INFO [bdqueimadas.consolidate]   raio checado | mantidos: 217,234 | tempo=10.59s
+2025-10-17 18:45:54,271 ERROR [bdqueimadas.consolidate] [2012] Falha na consolidação: '__DT_MIN'
+Traceback (most recent call last):
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\indexes\base.py", line 3812, in get_loc
+    return self._engine.get_loc(casted_key)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7088, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7096, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: '__DT_MIN'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\Projetos\TCC\src\consolidated_bdqueimadas.py", line 356, in run
+    p = consolidate_year(y, overwrite=overwrite, geo_radius_m=geo_radius_m)
+  File "D:\Projetos\TCC\src\consolidated_bdqueimadas.py", line 334, in consolidate_year
+    out_df = build_output(merged)
+  File "D:\Projetos\TCC\src\consolidated_bdqueimadas.py", line 283, in build_output
+    "DATAHORA": df_merged["__DT_MIN"],
+                ~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\frame.py", line 4107, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\indexes\base.py", line 3819, in get_loc
+    raise KeyError(key) from err
+KeyError: '__DT_MIN'
