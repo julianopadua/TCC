@@ -1,0 +1,25 @@
+2025-10-17 19:55:40,863 INFO [bdqueimadas.consolidate] [2012] MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-17 19:55:40,863 INFO [bdqueimadas.consolidate] [2012] PROC:    focos_br_ref_2012.csv
+2025-10-17 19:55:40,864 INFO [bdqueimadas.consolidate] [PHASE] Lendo MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-17 19:55:41,146 INFO [bdqueimadas.consolidate]   linhas lidas (manual): 217,234  | tempo=0.28s
+2025-10-17 19:55:41,146 INFO [bdqueimadas.consolidate] [PHASE] Normalizando MANUAL (datas, chaves, strings)
+2025-10-17 19:55:43,504 INFO [bdqueimadas.consolidate]   normalização (manual) ok | tempo=2.36s
+2025-10-17 19:55:43,504 INFO [bdqueimadas.consolidate] [PHASE] Lendo PROCESSADO: focos_br_ref_2012.csv
+2025-10-17 19:55:43,936 INFO [bdqueimadas.consolidate]   linhas lidas (proc): 217,234  | tempo=0.43s
+2025-10-17 19:55:43,936 INFO [bdqueimadas.consolidate] [PHASE] Normalizando PROCESSADO (datas, chaves, strings)
+2025-10-17 19:55:46,314 INFO [bdqueimadas.consolidate]   normalização (proc) ok | tempo=2.38s
+2025-10-17 19:55:46,343 INFO [bdqueimadas.consolidate] [2012] [VALIDATION] Limitando a 100 linhas de cada base para validação rápida.
+2025-10-17 19:55:46,343 INFO [bdqueimadas.consolidate] [PHASE] MERGE bruto por __KEY
+2025-10-17 19:55:46,399 INFO [bdqueimadas.consolidate]   linhas pós-merge: 126 | hits (id_bdq!=NaN): 81 | tempo=0.06s
+2025-10-17 19:55:46,399 INFO [bdqueimadas.consolidate] [PHASE] DESAMBIGUAÇÃO por grupos (KEY+FRP+RiscoFogo+coords)
+2025-10-17 19:55:46,414 INFO [bdqueimadas.consolidate]   grupos a resolver: 100
+2025-10-17 19:55:46,474 INFO [bdqueimadas.consolidate]   progresso desambiguação: 100.00% (100/100)
+2025-10-17 19:55:46,490 INFO [bdqueimadas.consolidate]   desambiguação concluída | linhas=100 | tempo=0.08s
+2025-10-17 19:55:46,492 INFO [bdqueimadas.consolidate] [2012] Exemplos (até 5) sem correspondência:
+2025-10-17 19:55:46,494 INFO [bdqueimadas.consolidate]    - 2012-01-01 16:16:00 | CEARA/TRAIRI | FRP=10.3
+2025-10-17 19:55:46,494 INFO [bdqueimadas.consolidate]    - 2012-01-01 17:53:00 | RONDNIA/NOVA MAMORE | FRP=23.2
+2025-10-17 19:55:46,494 INFO [bdqueimadas.consolidate]    - 2012-01-01 17:54:00 | AMAZONAS/MANICORE | FRP=26.1
+2025-10-17 19:55:46,495 INFO [bdqueimadas.consolidate]    - 2012-01-01 17:57:00 | RORAIMA/BONFIM | FRP=27.1
+2025-10-17 19:55:46,495 INFO [bdqueimadas.consolidate]    - 2012-01-01 17:57:00 | RORAIMA/BONFIM | FRP=34.3
+2025-10-17 19:55:46,527 INFO [bdqueimadas.consolidate] [2012] [DONE] D:\Projetos\TCC\data\consolidated\BDQUEIMADAS\bdq_targets_2012.csv  (linhas: 100)
+2025-10-17 19:55:46,527 INFO [bdqueimadas.consolidate] [2012] STATS: {'total_manual_rows': 100, 'matched_rows': 55, 'unmatched_manual_rows': 45, 'raw_merge_matches': 81, 'unmatched_proc_keys': 42}

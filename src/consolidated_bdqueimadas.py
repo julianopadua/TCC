@@ -15,6 +15,8 @@ import time
 
 import pandas as pd
 import numpy as np
+import codecs
+import re as _re
 
 from utils import (
     loadConfig,
@@ -36,13 +38,59 @@ OUT_DIR = ensure_dir(Path(get_path("paths", "data", "external")) / "BDQUEIMADAS"
 # =============================================================================
 # HELPERS — NORMALIZAÇÃO, DATAS, PROGRESSO
 # =============================================================================
-def _norm_str(x: str) -> str:
+_CTRL_RE = _re.compile(r"[\x00-\x1F\x7F-\x9F]")   # remove C0/C1 controls (inclui \x81 etc.)
+_WS_RE   = _re.compile(r"[\u00A0\u200B\u200C\u200D\uFEFF]")  # NBSP, ZWSP, BOM etc.
+
+def _strip_controls(x: str) -> str:
     if x is None:
         return ""
-    x = str(x).strip()
-    x = unicodedata.normalize("NFKD", x)
-    x = "".join(ch for ch in x if not unicodedata.combining(ch))
-    return x.upper().strip()
+    x = _WS_RE.sub(" ", str(x))
+    x = _CTRL_RE.sub("", x)
+    return x
+
+def _repair_mojibake(x: str) -> str:
+    """
+    Repara textos lidos com codificação errada (UTF-8 lido como latin-1, por ex.).
+    Estratégia: round-trip latin1->bytes->utf-8 quando padrões suspeitos aparecem.
+    """
+    if x is None:
+        return ""
+    s = str(x)
+    # se contiver padrões clássicos de mojibake, tenta reparar
+    if any(t in s for t in ("Ã", "Â", "Ê", "Ô", "Õ", "", "¢", "§", "ã", "õ", "ç")):
+        try:
+            s = s.encode("latin1", errors="ignore").decode("utf-8", errors="ignore")
+        except Exception:
+            pass
+    return s
+
+def _norm_loc(x: str) -> str:
+    """
+    Normaliza campos de localização para o padrão do INMET:
+    - repara mojibake;
+    - remove BOM/esp. especiais e caracteres de controle;
+    - remove acentos (NFKD sem combining);
+    - caixa alta e trim.
+    """
+    s = _repair_mojibake(x)
+    s = _strip_controls(s)
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    return s.upper().strip()
+
+def _read_csv_smart(path: Path) -> pd.DataFrame:
+    """
+    Tenta ler como UTF-8-SIG, depois UTF-8, e cai para latin-1 se falhar.
+    Usa low_memory=False e ignora linhas ruins.
+    """
+    for enc in ("utf-8-sig", "utf-8", "latin1"):
+        try:
+            return pd.read_csv(path, encoding=enc, low_memory=False, on_bad_lines="skip")
+        except UnicodeDecodeError:
+            continue
+    # último recurso: latin1 silencioso
+    return pd.read_csv(path, encoding="latin1", low_memory=False, on_bad_lines="skip")
+
 
 def _parse_manual_datetime(s: str) -> pd.Timestamp:
     # Ex.: "2013/01/01 16:25:00"
@@ -103,21 +151,17 @@ PROC_DT_COL = "data_pas"
 def load_manual(path: Path) -> pd.DataFrame:
     _log_phase(f"Lendo MANUAL: {path.name}")
     t0 = time.time()
-    df = pd.read_csv(
-        path,
-        encoding="latin1",
-        low_memory=False,
-        on_bad_lines="skip"
-    )
+    df = _read_csv_smart(path)
     log.info(f"  linhas lidas (manual): {len(df):,}  | tempo={time.time()-t0:,.2f}s")
 
     _log_phase("Normalizando MANUAL (datas, chaves, strings)")
     t1 = time.time()
     df["__DT"] = _parse_manual_datetime(df[MANUAL_DT_COL])
     df["__DT_MIN"] = _floor_minute(df["__DT"])
-    df["__PAIS"] = df["Pais"].map(_norm_str)
-    df["__UF"] = df["Estado"].map(_norm_str)
-    df["__MUN"] = df["Municipio"].map(_norm_str)
+    # normaliza com reparo de mojibake + remoção de acentos
+    df["__PAIS"] = df["Pais"].map(_norm_loc)
+    df["__UF"]   = df["Estado"].map(_norm_loc)
+    df["__MUN"]  = df["Municipio"].map(_norm_loc)
     # chaves de merge
     df["__KEY"] = df["__DT_MIN"].astype("int64").astype("string") + "|" + df["__PAIS"] + "|" + df["__UF"] + "|" + df["__MUN"]
     # Coords numéricas (podem estar vazias)
@@ -129,24 +173,21 @@ def load_manual(path: Path) -> pd.DataFrame:
     log.info(f"  normalização (manual) ok | tempo={time.time()-t1:,.2f}s")
     return df
 
+
 def load_processed(path: Path) -> pd.DataFrame:
     _log_phase(f"Lendo PROCESSADO: {path.name}")
     t0 = time.time()
-    df = pd.read_csv(
-        path,
-        encoding="latin1",
-        low_memory=False,
-        on_bad_lines="skip"
-    )
+    df = _read_csv_smart(path)
     log.info(f"  linhas lidas (proc): {len(df):,}  | tempo={time.time()-t0:,.2f}s")
 
     _log_phase("Normalizando PROCESSADO (datas, chaves, strings)")
     t1 = time.time()
     df["__DT"] = _parse_proc_datetime(df[PROC_DT_COL])
     df["__DT_MIN"] = _floor_minute(df["__DT"])
-    df["__PAIS"] = df["pais"].map(_norm_str)
-    df["__UF"] = df["estado"].map(_norm_str)
-    df["__MUN"] = df["municipio"].map(_norm_str)
+    # normaliza com reparo de mojibake + remoção de acentos
+    df["__PAIS"] = df["pais"].map(_norm_loc)
+    df["__UF"]   = df["estado"].map(_norm_loc)
+    df["__MUN"]  = df["municipio"].map(_norm_loc)
     df["__KEY"] = df["__DT_MIN"].astype("int64").astype("string") + "|" + df["__PAIS"] + "|" + df["__UF"] + "|" + df["__MUN"]
     for c in ("lat","lon"):
         if c in df.columns:
@@ -308,7 +349,7 @@ def build_output(df_merged: pd.DataFrame) -> pd.DataFrame:
 # =============================================================================
 # PIPELINE POR ANO
 # =============================================================================
-def consolidate_year(year: int, overwrite: bool = False, geo_radius_m: float = 0.0) -> Optional[Path]:
+def consolidate_year(year: int, overwrite: bool = False, geo_radius_m: float = 0.0, validation: bool = False) -> Optional[Path]:
     manual_files = [p for (y, p) in list_manual_year_files(RAW_BDQ_DIR) if y == year]
     proc_file = processed_file_for_year(year, PROC_BDQ_DIR)
 
@@ -330,6 +371,11 @@ def consolidate_year(year: int, overwrite: bool = False, geo_radius_m: float = 0
 
     df_m = load_manual(manual_path)
     df_p = load_processed(proc_file)
+    # --- validation mode: limitar tamanho para teste rápido ---
+    if validation:
+        df_m = df_m.head(100).copy()
+        df_p = df_p.head(100).copy()
+        log.info(f"[{year}] [VALIDATION] Limitando a 100 linhas de cada base para validação rápida.")
 
     merged, stats = merge_by_key_with_geo(df_m, df_p, geo_radius_m=geo_radius_m)
 
@@ -353,7 +399,7 @@ def consolidate_year(year: int, overwrite: bool = False, geo_radius_m: float = 0
 # =============================================================================
 # MAIN/CLI
 # =============================================================================
-def run(years: Optional[Iterable[int]] = None, overwrite: bool = False, geo_radius_m: float = 0.0) -> Optional[Path]:
+def run(years: Optional[Iterable[int]] = None, overwrite: bool = False, geo_radius_m: float = 0.0, validation: bool = False) -> Optional[Path]:
     if years:
         years = sorted({int(y) for y in years})
     else:
@@ -366,7 +412,7 @@ def run(years: Optional[Iterable[int]] = None, overwrite: bool = False, geo_radi
     outs: List[Path] = []
     for y in years:
         try:
-            p = consolidate_year(y, overwrite=overwrite, geo_radius_m=geo_radius_m)
+            p = consolidate_year(y, overwrite=overwrite, geo_radius_m=geo_radius_m, validation=validation)
             if p:
                 outs.append(p)
         except Exception as e:
@@ -392,10 +438,13 @@ if __name__ == "__main__":
         description="Consolidação BDQueimadas (manual × processado) -> bdq_targets_YYYY.csv"
     )
     p.add_argument("--years", nargs="*", type=int, default=None,
-                   help="Lista de anos a consolidar (ex.: --years 2013 2019). Se omitido, roda para todos.")
+                help="Lista de anos a consolidar (ex.: --years 2013 2019). Se omitido, roda para todos.")
     p.add_argument("--overwrite", action="store_true", help="Sobrescreve saídas existentes.")
     p.add_argument("--geo-radius-m", type=float, default=0.0,
-                   help="0 = sem filtro geográfico; >0 valida por distância (m).")
+                help="0 = sem filtro geográfico; >0 valida por distância (m).")
+    p.add_argument("--validation", action="store_true",
+                help="Modo de validação rápida: limita a 100 linhas do MANUAL e do PROCESSADO.")
     args = p.parse_args()
 
-    run(years=args.years, overwrite=args.overwrite, geo_radius_m=args.geo_radius_m)
+    run(years=args.years, overwrite=args.overwrite, geo_radius_m=args.geo_radius_m, validation=args.validation)
+

@@ -1,0 +1,3 @@
+2025-10-17 19:55:29,483 INFO [bdqueimadas.consolidate] [2012] MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-17 19:55:29,483 INFO [bdqueimadas.consolidate] [2012] PROC:    focos_br_ref_2012.csv
+2025-10-17 19:55:29,484 INFO [bdqueimadas.consolidate] [2012] [SKIP] bdq_targets_2012.csv já existe. Use --overwrite para refazer.
