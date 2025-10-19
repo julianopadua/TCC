@@ -1,0 +1,61 @@
+2025-10-18 14:39:13,769 INFO [bdqueimadas.consolidate] [2012] MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-18 14:39:13,769 INFO [bdqueimadas.consolidate] [2012] PROC:    focos_br_ref_2012.csv
+2025-10-18 14:39:13,770 INFO [bdqueimadas.consolidate] [PHASE] Lendo MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-18 14:39:14,020 INFO [bdqueimadas.consolidate]   linhas lidas (manual): 217,234  | tempo=0.25s
+2025-10-18 14:39:14,020 INFO [bdqueimadas.consolidate] [PHASE] Normalizando MANUAL (datas, chaves, strings)
+2025-10-18 14:39:16,353 INFO [bdqueimadas.consolidate]   normalização (manual) ok | tempo=2.33s
+2025-10-18 14:39:16,354 INFO [bdqueimadas.consolidate] [PHASE] Lendo PROCESSADO: focos_br_ref_2012.csv
+2025-10-18 14:39:16,737 INFO [bdqueimadas.consolidate]   linhas lidas (proc): 217,234  | tempo=0.38s
+2025-10-18 14:39:16,737 INFO [bdqueimadas.consolidate] [PHASE] Normalizando PROCESSADO (datas, chaves, strings)
+2025-10-18 14:39:19,097 INFO [bdqueimadas.consolidate]   normalização (proc) ok | tempo=2.36s
+2025-10-18 14:39:19,098 INFO [bdqueimadas.consolidate] [PHASE] MERGE bruto por __KEY
+2025-10-18 14:39:20,056 INFO [bdqueimadas.consolidate]   linhas pós-merge: 3,987,166 | hits (id_bdq!=NaN): 3,987,166 | tempo=0.96s
+2025-10-18 14:39:20,057 INFO [bdqueimadas.consolidate] [PHASE] DESAMBIGUAÇÃO por grupos (KEY+FRP+RiscoFogo+coords)
+2025-10-18 14:39:20,934 INFO [bdqueimadas.consolidate]   grupos a resolver: 217,234
+2025-10-18 14:39:25,550 INFO [bdqueimadas.consolidate]   progresso desambiguação:   2.30% (5,000/217,234)
+2025-10-18 14:39:28,846 INFO [bdqueimadas.consolidate]   progresso desambiguação:   4.60% (10,000/217,234)
+2025-10-18 14:39:33,008 INFO [bdqueimadas.consolidate]   progresso desambiguação:   6.90% (15,000/217,234)
+2025-10-18 14:39:37,121 INFO [bdqueimadas.consolidate]   progresso desambiguação:   9.21% (20,000/217,234)
+2025-10-18 14:39:41,805 INFO [bdqueimadas.consolidate]   progresso desambiguação:  11.51% (25,000/217,234)
+2025-10-18 14:39:48,134 INFO [bdqueimadas.consolidate]   progresso desambiguação:  13.81% (30,000/217,234)
+2025-10-18 14:39:53,608 INFO [bdqueimadas.consolidate]   progresso desambiguação:  16.11% (35,000/217,234)
+2025-10-18 14:40:01,239 INFO [bdqueimadas.consolidate]   progresso desambiguação:  18.41% (40,000/217,234)
+2025-10-18 14:40:07,352 INFO [bdqueimadas.consolidate]   progresso desambiguação:  20.71% (45,000/217,234)
+2025-10-18 14:40:15,017 INFO [bdqueimadas.consolidate]   progresso desambiguação:  23.02% (50,000/217,234)
+2025-10-18 14:40:23,817 INFO [bdqueimadas.consolidate]   progresso desambiguação:  25.32% (55,000/217,234)
+2025-10-18 14:40:34,884 INFO [bdqueimadas.consolidate]   progresso desambiguação:  27.62% (60,000/217,234)
+2025-10-18 14:40:47,712 INFO [bdqueimadas.consolidate]   progresso desambiguação:  29.92% (65,000/217,234)
+2025-10-18 14:40:59,846 INFO [bdqueimadas.consolidate]   progresso desambiguação:  32.22% (70,000/217,234)
+2025-10-18 14:41:10,476 INFO [bdqueimadas.consolidate]   progresso desambiguação:  34.52% (75,000/217,234)
+2025-10-18 14:41:22,670 INFO [bdqueimadas.consolidate]   progresso desambiguação:  36.83% (80,000/217,234)
+2025-10-18 14:41:33,097 INFO [bdqueimadas.consolidate]   progresso desambiguação:  39.13% (85,000/217,234)
+2025-10-18 14:41:42,005 INFO [bdqueimadas.consolidate]   progresso desambiguação:  41.43% (90,000/217,234)
+2025-10-18 14:41:50,197 INFO [bdqueimadas.consolidate]   progresso desambiguação:  43.73% (95,000/217,234)
+2025-10-18 14:41:59,814 INFO [bdqueimadas.consolidate]   progresso desambiguação:  46.03% (100,000/217,234)
+2025-10-18 14:42:11,941 INFO [bdqueimadas.consolidate]   progresso desambiguação:  48.33% (105,000/217,234)
+2025-10-18 14:42:21,442 INFO [bdqueimadas.consolidate]   progresso desambiguação:  50.64% (110,000/217,234)
+2025-10-18 14:42:33,627 INFO [bdqueimadas.consolidate]   progresso desambiguação:  52.94% (115,000/217,234)
+2025-10-18 14:42:40,444 INFO [bdqueimadas.consolidate]   progresso desambiguação:  55.24% (120,000/217,234)
+2025-10-18 14:42:48,238 INFO [bdqueimadas.consolidate]   progresso desambiguação:  57.54% (125,000/217,234)
+2025-10-18 14:42:56,404 INFO [bdqueimadas.consolidate]   progresso desambiguação:  59.84% (130,000/217,234)
+2025-10-18 14:43:03,052 INFO [bdqueimadas.consolidate]   progresso desambiguação:  62.14% (135,000/217,234)
+2025-10-18 14:43:09,898 INFO [bdqueimadas.consolidate]   progresso desambiguação:  64.45% (140,000/217,234)
+2025-10-18 14:43:15,227 INFO [bdqueimadas.consolidate]   progresso desambiguação:  66.75% (145,000/217,234)
+2025-10-18 14:43:22,153 INFO [bdqueimadas.consolidate]   progresso desambiguação:  69.05% (150,000/217,234)
+2025-10-18 14:43:28,613 INFO [bdqueimadas.consolidate]   progresso desambiguação:  71.35% (155,000/217,234)
+2025-10-18 14:43:35,881 INFO [bdqueimadas.consolidate]   progresso desambiguação:  73.65% (160,000/217,234)
+2025-10-18 14:43:42,201 INFO [bdqueimadas.consolidate]   progresso desambiguação:  75.95% (165,000/217,234)
+2025-10-18 14:43:47,030 INFO [bdqueimadas.consolidate]   progresso desambiguação:  78.26% (170,000/217,234)
+2025-10-18 14:43:52,621 INFO [bdqueimadas.consolidate]   progresso desambiguação:  80.56% (175,000/217,234)
+2025-10-18 14:43:59,221 INFO [bdqueimadas.consolidate]   progresso desambiguação:  82.86% (180,000/217,234)
+2025-10-18 14:44:04,799 INFO [bdqueimadas.consolidate]   progresso desambiguação:  85.16% (185,000/217,234)
+2025-10-18 14:44:10,354 INFO [bdqueimadas.consolidate]   progresso desambiguação:  87.46% (190,000/217,234)
+2025-10-18 14:44:18,557 INFO [bdqueimadas.consolidate]   progresso desambiguação:  89.76% (195,000/217,234)
+2025-10-18 14:44:24,783 INFO [bdqueimadas.consolidate]   progresso desambiguação:  92.07% (200,000/217,234)
+2025-10-18 14:44:30,194 INFO [bdqueimadas.consolidate]   progresso desambiguação:  94.37% (205,000/217,234)
+2025-10-18 14:44:35,770 INFO [bdqueimadas.consolidate]   progresso desambiguação:  96.67% (210,000/217,234)
+2025-10-18 14:44:40,473 INFO [bdqueimadas.consolidate]   progresso desambiguação:  98.97% (215,000/217,234)
+2025-10-18 14:44:42,153 INFO [bdqueimadas.consolidate]   progresso desambiguação: 100.00% (217,234/217,234)
+2025-10-18 14:45:07,829 INFO [bdqueimadas.consolidate]   desambiguação concluída | linhas=217,234 | tempo=346.89s
+2025-10-18 14:45:11,542 INFO [bdqueimadas.consolidate] [2012] [DONE] D:\Projetos\TCC\data\consolidated\BDQUEIMADAS\bdq_targets_2012.csv  (linhas: 217,234)
+2025-10-18 14:45:11,542 INFO [bdqueimadas.consolidate] [2012] STATS: {'total_manual_rows': 217234, 'matched_rows': 217234, 'unmatched_manual_rows': 0, 'raw_merge_matches': 3987166, 'unmatched_proc_keys': 0}

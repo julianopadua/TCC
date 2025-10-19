@@ -1,0 +1,18 @@
+2025-10-18 13:28:57,883 INFO [inmet_bdq.consolidate] [PHASE] Lendo BDQ: D:\Projetos\TCC\data\consolidated\BDQUEIMADAS\bdq_targets_all_years.csv
+2025-10-18 13:29:05,097 INFO [inmet_bdq.consolidate]   BDQ linhas: 4,208,891 | tempo=7.21s
+2025-10-18 13:29:46,656 INFO [inmet_bdq.consolidate]   BDQ filtro anos [2012] | 4,208,891 -> 100
+2025-10-18 13:29:46,668 INFO [inmet_bdq.consolidate]   BDQ por hora: 67 linhas (agrupado) | tempo total=48.78s
+2025-10-18 13:29:46,668 INFO [inmet_bdq.consolidate] [PHASE] Lendo INMET (streaming): D:\Projetos\TCC\data\consolidated\INMET\inmet_all_years.csv
+2025-10-18 13:29:47,030 INFO [inmet_bdq.consolidate]   INMET usando engine='c'
+2025-10-18 13:32:38,253 INFO [inmet_bdq.consolidate]   [INMET] chunks lidos: 150 | acumulado pós-filtro: 119,847
+2025-10-18 13:32:44,284 INFO [inmet_bdq.consolidate]   [INMET] chunks lidos: 155 | acumulado pós-filtro: 1,369,847
+2025-10-18 13:32:50,604 INFO [inmet_bdq.consolidate]   [INMET] chunks lidos: 160 | acumulado pós-filtro: 2,619,847
+2025-10-18 13:32:56,698 INFO [inmet_bdq.consolidate]   [INMET] chunks lidos: 165 | acumulado pós-filtro: 3,869,847
+2025-10-18 13:33:02,854 INFO [inmet_bdq.consolidate]   [INMET] chunks lidos: 170 | acumulado pós-filtro: 5,119,847
+2025-10-18 13:33:09,032 INFO [inmet_bdq.consolidate]   [INMET] chunks lidos: 175 | acumulado pós-filtro: 6,369,847
+2025-10-18 13:33:15,890 INFO [inmet_bdq.consolidate]   [INMET] chunks lidos: 180 | acumulado pós-filtro: 7,619,847
+2025-10-18 13:50:20,123 INFO [inmet_bdq.consolidate]   INMET pós-streaming: 8,066,376 linhas | tempo total=1,233.46s
+2025-10-18 13:50:20,642 INFO [inmet_bdq.consolidate] [PHASE] MERGE INMET × BDQ (por HORA + MUNICIPIO; valida UF quando possível)
+2025-10-18 13:50:25,989 INFO [inmet_bdq.consolidate]   aviso: UF ausente em um dos lados; merge apenas por HORA+MUNICIPIO
+2025-10-18 13:50:26,174 INFO [inmet_bdq.consolidate]   MERGE concluído | tempo=5.53s | {'total_inmet_rows': 8066376, 'rows_with_bdq_match': 0, 'rows_without_bdq': 8066376}
+2025-10-18 13:52:15,093 INFO [inmet_bdq.consolidate] [DONE] D:\Projetos\TCC\data\consolidated\INMET_BDQ\inmet_bdq_hourly_2012.csv  (linhas: 8,066,376)

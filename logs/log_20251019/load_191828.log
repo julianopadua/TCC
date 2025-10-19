@@ -1,0 +1,5 @@
+2025-10-19 19:18:28,897 INFO [bdqueimadas.consolidate] [2003] MANUAL: exportador_2025-10-17_ref_2003.csv
+2025-10-19 19:18:28,897 INFO [bdqueimadas.consolidate] [2003] PROC:    focos_br_ref_2003.csv
+2025-10-19 19:18:28,906 INFO [bdqueimadas.consolidate] [PHASE] Lendo MANUAL: exportador_2025-10-17_ref_2003.csv
+2025-10-19 19:18:29,382 INFO [bdqueimadas.consolidate]   linhas lidas (manual): 341,237  | tempo=0.48s
+2025-10-19 19:18:29,383 INFO [bdqueimadas.consolidate] [PHASE] Normalizando MANUAL (datas, chaves, strings)

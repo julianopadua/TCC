@@ -1,0 +1,6 @@
+2025-10-18 11:17:45,269 INFO [inmet_bdq.consolidate] [PHASE] Lendo BDQ: D:\Projetos\TCC\data\consolidated\BDQUEIMADAS\bdq_targets_all_years.csv
+2025-10-18 11:17:53,891 INFO [inmet_bdq.consolidate]   BDQ linhas: 4,208,891 | tempo=8.62s
+2025-10-18 11:18:35,564 INFO [inmet_bdq.consolidate]   BDQ filtro anos [2012] | 4,208,891 -> 100
+2025-10-18 11:18:35,564 INFO [inmet_bdq.consolidate]   [VALIDATION] BDQ limitado a 100 linhas
+2025-10-18 11:18:35,639 INFO [inmet_bdq.consolidate]   BDQ por hora: 67 linhas (agrupado) | tempo total=50.37s
+2025-10-18 11:18:35,639 INFO [inmet_bdq.consolidate] [PHASE] Lendo INMET (streaming): D:\Projetos\TCC\data\consolidated\INMET\inmet_all_years.csv

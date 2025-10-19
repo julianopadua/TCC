@@ -1,8 +1,8 @@
 # src/consolidated_bdqueimadas.py
 # =============================================================================
-# BDQUEIMADAS — Consolidação (manual raw/exportador_*_ref_YYYY.csv  ×  processado focos_br_ref_YYYY.csv)
-# Saída: data/external/BDQUEIMADAS/bdq_targets_YYYY.csv (e all_years, se aplicável)
-# Dependências: utils.py (loadConfig, get_logger, get_path, ensure_dir)
+# BDQUEIMADAS — Consolidação (RAW exportador_*_ref_YYYY.csv × PROCESSADO focos_br_ref_YYYY.csv)
+# Saída: data/external/BDQUEIMADAS/bdq_targets_YYYY.csv (e all_years)
+# Dep.: utils.py (loadConfig, get_logger, get_path, ensure_dir)
 # =============================================================================
 from __future__ import annotations
 
@@ -38,8 +38,8 @@ OUT_DIR = ensure_dir(Path(get_path("paths", "data", "external")) / "BDQUEIMADAS"
 # =============================================================================
 # HELPERS — NORMALIZAÇÃO, DATAS, PROGRESSO
 # =============================================================================
-_CTRL_RE = _re.compile(r"[\x00-\x1F\x7F-\x9F]")   # remove C0/C1 controls (inclui \x81 etc.)
-_WS_RE   = _re.compile(r"[\u00A0\u200B\u200C\u200D\uFEFF]")  # NBSP, ZWSP, BOM etc.
+_CTRL_RE = _re.compile(r"[\x00-\x1F\x7F-\x9F]")
+_WS_RE   = _re.compile(r"[\u00A0\u200B\u200C\u200D\uFEFF]")
 
 def _strip_controls(x: str) -> str:
     if x is None:
@@ -49,14 +49,9 @@ def _strip_controls(x: str) -> str:
     return x
 
 def _repair_mojibake(x: str) -> str:
-    """
-    Repara textos lidos com codificação errada (UTF-8 lido como latin-1, por ex.).
-    Estratégia: round-trip latin1->bytes->utf-8 quando padrões suspeitos aparecem.
-    """
     if x is None:
         return ""
     s = str(x)
-    # se contiver padrões clássicos de mojibake, tenta reparar
     if any(t in s for t in ("Ã", "Â", "Ê", "Ô", "Õ", "", "¢", "§", "ã", "õ", "ç")):
         try:
             s = s.encode("latin1", errors="ignore").decode("utf-8", errors="ignore")
@@ -65,13 +60,6 @@ def _repair_mojibake(x: str) -> str:
     return s
 
 def _norm_loc(x: str) -> str:
-    """
-    Normaliza campos de localização para o padrão do INMET:
-    - repara mojibake;
-    - remove BOM/esp. especiais e caracteres de controle;
-    - remove acentos (NFKD sem combining);
-    - caixa alta e trim.
-    """
     s = _repair_mojibake(x)
     s = _strip_controls(s)
     s = unicodedata.normalize("NFKD", s)
@@ -79,36 +67,29 @@ def _norm_loc(x: str) -> str:
     return s.upper().strip()
 
 def _read_csv_smart(path: Path) -> pd.DataFrame:
-    """
-    Tenta ler como UTF-8-SIG, depois UTF-8, e cai para latin-1 se falhar.
-    Usa low_memory=False e ignora linhas ruins.
-    """
     for enc in ("utf-8-sig", "utf-8", "latin1"):
         try:
             return pd.read_csv(path, encoding=enc, low_memory=False, on_bad_lines="skip")
         except UnicodeDecodeError:
             continue
-    # último recurso: latin1 silencioso
     return pd.read_csv(path, encoding="latin1", low_memory=False, on_bad_lines="skip")
 
-
 def _parse_manual_datetime(s: str) -> pd.Timestamp:
-    # Ex.: "2013/01/01 16:25:00"
+    # Ex.: "2012/01/01 16:14:00"
     try:
         return pd.to_datetime(s, format="%Y/%m/%d %H:%M:%S", errors="coerce")
     except Exception:
         return pd.to_datetime(s, errors="coerce")
 
 def _parse_proc_datetime(s: str) -> pd.Timestamp:
-    # Ex.: "2003-05-15 17:05:00"
+    # Ex.: "2012-08-24 16:41:00"
     try:
         return pd.to_datetime(s, format="%Y-%m-%d %H:%M:%S", errors="coerce")
     except Exception:
         return pd.to_datetime(s, errors="coerce")
 
-def _floor_minute(ts: pd.Series) -> pd.Series:
-    # padroniza para precisão de minuto (segundos=0)
-    return ts.dt.floor("min")
+def _floor_hour(ts: pd.Series) -> pd.Series:
+    return ts.dt.floor("h")
 
 def _log_phase(title: str):
     log.info(f"[PHASE] {title}")
@@ -157,22 +138,19 @@ def load_manual(path: Path) -> pd.DataFrame:
     _log_phase("Normalizando MANUAL (datas, chaves, strings)")
     t1 = time.time()
     df["__DT"] = _parse_manual_datetime(df[MANUAL_DT_COL])
-    df["__DT_MIN"] = _floor_minute(df["__DT"])
-    # normaliza com reparo de mojibake + remoção de acentos
+    df["__DT_H"] = _floor_hour(df["__DT"])
     df["__PAIS"] = df["Pais"].map(_norm_loc)
     df["__UF"]   = df["Estado"].map(_norm_loc)
     df["__MUN"]  = df["Municipio"].map(_norm_loc)
-    # chaves de merge
-    df["__KEY"] = df["__DT_MIN"].astype("int64").astype("string") + "|" + df["__PAIS"] + "|" + df["__UF"] + "|" + df["__MUN"]
-    # Coords numéricas (podem estar vazias)
-    for c in ("Latitude","Longitude"):
+
+    for c in ("Latitude","Longitude","FRP"):
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
-    keep = ["__KEY","__DT_MIN","__PAIS","__UF","__MUN","RiscoFogo","FRP","Latitude","Longitude"]
+
+    keep = ["__DT_H","__PAIS","__UF","__MUN","RiscoFogo","FRP","Latitude","Longitude"]
     df = df[keep].copy()
     log.info(f"  normalização (manual) ok | tempo={time.time()-t1:,.2f}s")
     return df
-
 
 def load_processed(path: Path) -> pd.DataFrame:
     _log_phase(f"Lendo PROCESSADO: {path.name}")
@@ -183,25 +161,24 @@ def load_processed(path: Path) -> pd.DataFrame:
     _log_phase("Normalizando PROCESSADO (datas, chaves, strings)")
     t1 = time.time()
     df["__DT"] = _parse_proc_datetime(df[PROC_DT_COL])
-    df["__DT_MIN"] = _floor_minute(df["__DT"])
-    # normaliza com reparo de mojibake + remoção de acentos
+    df["__DT_H"] = _floor_hour(df["__DT"])
     df["__PAIS"] = df["pais"].map(_norm_loc)
     df["__UF"]   = df["estado"].map(_norm_loc)
     df["__MUN"]  = df["municipio"].map(_norm_loc)
-    df["__KEY"] = df["__DT_MIN"].astype("int64").astype("string") + "|" + df["__PAIS"] + "|" + df["__UF"] + "|" + df["__MUN"]
+
     for c in ("lat","lon"):
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
-    keep = ["__KEY","__DT_MIN","__PAIS","__UF","__MUN","id_bdq","foco_id","lat","lon"]
+
+    keep = ["__DT_H","__PAIS","__UF","__MUN","id_bdq","foco_id","lat","lon"]
     df = df[keep].copy()
     log.info(f"  normalização (proc) ok | tempo={time.time()-t1:,.2f}s")
     return df
 
 # =============================================================================
-# MATCHING — por chave e desambiguação com PROGRESSO (sem raio por padrão)
+# MATCHING — tolerância temporal e raio geográfico
 # =============================================================================
 def _haversine(lat1, lon1, lat2, lon2):
-    # metros (aprox)
     R = 6371000.0
     p = math.pi/180.0
     dlat = (lat2 - lat1) * p
@@ -210,138 +187,147 @@ def _haversine(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     return R * c
 
-def _select_best_group(sub: pd.DataFrame) -> pd.DataFrame:
-    # se não há múltiplas linhas para a mesma linha manual, simplesmente retorna
-    if sub["id_bdq"].notna().sum() <= 1:
-        return sub.iloc[[0]]
+def _explode_time_with_tolerance(df: pd.DataFrame, col: str, minutes: int) -> pd.DataFrame:
+    """
+    Duplica linhas para janelas de tolerância temporal: 0, ±minutes.
+    Útil para compensar pequenos desalinhamentos de horário.
+    """
+    if minutes <= 0:
+        out = df.copy()
+        out["__DTHWIN"] = out[col]
+        return out
 
-    # Se temos coords nos dois lados, escolhe menor distância
-    lat_m = sub["Latitude"].iloc[0] if "Latitude" in sub.columns else np.nan
-    lon_m = sub["Longitude"].iloc[0] if "Longitude" in sub.columns else np.nan
+    offs = [0, minutes, -minutes]
+    frames = []
+    for m in offs:
+        tmp = df.copy()
+        tmp["__DTHWIN"] = tmp[col] + pd.to_timedelta(m, unit="m")
+        frames.append(tmp)
+    return pd.concat(frames, ignore_index=True)
 
-    if pd.notna(lat_m) and pd.notna(lon_m):
-        distances = []
-        for i, row in sub.iterrows():
-            lat_p, lon_p = row.get("lat"), row.get("lon")
-            if pd.notna(lat_p) and pd.notna(lon_p):
-                d = _haversine(float(lat_m), float(lon_m), float(lat_p), float(lon_p))
-            else:
-                d = float("inf")
-            distances.append((i, d))
-        idx, _ = min(distances, key=lambda t: t[1])
-        return sub.loc[[idx]]
-
-    # Sem coordenadas, mantém a primeira linha
-    return sub.iloc[[0]]
-
-def merge_by_key_with_geo(
+def merge_candidates(
     manual: pd.DataFrame,
     proc: pd.DataFrame,
-    geo_radius_m: float = 0.0,          # <- desativado por padrão
-    log_every_groups: int = 5_000,
-    radius_batch: int = 250_000,
-) -> Tuple[pd.DataFrame, Dict[str, int]]:
+    time_tolerance_min: int = 60,
+) -> pd.DataFrame:
     """
-    1) Merge por __KEY (DataHora_min, País, UF, Município) — loga contagem.
-    2) Desambiguação por grupos (KEY + atributos manuais) — loga % de grupos processados.
-    3) (Opcional) Filtro por raio geográfico se geo_radius_m > 0.
+    Cria pares candidatos por (PAIS, UF, janela_horária_com_tolerância).
+    Não exige município igual nesse passo.
     """
-    _log_phase("MERGE bruto por __KEY")
+    _log_phase(f"GERANDO candidatos (tolerância temporal = ±{time_tolerance_min} min)")
+    m_exp = _explode_time_with_tolerance(manual, "__DT_H", time_tolerance_min)
+    p_exp = _explode_time_with_tolerance(proc, "__DT_H", time_tolerance_min)
+
+    # chaves para reduzir o espaço de busca
+    m_exp["__JOIN_KEY"] = m_exp["__DTHWIN"].astype("int64").astype("string") + "|" + m_exp["__PAIS"] + "|" + m_exp["__UF"]
+    p_exp["__JOIN_KEY"] = p_exp["__DTHWIN"].astype("int64").astype("string") + "|" + p_exp["__PAIS"] + "|" + p_exp["__UF"]
+
+    # anexa índice original para seleção posterior
+    m_exp = m_exp.reset_index().rename(columns={"index":"__IDX_M"})
+    p_exp = p_exp.reset_index().rename(columns={"index":"__IDX_P"})
+
     t0 = time.time()
-    m = manual.merge(proc, on="__KEY", how="left", suffixes=("_m","_p"))
-    casados_brutos = int(m["id_bdq"].notna().sum())
-    log.info(f"  linhas pós-merge: {len(m):,} | hits (id_bdq!=NaN): {casados_brutos:,} | tempo={time.time()-t0:,.2f}s")
+    cand = m_exp.merge(
+        p_exp,
+        on="__JOIN_KEY",
+        how="left",
+        suffixes=("_m","_p")
+    )
+    log.info(f"  candidatos: {len(cand):,} | tempo={time.time()-t0:,.2f}s")
+    return cand
 
-    total_manual = len(manual)
+def pick_best_for_each_manual(
+    cand: pd.DataFrame,
+    geo_radius_m: float = 30000.0,
+    prefer_same_mun: bool = True,
+) -> Tuple[pd.DataFrame, Dict[str,int]]:
+    """
+    Para cada linha manual (__IDX_M), escolhe UM melhor par:
+    1) Se houver município igual, seleciona o mais próximo (se coords disponíveis).
+    2) Senão, seleciona o mais próximo dentro do raio (se coords).
+    3) Na falta de coords, seleciona a primeira ocorrência.
+    """
+    _log_phase(f"SELECIONANDO melhor par por linha manual (raio={geo_radius_m:.0f} m)")
+    total_manual = cand["__IDX_M"].nunique()
 
-    _log_phase("DESAMBIGUAÇÃO por grupos (KEY+FRP+RiscoFogo+coords)")
-    group_cols = ["__KEY","RiscoFogo","FRP","Latitude","Longitude"]
-    gb = m.groupby(group_cols, dropna=False)
-    n_groups = gb.ngroups
-    log.info(f"  grupos a resolver: {n_groups:,}")
+    # calcula distância quando possível
+    lat_m = cand["Latitude"]
+    lon_m = cand["Longitude"]
+    lat_p = cand["lat"]
+    lon_p = cand["lon"]
+    have_coords = lat_m.notna() & lon_m.notna() & lat_p.notna() & lon_p.notna()
+    dist = pd.Series(np.nan, index=cand.index, dtype="float64")
+    dist.loc[have_coords] = [
+        _haversine(la_m, lo_m, la_p, lo_p)
+        for la_m, lo_m, la_p, lo_p in zip(
+            lat_m[have_coords].astype(float),
+            lon_m[have_coords].astype(float),
+            lat_p[have_coords].astype(float),
+            lon_p[have_coords].astype(float),
+        )
+    ]
+    cand["__DIST_M"] = dist
+    cand["__MUN_EQ"] = (cand["__MUN_m"] == cand["__MUN_p"])
 
-    sel_groups = []
-    t1 = time.time()
-    for idx, (_, sub) in enumerate(gb, start=1):
-        sel_groups.append(_select_best_group(sub))
-        _progress(idx, n_groups, every=log_every_groups, prefix="  progresso desambiguação:")
-    mm = pd.concat(sel_groups, ignore_index=True)
-    log.info(f"  desambiguação concluída | linhas={len(mm):,} | tempo={time.time()-t1:,.2f}s")
+    sel_idx = []
+    gb = cand.groupby("__IDX_M", sort=False, dropna=False)
+    for i, (k, sub) in enumerate(gb, start=1):
+        # 1) prefer município igual
+        if prefer_same_mun:
+            sub_eq = sub[sub["__MUN_EQ"] & sub["id_bdq"].notna()]
+            if not sub_eq.empty:
+                # se tiver distância, pega o menor; senão, a primeira
+                if sub_eq["__DIST_M"].notna().any():
+                    j = sub_eq["__DIST_M"].idxmin()
+                else:
+                    j = sub_eq.index[0]
+                sel_idx.append(j)
+                _progress(i, total_manual, every=5000, prefix="  progresso seleção:")
+                continue
 
-    # (Opcional) Filtro por raio — só roda se geo_radius_m > 0
-    if geo_radius_m is not None and math.isfinite(geo_radius_m) and geo_radius_m > 0:
-        _log_phase(f"VALIDAÇÃO por raio geográfico (<= {geo_radius_m:.0f} m)")
-        t2 = time.time()
-        mask = pd.Series(True, index=mm.index)
-        idx_valid = mm["id_bdq"].notna()
-        mm_valid = mm.loc[idx_valid].copy()
-        n = len(mm_valid)
-        if n > 0:
-            for start in range(0, n, radius_batch):
-                end = min(start + radius_batch, n)
-                chunk = mm_valid.iloc[start:end]
-                ok = []
-                for _, row in chunk.iterrows():
-                    lat_m, lon_m = row.get("Latitude"), row.get("Longitude")
-                    lat_p, lon_p = row.get("lat"), row.get("lon")
-                    if pd.notna(lat_m) and pd.notna(lon_m) and pd.notna(lat_p) and pd.notna(lon_p):
-                        d = _haversine(float(lat_m), float(lon_m), float(lat_p), float(lon_p))
-                        ok.append(d <= geo_radius_m)
-                    else:
-                        ok.append(True)
-                mask.loc[chunk.index] = ok
-                _progress(end, n, every=max(10_000, radius_batch//4), prefix="  progresso raio:")
-        mm = mm.loc[mask].copy()
-        log.info(f"  raio checado | mantidos: {len(mm):,} | tempo={time.time()-t2:,.2f}s")
+        # 2) sem município: usa raio, se disponível
+        sub_geo = sub[(sub["id_bdq"].notna()) & (sub["__DIST_M"].notna())]
+        if geo_radius_m > 0 and not sub_geo.empty:
+            sub_geo = sub_geo[sub_geo["__DIST_M"] <= geo_radius_m]
+        if not sub_geo.empty:
+            j = sub_geo["__DIST_M"].idxmin()
+            sel_idx.append(j)
+            _progress(i, total_manual, every=5000, prefix="  progresso seleção:")
+            continue
 
-    matched = int(mm["id_bdq"].notna().sum())
-    unmatched_manual = int((mm["id_bdq"].isna()).sum())
+        # 3) fallback: qualquer match disponível (sem coords)
+        sub_any = sub[sub["id_bdq"].notna()]
+        if not sub_any.empty:
+            sel_idx.append(sub_any.index[0])
+        # 4) se nada, ficará NaN
+        _progress(i, total_manual, every=5000, prefix="  progresso seleção:")
 
-    keys_manual = set(manual["__KEY"].unique())
-    keys_proc = set(proc["__KEY"].unique())
-    unmatched_proc_keys = int(len(keys_proc - keys_manual))
+    picked = cand.loc[sel_idx].copy() if sel_idx else cand.head(0).copy()
 
+    matched = int(picked["id_bdq"].notna().sum())
     stats = {
         "total_manual_rows": int(total_manual),
         "matched_rows": matched,
-        "unmatched_manual_rows": unmatched_manual,
-        "raw_merge_matches": int(casados_brutos),
-        "unmatched_proc_keys": unmatched_proc_keys,
+        "unmatched_manual_rows": int(total_manual - matched),
     }
-    return mm, stats
+    log.info(f"  seleção concluída | matched={matched:,} / {total_manual:,}")
+    return picked, stats
 
 # =============================================================================
 # BUILD OUTPUT
 # =============================================================================
 OUT_COLS = ["DATAHORA","PAIS","ESTADO","MUNICIPIO","RISCO_FOGO","FRP","ID_BDQ","FOCO_ID"]
 
-def _pickcol(df: pd.DataFrame, base: str):
-    """Escolhe a coluna 'base' mesmo após merge (prefere _m, depois _p)."""
-    if base in df.columns:
-        return df[base]
-    col_m = f"{base}_m"
-    col_p = f"{base}_p"
-    if col_m in df.columns:
-        return df[col_m]
-    if col_p in df.columns:
-        return df[col_p]
-    raise KeyError(base)
-
-def build_output(df_merged: pd.DataFrame) -> pd.DataFrame:
-    dt      = _pickcol(df_merged, "__DT_MIN")
-    pais    = _pickcol(df_merged, "__PAIS")
-    uf      = _pickcol(df_merged, "__UF")
-    mun     = _pickcol(df_merged, "__MUN")
-
+def build_output(df_sel: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame({
-        "DATAHORA": dt,
-        "PAIS": pais,
-        "ESTADO": uf,
-        "MUNICIPIO": mun,
-        "RISCO_FOGO": df_merged.get("RiscoFogo"),
-        "FRP": df_merged.get("FRP"),
-        "ID_BDQ": df_merged.get("id_bdq"),
-        "FOCO_ID": df_merged.get("foco_id"),
+        "DATAHORA": df_sel["__DTHWIN_m"],
+        "PAIS": df_sel["__PAIS_m"],
+        "ESTADO": df_sel["__UF_m"],
+        "MUNICIPIO": df_sel["__MUN_m"],
+        "RISCO_FOGO": df_sel.get("RiscoFogo"),
+        "FRP": df_sel.get("FRP"),
+        "ID_BDQ": df_sel.get("id_bdq"),
+        "FOCO_ID": df_sel.get("foco_id"),
     })
     out = out.sort_values(["DATAHORA","ESTADO","MUNICIPIO"], kind="stable").reset_index(drop=True)
     return out
@@ -349,7 +335,13 @@ def build_output(df_merged: pd.DataFrame) -> pd.DataFrame:
 # =============================================================================
 # PIPELINE POR ANO
 # =============================================================================
-def consolidate_year(year: int, overwrite: bool = False, geo_radius_m: float = 0.0, validation: bool = False) -> Optional[Path]:
+def consolidate_year(
+    year: int,
+    overwrite: bool = False,
+    geo_radius_m: float = 30000.0,
+    validation: bool = False,
+    time_tolerance_min: int = 60,
+) -> Optional[Path]:
     manual_files = [p for (y, p) in list_manual_year_files(RAW_BDQ_DIR) if y == year]
     proc_file = processed_file_for_year(year, PROC_BDQ_DIR)
 
@@ -371,26 +363,25 @@ def consolidate_year(year: int, overwrite: bool = False, geo_radius_m: float = 0
 
     df_m = load_manual(manual_path)
     df_p = load_processed(proc_file)
-    # --- validation mode: limitar tamanho para teste rápido ---
     if validation:
         df_m = df_m.head(100).copy()
-        df_p = df_p.head(100).copy()
-        log.info(f"[{year}] [VALIDATION] Limitando a 100 linhas de cada base para validação rápida.")
+        df_p = df_p.head(20000).copy()  # deixa mais candidatos no proc
+        log.info(f"[{year}] [VALIDATION] Limitando MANUAL=100, PROC=20k linhas p/ validação rápida.")
 
-    merged, stats = merge_by_key_with_geo(df_m, df_p, geo_radius_m=geo_radius_m)
+    cand = merge_candidates(df_m, df_p, time_tolerance_min=time_tolerance_min)
+    picked, stats = pick_best_for_each_manual(cand, geo_radius_m=geo_radius_m, prefer_same_mun=True)
 
-    n_show = min(5, int((merged["id_bdq"].isna()).sum()))
-    if n_show > 0:
-        sample_un = merged.loc[merged["id_bdq"].isna(), ["__DT_MIN_m","__DT_MIN_p","__PAIS_m","__UF_m","__MUN_m","FRP"]].head(n_show)
-        log.info(f"[{year}] Exemplos (até {n_show}) sem correspondência:")
-        for _, r in sample_un.iterrows():
-            dt_show = r.get("__DT_MIN_m") if pd.notna(r.get("__DT_MIN_m")) else r.get("__DT_MIN_p")
-            uf_show = r.get("__UF_m")
-            mun_show = r.get("__MUN_m")
-            frp_show = r.get("FRP")
-            log.info(f"   - {dt_show} | {uf_show}/{mun_show} | FRP={frp_show}")
+    # Amostras de não-casados (para inspeção)
+    n_manual = df_m.shape[0]
+    not_matched_idx = sorted(set(range(n_manual)) - set(picked["__IDX_M"].unique()))
+    if not_matched_idx:
+        show = min(5, len(not_matched_idx))
+        log.info(f"[{year}] Exemplos (até {show}) sem correspondência após seleção:")
+        for i in not_matched_idx[:show]:
+            r = df_m.iloc[i]
+            log.info(f"   - {r['__DT_H']} | {r['__UF']}/{r['__MUN']} | FRP={r.get('FRP')} | lat={r.get('Latitude')} lon={r.get('Longitude')}")
 
-    out_df = build_output(merged)
+    out_df = build_output(picked)
     out_df.to_csv(out_path, index=False, encoding="utf-8")
     log.info(f"[{year}] [DONE] {out_path}  (linhas: {len(out_df):,})")
     log.info(f"[{year}] STATS: {stats}")
@@ -399,7 +390,13 @@ def consolidate_year(year: int, overwrite: bool = False, geo_radius_m: float = 0
 # =============================================================================
 # MAIN/CLI
 # =============================================================================
-def run(years: Optional[Iterable[int]] = None, overwrite: bool = False, geo_radius_m: float = 0.0, validation: bool = False) -> Optional[Path]:
+def run(
+    years: Optional[Iterable[int]] = None,
+    overwrite: bool = False,
+    geo_radius_m: float = 30000.0,
+    validation: bool = False,
+    time_tolerance_min: int = 60,
+) -> Optional[Path]:
     if years:
         years = sorted({int(y) for y in years})
     else:
@@ -412,7 +409,13 @@ def run(years: Optional[Iterable[int]] = None, overwrite: bool = False, geo_radi
     outs: List[Path] = []
     for y in years:
         try:
-            p = consolidate_year(y, overwrite=overwrite, geo_radius_m=geo_radius_m, validation=validation)
+            p = consolidate_year(
+                y,
+                overwrite=overwrite,
+                geo_radius_m=geo_radius_m,
+                validation=validation,
+                time_tolerance_min=time_tolerance_min,
+            )
             if p:
                 outs.append(p)
         except Exception as e:
@@ -440,11 +443,18 @@ if __name__ == "__main__":
     p.add_argument("--years", nargs="*", type=int, default=None,
                 help="Lista de anos a consolidar (ex.: --years 2013 2019). Se omitido, roda para todos.")
     p.add_argument("--overwrite", action="store_true", help="Sobrescreve saídas existentes.")
-    p.add_argument("--geo-radius-m", type=float, default=0.0,
-                help="0 = sem filtro geográfico; >0 valida por distância (m).")
+    p.add_argument("--geo-radius-m", type=float, default=30000.0,
+                help="Raio geográfico para validação (m). 0 desativa filtro por distância.")
+    p.add_argument("--time-tolerance-min", type=int, default=60,
+                help="Tolerância temporal (min) aplicada como janelas 0, ±t. Recom.: 60.")
     p.add_argument("--validation", action="store_true",
-                help="Modo de validação rápida: limita a 100 linhas do MANUAL e do PROCESSADO.")
+                help="Modo de validação rápida: limita MANUAL=100, PROC=20k.")
     args = p.parse_args()
 
-    run(years=args.years, overwrite=args.overwrite, geo_radius_m=args.geo_radius_m, validation=args.validation)
-
+    run(
+        years=args.years,
+        overwrite=args.overwrite,
+        geo_radius_m=args.geo_radius_m,
+        validation=args.validation,
+        time_tolerance_min=args.time_tolerance_min,
+    )
