@@ -1,0 +1,21 @@
+2025-10-19 19:42:33,127 INFO [bdqueimadas.consolidate] [2013] MANUAL: exportador_2025-09-16_ref_2013.csv
+2025-10-19 19:42:33,127 INFO [bdqueimadas.consolidate] [2013] PROC:    focos_br_ref_2013.csv
+2025-10-19 19:42:33,127 INFO [bdqueimadas.consolidate] [PHASE] Lendo MANUAL: exportador_2025-09-16_ref_2013.csv
+2025-10-19 19:42:33,272 INFO [bdqueimadas.consolidate]   linhas lidas (manual): 128,145  | tempo=0.14s
+2025-10-19 19:42:33,272 INFO [bdqueimadas.consolidate] [PHASE] Normalizando MANUAL (datas, strings)
+2025-10-19 19:42:34,893 INFO [bdqueimadas.consolidate]   filtro Bioma=CERRADO: 44,017 / 128,145 (esperado na saída ≈ este valor)
+2025-10-19 19:42:34,963 INFO [bdqueimadas.consolidate]   normalização (manual) ok | tempo=1.69s
+2025-10-19 19:42:34,964 INFO [bdqueimadas.consolidate] [PHASE] Lendo PROCESSADO: focos_br_ref_2013.csv
+2025-10-19 19:42:35,239 INFO [bdqueimadas.consolidate]   linhas lidas (proc): 128,145  | tempo=0.27s
+2025-10-19 19:42:35,239 INFO [bdqueimadas.consolidate] [PHASE] Normalizando PROCESSADO (datas, strings)
+2025-10-19 19:42:36,502 INFO [bdqueimadas.consolidate] [PHASE] Restringindo PROCESSADO aos (UF,MUN) presentes no MANUAL
+2025-10-19 19:42:36,560 INFO [bdqueimadas.consolidate]   PROCESSADO reduzido por (UF,MUN): 54,790 / 128,145
+2025-10-19 19:42:36,655 INFO [bdqueimadas.consolidate]   dedup PROCESSADO por __KEY: 19,516 (antes 54,790, removidas 35,274)
+2025-10-19 19:42:36,662 INFO [bdqueimadas.consolidate]   normalização (proc) ok | tempo=1.42s
+2025-10-19 19:42:36,662 INFO [bdqueimadas.consolidate] [PHASE] MERGE 1:1 (left) por __KEY (hora+país+UF+município)
+2025-10-19 19:42:36,721 INFO [bdqueimadas.consolidate]   linhas pós-merge: 44,017 | tempo=0.06s
+2025-10-19 19:42:36,722 INFO [bdqueimadas.consolidate] [2013] EXPECTED (MANUAL após filtro) = 44,017
+2025-10-19 19:42:36,723 INFO [bdqueimadas.consolidate] [2013] RESULT len(merge)            = 44,017  (deve == EXPECTED)
+2025-10-19 19:42:36,723 INFO [bdqueimadas.consolidate] [2013] MATCHED (com ID_BDQ)         = 44,017
+2025-10-19 19:42:36,723 INFO [bdqueimadas.consolidate] [2013] UNMATCHED                    = 0
+2025-10-19 19:42:36,929 INFO [bdqueimadas.consolidate] [2013] [DONE] D:\Projetos\TCC\data\consolidated\BDQUEIMADAS\bdq_targets_2013.csv  (linhas: 44,017)

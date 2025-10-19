@@ -1,0 +1,21 @@
+2025-10-19 19:42:58,607 INFO [bdqueimadas.consolidate] [2021] MANUAL: exportador_2025-09-16_ref_2021.csv
+2025-10-19 19:42:58,607 INFO [bdqueimadas.consolidate] [2021] PROC:    focos_br_ref_2021.csv
+2025-10-19 19:42:58,608 INFO [bdqueimadas.consolidate] [PHASE] Lendo MANUAL: exportador_2025-09-16_ref_2021.csv
+2025-10-19 19:42:58,825 INFO [bdqueimadas.consolidate]   linhas lidas (manual): 184,081  | tempo=0.22s
+2025-10-19 19:42:58,825 INFO [bdqueimadas.consolidate] [PHASE] Normalizando MANUAL (datas, strings)
+2025-10-19 19:43:01,143 INFO [bdqueimadas.consolidate]   filtro Bioma=CERRADO: 62,728 / 184,081 (esperado na saída ≈ este valor)
+2025-10-19 19:43:01,260 INFO [bdqueimadas.consolidate]   normalização (manual) ok | tempo=2.43s
+2025-10-19 19:43:01,261 INFO [bdqueimadas.consolidate] [PHASE] Lendo PROCESSADO: focos_br_ref_2021.csv
+2025-10-19 19:43:01,595 INFO [bdqueimadas.consolidate]   linhas lidas (proc): 184,081  | tempo=0.33s
+2025-10-19 19:43:01,595 INFO [bdqueimadas.consolidate] [PHASE] Normalizando PROCESSADO (datas, strings)
+2025-10-19 19:43:03,337 INFO [bdqueimadas.consolidate] [PHASE] Restringindo PROCESSADO aos (UF,MUN) presentes no MANUAL
+2025-10-19 19:43:03,417 INFO [bdqueimadas.consolidate]   PROCESSADO reduzido por (UF,MUN): 80,163 / 184,081
+2025-10-19 19:43:03,562 INFO [bdqueimadas.consolidate]   dedup PROCESSADO por __KEY: 22,699 (antes 80,163, removidas 57,464)
+2025-10-19 19:43:03,570 INFO [bdqueimadas.consolidate]   normalização (proc) ok | tempo=1.97s
+2025-10-19 19:43:03,570 INFO [bdqueimadas.consolidate] [PHASE] MERGE 1:1 (left) por __KEY (hora+país+UF+município)
+2025-10-19 19:43:03,635 INFO [bdqueimadas.consolidate]   linhas pós-merge: 62,728 | tempo=0.07s
+2025-10-19 19:43:03,636 INFO [bdqueimadas.consolidate] [2021] EXPECTED (MANUAL após filtro) = 62,728
+2025-10-19 19:43:03,637 INFO [bdqueimadas.consolidate] [2021] RESULT len(merge)            = 62,728  (deve == EXPECTED)
+2025-10-19 19:43:03,637 INFO [bdqueimadas.consolidate] [2021] MATCHED (com ID_BDQ)         = 62,728
+2025-10-19 19:43:03,637 INFO [bdqueimadas.consolidate] [2021] UNMATCHED                    = 0
+2025-10-19 19:43:03,932 INFO [bdqueimadas.consolidate] [2021] [DONE] D:\Projetos\TCC\data\consolidated\BDQUEIMADAS\bdq_targets_2021.csv  (linhas: 62,728)

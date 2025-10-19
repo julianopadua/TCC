@@ -3,3 +3,74 @@
 2025-10-19 19:18:28,906 INFO [bdqueimadas.consolidate] [PHASE] Lendo MANUAL: exportador_2025-10-17_ref_2003.csv
 2025-10-19 19:18:29,382 INFO [bdqueimadas.consolidate]   linhas lidas (manual): 341,237  | tempo=0.48s
 2025-10-19 19:18:29,383 INFO [bdqueimadas.consolidate] [PHASE] Normalizando MANUAL (datas, chaves, strings)
+2025-10-19 19:18:32,750 INFO [bdqueimadas.consolidate]   normalização (manual) ok | tempo=3.37s
+2025-10-19 19:18:32,751 INFO [bdqueimadas.consolidate] [PHASE] Lendo PROCESSADO: focos_br_ref_2003.csv
+2025-10-19 19:18:33,466 INFO [bdqueimadas.consolidate]   linhas lidas (proc): 341,237  | tempo=0.71s
+2025-10-19 19:18:33,467 INFO [bdqueimadas.consolidate] [PHASE] Normalizando PROCESSADO (datas, chaves, strings)
+2025-10-19 19:18:36,787 INFO [bdqueimadas.consolidate]   normalização (proc) ok | tempo=3.32s
+2025-10-19 19:18:36,787 INFO [bdqueimadas.consolidate] [PHASE] GERANDO candidatos (tolerância temporal = ±60 min)
+2025-10-19 19:20:39,548 ERROR [bdqueimadas.consolidate] [2003] Falha na consolidação: Unable to allocate 14.4 GiB for an array with shape (4, 482179159) and data type float64
+Traceback (most recent call last):
+  File "D:\Projetos\TCC\src\bdqueimadas_consolidated.py", line 412, in run
+    p = consolidate_year(
+        y,
+    ...<3 lines>...
+        time_tolerance_min=time_tolerance_min,
+    )
+  File "D:\Projetos\TCC\src\bdqueimadas_consolidated.py", line 371, in consolidate_year
+    cand = merge_candidates(df_m, df_p, time_tolerance_min=time_tolerance_min)
+  File "D:\Projetos\TCC\src\bdqueimadas_consolidated.py", line 230, in merge_candidates
+    cand = m_exp.merge(
+        p_exp,
+    ...<2 lines>...
+        suffixes=("_m","_p")
+    )
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\frame.py", line 10839, in merge
+    return merge(
+        self,
+    ...<11 lines>...
+        validate=validate,
+    )
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\reshape\merge.py", line 184, in merge
+    return op.get_result(copy=copy)
+           ~~~~~~~~~~~~~^^^^^^^^^^^
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\reshape\merge.py", line 888, in get_result
+    result = self._reindex_and_concat(
+        join_index, left_indexer, right_indexer, copy=copy
+    )
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\reshape\merge.py", line 848, in _reindex_and_concat
+    lmgr = left._mgr.reindex_indexer(
+        join_index,
+    ...<5 lines>...
+        use_na_proxy=True,
+    )
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\internals\managers.py", line 688, in reindex_indexer
+    blk.take_nd(
+    ~~~~~~~~~~~^
+        indexer,
+        ^^^^^^^^
+    ...<3 lines>...
+        ),
+        ^^
+    )
+    ^
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\internals\blocks.py", line 1373, in take_nd
+    new_values = algos.take_nd(
+        values, indexer, axis=axis, allow_fill=allow_fill, fill_value=fill_value
+    )
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\array_algos\take.py", line 117, in take_nd
+    return _take_nd_ndarray(arr, indexer, axis, fill_value, allow_fill)
+  File "D:\Projetos\TCC\.venv\Lib\site-packages\pandas\core\array_algos\take.py", line 157, in _take_nd_ndarray
+    out = np.empty(out_shape, dtype=dtype)
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 14.4 GiB for an array with shape (4, 482179159) and data type float64
+2025-10-19 19:20:42,676 INFO [bdqueimadas.consolidate] [2004] MANUAL: exportador_2025-10-17_ref_2004.csv
+2025-10-19 19:20:42,677 INFO [bdqueimadas.consolidate] [2004] PROC:    focos_br_ref_2004.csv
+2025-10-19 19:20:42,704 INFO [bdqueimadas.consolidate] [PHASE] Lendo MANUAL: exportador_2025-10-17_ref_2004.csv
+2025-10-19 19:20:43,289 INFO [bdqueimadas.consolidate]   linhas lidas (manual): 380,445  | tempo=0.58s
+2025-10-19 19:20:43,289 INFO [bdqueimadas.consolidate] [PHASE] Normalizando MANUAL (datas, chaves, strings)
+2025-10-19 19:20:47,153 INFO [bdqueimadas.consolidate]   normalização (manual) ok | tempo=3.85s
+2025-10-19 19:20:47,153 INFO [bdqueimadas.consolidate] [PHASE] Lendo PROCESSADO: focos_br_ref_2004.csv
+2025-10-19 19:20:47,914 INFO [bdqueimadas.consolidate]   linhas lidas (proc): 380,445  | tempo=0.76s
+2025-10-19 19:20:47,915 INFO [bdqueimadas.consolidate] [PHASE] Normalizando PROCESSADO (datas, chaves, strings)
+2025-10-19 19:20:51,621 INFO [bdqueimadas.consolidate]   normalização (proc) ok | tempo=3.71s
+2025-10-19 19:20:51,621 INFO [bdqueimadas.consolidate] [PHASE] GERANDO candidatos (tolerância temporal = ±60 min)

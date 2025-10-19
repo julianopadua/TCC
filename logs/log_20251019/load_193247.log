@@ -1,0 +1,19 @@
+2025-10-19 19:32:47,037 INFO [bdqueimadas.consolidate] [2012] MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-19 19:32:47,038 INFO [bdqueimadas.consolidate] [2012] PROC:    focos_br_ref_2012.csv
+2025-10-19 19:32:47,038 INFO [bdqueimadas.consolidate] [PHASE] Lendo MANUAL: exportador_2025-10-17_ref_2012.csv
+2025-10-19 19:32:47,387 INFO [bdqueimadas.consolidate]   linhas lidas (manual): 217,234  | tempo=0.35s
+2025-10-19 19:32:47,388 INFO [bdqueimadas.consolidate] [PHASE] Normalizando MANUAL (datas, strings)
+2025-10-19 19:32:50,280 INFO [bdqueimadas.consolidate]   filtro Bioma=CERRADO: 90,600 / 217,234 (esperado na saída ≈ este valor)
+2025-10-19 19:32:50,321 INFO [bdqueimadas.consolidate]   normalização (manual) ok | tempo=2.93s
+2025-10-19 19:32:50,334 INFO [bdqueimadas.consolidate] [PHASE] Lendo PROCESSADO: focos_br_ref_2012.csv
+2025-10-19 19:32:50,760 INFO [bdqueimadas.consolidate]   linhas lidas (proc): 217,234  | tempo=0.43s
+2025-10-19 19:32:50,760 INFO [bdqueimadas.consolidate] [PHASE] Normalizando PROCESSADO (datas, strings)
+2025-10-19 19:32:52,815 INFO [bdqueimadas.consolidate] [PHASE] Restringindo PROCESSADO aos (UF,MUN) presentes no MANUAL (Cerrado)
+2025-10-19 19:32:52,924 INFO [bdqueimadas.consolidate]   PROCESSADO reduzido por (UF,MUN): 109,053 / 217,234
+2025-10-19 19:32:52,945 INFO [bdqueimadas.consolidate]   normalização (proc) ok | tempo=2.19s
+2025-10-19 19:32:52,946 INFO [bdqueimadas.consolidate] [PHASE] MERGE por hora + país + UF + município (join exato)
+2025-10-19 19:32:53,081 INFO [bdqueimadas.consolidate]   linhas pós-merge: 1,436,316 | tempo=0.14s
+2025-10-19 19:32:53,087 INFO [bdqueimadas.consolidate] [2012] EXPECTED (CERRADO no MANUAL) = 90,600
+2025-10-19 19:32:53,087 INFO [bdqueimadas.consolidate] [2012] MATCHED  (com ID_BDQ)       = 1,436,316
+2025-10-19 19:32:53,087 INFO [bdqueimadas.consolidate] [2012] UNMATCHED                   = 0
+2025-10-19 19:32:59,459 INFO [bdqueimadas.consolidate] [2012] [DONE] D:\Projetos\TCC\data\consolidated\BDQUEIMADAS\bdq_targets_2012.csv  (linhas: 1,436,316)
