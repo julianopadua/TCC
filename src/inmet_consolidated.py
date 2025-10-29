@@ -17,6 +17,7 @@ from utils import (
     get_logger,
     get_path,
     ensure_dir,
+    normalize_key,
 )
 
 # Permite campos muito longos para o parser csv do Python (caso necessário)

@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterable, List, Tuple, Optional
 from urllib.parse import urljoin
 from typing import Iterable, Optional
 import re
+import unicodedata
 import pandas as pd
 import zipfile
 from datetime import datetime
@@ -242,6 +243,28 @@ def list_files(root: Path | str, patterns: Iterable[str]) -> List[Path]:
         out.extend(root.rglob(pat))
     return sorted(set(out))
 
+def normalize_key(s: str | None) -> str:
+    """
+    Normaliza strings para matching robusto:
+      - converte None para ""
+      - NFKD + remoção de diacríticos
+      - unifica aspas
+      - remove qualquer caractere não alfanumérico substituindo por espaço
+      - casefold e colapsa espaços
+    Ex.: "Brasília" -> "brasilia"; "D'Oeste" -> "d oeste"
+    """
+    if s is None:
+        return ""
+    s = str(s).strip()
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = s.replace("’", "'").replace("`", "'")
+    s = re.sub(r"[^A-Za-z0-9]+", " ", s)
+    s = s.casefold().strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
 
 # -----------------------------------------------------------------------------
 # [SEÇÃO 4] HTTP / SCRAPING

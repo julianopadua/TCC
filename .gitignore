@@ -2,6 +2,8 @@
 *.zip
 *.csv
 *.json
+*.log
+*.parquet
 *.jsonl
 *.jsonl.gz
 *.jsonl.gz.part

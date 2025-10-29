@@ -1,396 +1,355 @@
 # src/inmet_bdqueimadas_consolidated.py
 # =============================================================================
-# Consolidação INMET (all_years) × BDQUEIMADAS (bdq_targets_all_years)
-# Saída: data/consolidated/INMET_BDQ/inmet_bdq_hourly.csv (ou _YYYY-YYYY.csv)
-# - Agrega BDQ por HORA + PAIS + ESTADO + MUNICIPIO
-# - Casa com INMET por HORA + MUNICIPIO (valida UF quando disponível)
-# - Mantém valores INMET como vieram (ex.: -999), sem filtrar aqui
-# - INMET em streaming + merge e escrita incremental (sem estourar memória)
-# - Suporta --years e --validation (amostra rápida)
-# Dependências: utils.py (loadConfig, get_logger, get_path, ensure_dir)
+# INMET - CONSOLIDACAO incremental (processed/INMET/inmet_{ano}.csv -> consolidated/INMET)
+# Agora com filtro opcional por BIOMA, usando dicionario estado-municipio-bioma.
+# Saida e nomeada automaticamente com base em anos e bioma.
+# Dep.: utils.py (loadConfig, get_logger, get_path, ensure_dir, normalize_key)
 # =============================================================================
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Iterable, List, Tuple
-import unicodedata
-import pandas as pd
-import numpy as np
-import time
+from typing import Iterable, List, Optional, Tuple, Set
 import re
+import csv
 import sys
-import csv as _csv
 
 from utils import (
     loadConfig,
     get_logger,
     get_path,
     ensure_dir,
+    normalize_key,
 )
 
-cfg = loadConfig()
-log = get_logger("inmet_bdq.consolidate", kind="load", per_run_file=True)
+# Permite campos muito longos para o parser csv do Python (caso necessario)
+try:
+    csv.field_size_limit(sys.maxsize)
+except OverflowError:
+    csv.field_size_limit(2**31 - 1)
 
 # -----------------------------------------------------------------------------
-# PATHS (usa paths.data.external do config.yaml -> "./data/consolidated")
+# [SECAO 1] PATHS
 # -----------------------------------------------------------------------------
-BASE_CONSOLIDATED = get_path("paths", "data", "external")
-INMET_PATH = Path(BASE_CONSOLIDATED) / "INMET" / "inmet_all_years.csv"
-BDQ_PATH   = Path(BASE_CONSOLIDATED) / "BDQUEIMADAS" / "bdq_targets_all_years.csv"
-OUT_DIR    = ensure_dir(Path(BASE_CONSOLIDATED) / "INMET_BDQ")
+def get_inmet_processed_dir() -> Path:
+    return get_path("paths", "providers", "inmet", "processed")
+
+def get_consolidated_root() -> Path:
+    return get_path("paths", "data", "external")
+
+def get_inmet_consolidated_dir() -> Path:
+    return ensure_dir(Path(get_consolidated_root()) / "INMET")
+
+def default_output_path() -> Path:
+    return get_inmet_consolidated_dir() / "inmet_all_years.csv"
+
+def get_dictionary_csv_path() -> Path:
+    # requer arquivo gerado pelo builder do dicionario: data/dictionarys/bdq_municipio_bioma.csv
+    return Path(get_path("paths", "data","dictionarys")) / "bdq_municipio_bioma.csv"
 
 # -----------------------------------------------------------------------------
-# HELPERS
+# [SECAO 2] DESCOBERTA
 # -----------------------------------------------------------------------------
-_CTRL_RE = re.compile(r"[\x00-\x1F\x7F-\x9F]")
-_WS_RE   = re.compile(r"[\u00A0\u200B\u200C\u200D\uFEFF]")  # NBSP, ZWSP, BOM etc.
+_INMET_FILE_RE = re.compile(r"^inmet_(\d{4})\.csv$", flags=re.IGNORECASE)
 
-def _strip_controls(x: str) -> str:
-    if x is None:
-        return ""
-    s = _WS_RE.sub(" ", str(x))
-    s = _CTRL_RE.sub("", s)
-    return s
+def parse_year_from_filename(filename: str) -> Optional[int]:
+    m = _INMET_FILE_RE.match(filename)
+    return int(m.group(1)) if m else None
 
-def _repair_mojibake(x: str) -> str:
-    if x is None:
-        return ""
-    s = str(x)
-    if any(t in s for t in ("Ã", "Â", "Ê", "Ô", "Õ", "", "¢", "§", "ã", "õ", "ç")):
+def list_inmet_year_files(processed_dir: Path) -> List[Tuple[int, Path]]:
+    pairs: List[Tuple[int, Path]] = []
+    for p in sorted(processed_dir.glob("inmet_*.csv")):
+        y = parse_year_from_filename(p.name)
+        if y is not None and p.is_file():
+            pairs.append((y, p))
+    pairs.sort(key=lambda x: x[0])
+    return pairs
+
+# -----------------------------------------------------------------------------
+# [SECAO 3] HELPERS DE I/O E NOMES
+# -----------------------------------------------------------------------------
+def _batched(lst: List[Tuple[int, Path]], n: int = 3) -> Iterable[List[Tuple[int, Path]]]:
+    for i in range(0, len(lst), n):
+        yield lst[i : i + n]
+
+def _read_header_fields(p: Path, encoding: str = "utf-8") -> List[str]:
+    with p.open("r", encoding=encoding, errors="replace", newline="") as fh:
+        reader = csv.reader(fh)
         try:
-            s = s.encode("latin1", errors="ignore").decode("utf-8", errors="ignore")
-        except Exception:
-            pass
-    return s
+            return next(reader)
+        except StopIteration:
+            return []
 
-def _norm_loc(x: str) -> str:
-    # normaliza pt-BR p/ padronizar com INMET/BDQ: sem acento, caixa alta
-    s = _repair_mojibake(x)
-    s = _strip_controls(s)
-    s = unicodedata.normalize("NFKD", s)
-    s = "".join(ch for ch in s if not unicodedata.combining(ch))
-    return s.upper().strip()
+def _resolve_output_filename(years: Optional[Iterable[int]], biome: Optional[str]) -> str:
+    if not biome:
+        return "inmet_all_years.csv" if (not years or len(list(years)) != 1) else f"inmet_{list(years)[0]}.csv"
+    b = str(biome).strip().lower().replace(" ", "_")
+    if not years or len(list(years)) == 0:
+        return f"inmet_all_years_{b}.csv"
+    yrs = sorted({int(y) for y in years})
+    if len(yrs) == 1:
+        return f"inmet_{yrs[0]}_{b}.csv"
+    return f"inmet_{yrs[0]}_{yrs[-1]}_{b}.csv"
 
-def _log_phase(title: str):
-    log.info(f"[PHASE] {title}")
+def _load_allowed_municipios_for_biome(biome: str, encoding: str = "utf-8") -> Set[str]:
+    """
+    Carrega de data/dictionarys/bdq_municipio_bioma.csv o conjunto de municipios
+    normalizados cujo bioma casa com o alvo.
+    """
+    dic_path = get_dictionary_csv_path()
+    if not dic_path.exists():
+        raise FileNotFoundError(f"Arquivo do dicionario inexistente: {dic_path}. Gere-o antes.")
+    allowed: Set[str] = set()
+    with dic_path.open("r", encoding=encoding, errors="replace", newline="") as fh:
+        reader = csv.DictReader(fh)
+        fns = set(reader.fieldnames or [])
+        if not {"municipio", "bioma"}.issubset(fns):
+            raise ValueError("bdq_municipio_bioma.csv precisa conter colunas municipio e bioma.")
+        has_norm = "municipio_norm" in fns
+        tgt = biome.casefold()
+        for row in reader:
+            if str(row["bioma"]).casefold() == tgt:
+                mun_n = str(row["municipio_norm"]).strip() if has_norm else normalize_key(row["municipio"])
+                if mun_n:
+                    allowed.add(mun_n)
+    return allowed
 
-def _read_csv_smart(path: Path, **kw) -> pd.DataFrame:
-    for enc in ("utf-8-sig", "utf-8", "latin1"):
+def _append_csv_filtered_by_municipio(
+    src: Path,
+    dst_fh,
+    municipio_idx: int,
+    allowed_municipios: Set[str],
+    encoding: str = "utf-8",
+) -> int:
+    """
+    Copia apenas as linhas de src cujo municipio normalizado perteneca a allowed_municipios.
+    Pula o header. Retorna numero de linhas escritas.
+    """
+    rows = 0
+    with src.open("r", encoding=encoding, errors="replace", newline="") as s:
+        reader = csv.reader(s)
         try:
-            return pd.read_csv(path, encoding=enc, low_memory=False, on_bad_lines="skip", **kw)
-        except UnicodeDecodeError:
-            continue
-    return pd.read_csv(path, encoding="latin1", low_memory=False, on_bad_lines="skip", **kw)
-
-def _bump_csv_field_limit() -> None:
-    limit = sys.maxsize
-    while True:
-        try:
-            _csv.field_size_limit(limit)
-            break
-        except OverflowError:
-            limit = int(limit // 10)
-            if limit < 1_000_000:
-                _csv.field_size_limit(1_000_000)
-                break
-
-# -----------------------------------------------------------------------------
-# BDQ LOADER (full in-memory, mas com usecols e agregado por hora)
-# -----------------------------------------------------------------------------
-def load_bdq(
-    bdq_path: Path,
-    years: Optional[Iterable[int]] = None,
-    id_preference: str = "foco",
-    validation_limit: Optional[int] = None
-) -> pd.DataFrame:
-    if not bdq_path.exists():
-        raise FileNotFoundError(f"BDQ não encontrado: {bdq_path}")
-
-    _log_phase(f"Lendo BDQ: {bdq_path}")
-    t0 = time.time()
-
-    usecols = ["DATAHORA","PAIS","ESTADO","MUNICIPIO","FRP","RISCO_FOGO","FOCO_ID","ID_BDQ"]
-    df = _read_csv_smart(bdq_path, usecols=usecols)
-    log.info(f"  BDQ linhas: {len(df):,} | tempo={time.time()-t0:,.2f}s")
-
-    # Localidade normalizada
-    for col in ("PAIS", "ESTADO", "MUNICIPIO"):
-        if col in df.columns:
-            df[col] = df[col].map(_norm_loc)
-
-    # Tempo -> hora cheia
-    df["DATAHORA"] = pd.to_datetime(df["DATAHORA"], errors="coerce")
-    df["HORA"] = df["DATAHORA"].dt.floor("h")
-    df["ANO"] = df["HORA"].dt.year
-
-    if years:
-        years = sorted({int(y) for y in years})
-        before = len(df)
-        df = df[df["ANO"].isin(years)].copy()
-        log.info(f"  BDQ filtro anos {years} | {before:,} -> {len(df):,}")
-
-    if validation_limit:
-        df = df.head(int(validation_limit)).copy()
-        log.info(f"  [VALIDATION] BDQ limitado a {len(df):,} linhas")
-
-    id_col = "FOCO_ID" if id_preference.lower() == "foco" else "ID_BDQ"
-    if id_col not in df.columns:
-        id_col = "FOCO_ID" if "FOCO_ID" in df.columns else "ID_BDQ"
-
-    agg = {
-        "FRP": "mean",
-        "RISCO_FOGO": "mean",
-        id_col: "first",
-        "DATAHORA": "count",  # contagem de focos por hora
-    }
-    gb_cols = ["HORA", "PAIS", "ESTADO", "MUNICIPIO"]
-    dfh = df.groupby(gb_cols, dropna=False).agg(agg).reset_index()
-    dfh.rename(columns={"DATAHORA": "N_FOCOS", id_col: "ID_TARGET"}, inplace=True)
-    dfh.sort_values(["HORA", "ESTADO", "MUNICIPIO"], kind="stable", inplace=True)
-    log.info(f"  BDQ por hora: {len(dfh):,} linhas (agrupado) | tempo total={time.time()-t0:,.2f}s")
-    return dfh
-
-# -----------------------------------------------------------------------------
-# INMET LOADER (STREAMING) — detecção robusta de colunas de DATA/HORA
-# -----------------------------------------------------------------------------
-def _normalize_colname(s: str) -> str:
-    s0 = unicodedata.normalize("NFKD", s)
-    s0 = "".join(ch for ch in s0 if not unicodedata.combining(ch))
-    return s0.upper()
-
-def _discover_inmet_columns(df_head: pd.DataFrame) -> dict:
-    # normaliza nomes para decidir melhor
-    norm_map = {c: _normalize_colname(c) for c in df_head.columns}
-
-    # DATA: começa com "DATA"
-    candidates_data = [c for c, n in norm_map.items() if n.startswith("DATA")]
-    col_data = candidates_data[0] if candidates_data else "DATA"
-
-    # HORA: prioriza exatamente "HORA" ou "HORA (UTC)" (evita "HORARIA")
-    def is_hour_col(n: str) -> bool:
-        return n == "HORA" or n.startswith("HORA ")
-
-    candidates_hora = [c for c, n in norm_map.items() if is_hour_col(n)]
-    if not candidates_hora:
-        # fallback: contém "HORA" mas não "HORARIA"
-        candidates_hora = [c for c, n in norm_map.items() if "HORA" in n and "HORARIA" not in n]
-    col_hora = candidates_hora[0] if candidates_hora else "HORA"
-
-    # CIDADE & ESTADO/UF
-    candidates_city = [c for c, n in norm_map.items() if "CIDADE" in n]
-    col_cidade = candidates_city[0] if candidates_city else "CIDADE"
-
-    col_estado = None
-    for c, n in norm_map.items():
-        if n == "ESTADO" or n == "UF":
-            col_estado = c
-            break
-    return {"DATA": col_data, "HORA": col_hora, "CIDADE": col_cidade, "ESTADO": col_estado}
-
-def _open_inmet_reader(inmet_path: Path, engine: str, chunksize: int):
-    return pd.read_csv(
-        inmet_path,
-        encoding="utf-8",
-        low_memory=True,
-        on_bad_lines="skip",
-        dtype=str,
-        chunksize=chunksize,
-        engine=engine,
-    )
-
-def _iter_inmet_filtered_chunks(
-    inmet_path: Path,
-    years: Optional[Iterable[int]],
-    chunksize: int
-) -> Tuple[dict, Iterable[pd.DataFrame]]:
-    """Abre reader com engine 'c' (fallback python) e itera chunks já com HORA/ANO calculados."""
-    head = _read_csv_smart(inmet_path, nrows=50, dtype=str)
-    cols = _discover_inmet_columns(head)
-    col_data, col_hora, col_cidade, col_estado = cols["DATA"], cols["HORA"], cols["CIDADE"], cols["ESTADO"]
-
-    engines = ["c", "python"]
-    reader = None
-    last_err = None
-    for eng in engines:
-        try:
-            if eng == "python":
-                _bump_csv_field_limit()
-            reader = _open_inmet_reader(inmet_path, eng, chunksize)
-            # sanity check: force first chunk
-            _ = next(iter(reader))
-            reader = _open_inmet_reader(inmet_path, eng, chunksize)
-            log.info(f"  INMET usando engine='{eng}'")
-            break
-        except Exception as e:
-            last_err = e
-            log.warning(f"  engine='{eng}' falhou: {e}")
-    if reader is None:
-        raise RuntimeError(f"Falha ao abrir INMET em chunks. Último erro: {last_err}")
-
-    years_set = {int(y) for y in years} if years else None
-
-    def generator():
-        chunks_read = 0
-        kept_total = 0
-        for chunk in reader:
-            chunks_read += 1
-
-            # Timestamp horário
-            ts = pd.to_datetime(
-                chunk[col_data].astype(str).str.strip() + " " + chunk[col_hora].astype(str).str.strip(),
-                errors="coerce",
-                utc=False
-            )
-            chunk["HORA"] = ts.dt.floor("h")
-            chunk["ANO"] = chunk["HORA"].dt.year
-
-            # Localidade normalizada
-            chunk["PAIS"] = "BRASIL"
-            chunk["MUNICIPIO"] = chunk[col_cidade].map(_norm_loc) if col_cidade in chunk.columns else np.nan
-            chunk["ESTADO"]    = chunk[col_estado].map(_norm_loc) if col_estado else np.nan
-
-            # Filtro de anos
-            if years_set:
-                chunk = chunk[chunk["ANO"].isin(years_set)]
-
-            if len(chunk) == 0:
+            next(reader)  # header
+        except StopIteration:
+            return 0
+        writer = csv.writer(dst_fh, lineterminator="\n")
+        for row in reader:
+            try:
+                mun = normalize_key(row[municipio_idx])
+            except IndexError:
                 continue
+            if mun in allowed_municipios:
+                writer.writerow(row)
+                rows += 1
+    return rows
 
-            kept_total += len(chunk)
-            if chunks_read % 5 == 0:
-                log.info(f"  [INMET] chunks lidos: {chunks_read} | acumulado pós-filtro: {kept_total:,}")
+def _append_csv_skip_header(src: Path, dst_fh, encoding: str = "utf-8") -> int:
+    """
+    Copia o conteudo de src para um arquivo de destino ja aberto, pulando a primeira linha (header).
+    Retorna o numero de linhas copiadas.
+    """
+    rows = 0
+    with src.open("r", encoding=encoding, errors="replace", newline="") as s:
+        _ = s.readline()
+        for line in s:
+            dst_fh.write(line)
+            rows += 1
+    return rows
 
-            yield chunk
-
-    return cols, generator()
-
-# -----------------------------------------------------------------------------
-# MERGE E ESCRITA INCREMENTAL
-# -----------------------------------------------------------------------------
-def _merge_chunk_with_bdq(chunk_in: pd.DataFrame, bdq_hourly: pd.DataFrame) -> pd.DataFrame:
-    # renomeia BDQ p/ evitar colisões
-    bq = bdq_hourly.rename(columns={"PAIS":"PAIS_BDQ", "ESTADO":"ESTADO_BDQ"})
-    m = chunk_in.merge(bq, on=["HORA", "MUNICIPIO"], how="left", suffixes=("_IN", "_BDQ"))
-
-    # valida UF quando possível
-    if "ESTADO_IN" in m.columns and "ESTADO_BDQ" in m.columns:
-        eq = (m["ESTADO_IN"].fillna("") == m["ESTADO_BDQ"].fillna(""))
-        m = m.loc[eq | m["ESTADO_BDQ"].isna()].copy()
-
-    # garantir colunas alvo BDQ
-    for c in ("FRP", "RISCO_FOGO", "N_FOCOS", "ID_TARGET"):
-        if c not in m.columns:
-            m[c] = np.nan
-
-    # consolidar colunas finais principais
-    if "PAIS" not in m.columns:
-        m["PAIS"] = m.get("PAIS_IN", "BRASIL")
-    if "ESTADO" not in m.columns and "ESTADO_IN" in m.columns:
-        m["ESTADO"] = m["ESTADO_IN"]
-
-    # ordena principais
-    if "HORA" in m.columns:
-        m.sort_values(["HORA", "ESTADO", "MUNICIPIO"], kind="stable", inplace=True)
-
-    # põe principais primeiro
-    front = [c for c in ["HORA","PAIS","ESTADO","MUNICIPIO","FRP","RISCO_FOGO","N_FOCOS","ID_TARGET"] if c in m.columns]
-    other = [c for c in m.columns if c not in front]
-    m = m[front + other]
-    return m
+def _normalize_dates_text_inplace(csv_path: Path, encoding: str = "utf-8") -> None:
+    """
+    Passada final: substitui "/" por "-" somente no primeiro campo de cada linha.
+    Mantem o header intocado. Implementacao simples, robusta a arquivos grandes.
+    """
+    tmp = csv_path.with_suffix(".tmp")
+    with csv_path.open("r", encoding=encoding, errors="replace", newline="") as r, \
+         tmp.open("w", encoding=encoding, newline="") as w:
+        first = True
+        for line in r:
+            if first:
+                w.write(line)
+                first = False
+                continue
+            idx = line.find(",")
+            if idx > 0:
+                token = line[:idx]
+                if "/" in token:
+                    token = token.replace("/", "-")
+                line = token + line[idx:]
+            w.write(line)
+    tmp.replace(csv_path)
 
 # -----------------------------------------------------------------------------
-# MAIN PIPELINE
+# [SECAO 4] CONSOLIDACAO
 # -----------------------------------------------------------------------------
-def run(
+def consolidate_inmet(
+    output_filename: Optional[str] = None,
     years: Optional[Iterable[int]] = None,
-    id_preference: str = "foco",   # "foco" ou "bdq"
-    validation: bool = False,       # modo rápido (amostra)
-    validation_limit: int = 100,    # tamanho da amostra (após filtro por ano)
-    chunksize: int = 250_000        # tamanho do chunk para o INMET
+    overwrite: bool = False,
+    encoding: str = "utf-8",
+    batch_size: int = 3,
+    normalize_dates: bool = True,
+    biome: Optional[str] = None,
+    municipio_col: str = "CIDADE",
 ) -> Path:
-    # 1) Carrega BDQ agregado por hora em memória (relativamente pequeno)
-    bdq_hourly = load_bdq(
-        BDQ_PATH,
-        years=years,
-        id_preference=id_preference,
-        validation_limit=(validation_limit if validation else None),
-    )
+    """
+    Consolida CSVs anuais (processed/INMET/inmet_{ano}.csv) em um unico CSV
+    (consolidated/INMET/<output_filename>), processando em lotes de batch_size.
 
-    # 2) Define saída
-    out_name = "inmet_bdq_hourly.csv" if not years else f"inmet_bdq_hourly_{'-'.join(map(str, sorted({int(y) for y in years})))}.csv"
-    out_path = OUT_DIR / out_name
+    Se biome for fornecido, filtra por municipio usando o dicionario de bioma
+    e o nome de saida e ajustado automaticamente.
+    """
+    log = get_logger("inmet.consolidate", kind="load", per_run_file=True)
+    _ = loadConfig()
+
+    processed_dir = get_inmet_processed_dir()
+    out_dir = get_inmet_consolidated_dir()
+
+    year_files = list_inmet_year_files(processed_dir)
+    if years:
+        yrs = {int(y) for y in years}
+        year_files = [(y, p) for (y, p) in year_files if y in yrs]
+
+    if not year_files:
+        raise FileNotFoundError("Nenhum inmet_{ano}.csv encontrado para consolidar.")
+
+    # Header do primeiro arquivo e indices de colunas
+    _, first_path = year_files[0]
+    header_fields = _read_header_fields(first_path, encoding=encoding)
+    if not header_fields:
+        raise ValueError(f"Header vazio em {first_path}")
+
+    try:
+        municipio_idx = header_fields.index(municipio_col)
+    except ValueError as e:
+        raise ValueError(
+            f"Coluna de municipio nao encontrada no header: {e}. "
+            f"Use --municipio-col para ajustar."
+        )
+
+    # Nome do arquivo de saida
+    auto_name = _resolve_output_filename(years, biome)
+    out_name = output_filename or auto_name
+    out_path = out_dir / out_name
+
+    # Conjunto permitido para bioma, se aplicavel
+    allowed_municipios: Optional[Set[str]] = None
+    if biome:
+        allowed_municipios = _load_allowed_municipios_for_biome(biome, encoding=encoding)
+        if not allowed_municipios:
+            log.warning(f"[WARN] Nenhum municipio encontrado para bioma='{biome}'. Saida pode ficar vazia.")
+    else:
+        log.info("[INFO] Sem filtro de bioma. Consolidando todos os registros.")
+
+    # Saida
+    ensure_dir(out_path.parent)
     if out_path.exists():
-        out_path.unlink(missing_ok=True)  # reescreve
-
-    # 3) Modo validação: ler pequeno subconjunto em memória e escrever de uma vez
-    if validation:
-        _log_phase(f"Lendo INMET (validação): {INMET_PATH}")
-        # pega N linhas já filtradas do(s) ano(s)
-        cols, gen = _iter_inmet_filtered_chunks(INMET_PATH, years, chunksize=max(10_000, chunksize//10))
-        kept = 0
-        buf: List[pd.DataFrame] = []
-        for ch in gen:
-            faltam = int(validation_limit) - kept
-            if faltam <= 0:
-                break
-            if len(ch) > faltam:
-                ch = ch.head(faltam).copy()
-            buf.append(ch)
-            kept += len(ch)
-        if not buf:
-            log.warning("Nenhum registro INMET para validação.")
-            # ainda assim gravar CSV vazio com header mínimo
-            pd.DataFrame(columns=["HORA","PAIS","ESTADO","MUNICIPIO","FRP","RISCO_FOGO","N_FOCOS","ID_TARGET"]).to_csv(out_path, index=False, encoding="utf-8")
-            log.info(f"[DONE] {out_path} (vazio)")
+        if overwrite:
+            out_path.unlink()
+        else:
+            log.info(f"[SKIP] {out_path.name} ja existe. Use --overwrite para refazer ou mude --output-filename.")
             return out_path
 
-        df_in = pd.concat(buf, ignore_index=True)
-        merged = _merge_chunk_with_bdq(df_in, bdq_hourly)
-        merged.to_csv(out_path, index=False, encoding="utf-8")
-        log.info(f"[DONE] {out_path}  (linhas: {len(merged):,})  [validation]")
-        return out_path
+    total_rows = 0
+    log.info(
+        f"[CONSOLIDATE] {len(year_files)} arquivo(s) em lotes de {batch_size} -> {out_path.name} "
+        f"{'(filtrando por bioma=' + biome + ')' if biome else ''}"
+    )
 
-    # 4) Modo completo: streaming + append incremental
-    _log_phase(f"Lendo INMET (streaming): {INMET_PATH}")
-    _, gen = _iter_inmet_filtered_chunks(INMET_PATH, years, chunksize=chunksize)
+    # Abre destino, grava header original do primeiro arquivo
+    with out_path.open("w", encoding=encoding, newline="") as out_fh:
+        out_fh.write(",".join(header_fields) + "\n")
 
-    total_written = 0
-    wrote_header = False
-    t0 = time.time()
-    for i, chunk_in in enumerate(gen, start=1):
-        merged = _merge_chunk_with_bdq(chunk_in, bdq_hourly)
-        # escreve em append
-        merged.to_csv(out_path, index=False, mode=("w" if not wrote_header else "a"), header=not wrote_header, encoding="utf-8")
-        wrote_header = True
-        total_written += len(merged)
-        if i % 5 == 0:
-            log.info(f"  [WRITE] chunks gravados: {i} | linhas acumuladas: {total_written:,}")
+        for batch in _batched(year_files, batch_size):
+            anos = [y for y, _ in batch]
+            log.info(f"[BATCH] anos={anos}")
+            for y, path in batch:
+                if allowed_municipios is None:
+                    log.info(f"  [APPEND] {path.name} (sem filtro)")
+                    added = _append_csv_skip_header(path, out_fh, encoding=encoding)
+                else:
+                    log.info(f"  [APPEND] {path.name} (filtrado por bioma via municipio)")
+                    added = _append_csv_filtered_by_municipio(
+                        path,
+                        out_fh,
+                        municipio_idx=municipio_idx,
+                        allowed_municipios=allowed_municipios,
+                        encoding=encoding,
+                    )
+                total_rows += added
+                log.info(f"    +{added} linhas (acumulado: {total_rows})")
 
-    log.info(f"[DONE] {out_path}  (linhas: {total_written:,})  | tempo total={time.time()-t0:,.2f}s")
+    if normalize_dates:
+        log.info("[NORMALIZE] Padronizando DATA para YYYY-MM-DD na primeira coluna...")
+        _normalize_dates_text_inplace(out_path, encoding=encoding)
+
+    log.info(f"[DONE] {out_path} (linhas totais: {total_rows})")
     return out_path
 
 # -----------------------------------------------------------------------------
-# CLI
+# [SECAO 5] CLI
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
     import argparse
-    p = argparse.ArgumentParser(description="Consolidação INMET × BDQueimadas por HORA (streaming incremental)")
-    p.add_argument("--years", nargs="*", type=int, default=None,
-                   help="Filtra anos (ex.: --years 2012 2013). Se omitido, usa todos.")
-    p.add_argument("--id-preference", choices=["foco", "bdq"], default="foco",
-                   help="Qual ID trazer do BDQ como representativo da hora (default: foco).")
-    p.add_argument("--validation", action="store_true",
-                   help="Modo de validação rápida (amostra pequena, após filtro por ano).")
-    p.add_argument("--validation-limit", type=int, default=100,
-                   help="Tamanho da amostra no modo de validação (default: 100).")
-    p.add_argument("--chunksize", type=int, default=250000,
-                   help="Tamanho do chunk para leitura do INMET (default: 250k).")
+
+    p = argparse.ArgumentParser(
+        description="Consolida INMET processed -> consolidated, com filtro opcional por bioma."
+    )
+    p.add_argument(
+        "--years",
+        nargs="*",
+        type=int,
+        default=None,
+        help="Lista de anos a consolidar. Se omitido, consolida todos os disponiveis.",
+    )
+    p.add_argument(
+        "--biome",
+        type=str,
+        default=None,
+        help="Nome do bioma para filtrar (ex.: Cerrado). Case-insensitive.",
+    )
+    p.add_argument(
+        "--municipio-col",
+        type=str,
+        default="CIDADE",
+        help="Nome da coluna de municipio no CSV do INMET. Default: 'CIDADE'.",
+    )
+    p.add_argument(
+        "--output-filename",
+        type=str,
+        default=None,
+        help="Nome do arquivo de saida. Se omitido, e inferido de anos e bioma.",
+    )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Sobrescreve se o arquivo de saida ja existir.",
+    )
+    p.add_argument(
+        "--batch-size",
+        type=int,
+        default=3,
+        help="Tamanho do lote de processamento. Default: 3.",
+    )
+    p.add_argument(
+        "--no-normalize-dates",
+        action="store_true",
+        help="Nao padronizar a primeira coluna de DATA para YYYY-MM-DD.",
+    )
+
     args = p.parse_args()
 
-    run(
-        years=args.years,
-        id_preference=args.id_preference,
-        validation=args.validation,
-        validation_limit=args.validation_limit,
-        chunksize=args.chunksize,
-    )
+    log = get_logger("inmet.consolidate", kind="load", per_run_file=True)
+    try:
+        out = consolidate_inmet(
+            output_filename=args.output_filename,
+            years=args.years,
+            overwrite=args.overwrite,
+            encoding="utf-8",
+            batch_size=args.batch_size,
+            normalize_dates=not args.no_normalize_dates,
+            biome=args.biome,
+            municipio_col=args.municipio_col,
+        )
+        log.info(f"[DONE] Consolidado em: {out}")
+    except Exception as e:
+        log.exception(f"[ERROR] Falha na consolidacao: {e}")
