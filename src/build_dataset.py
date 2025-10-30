@@ -1,6 +1,6 @@
 # src/build_dataset_hourly.py
 # =============================================================================
-# DATASET HORA-A-HORA: INMET (Cerrado) × BDQUEIMADAS (targets)
+# DATASET HORA-A-HORA: INMET (bioma) × BDQUEIMADAS (targets)
 # Une, por município normalizado + hora, as séries do INMET (clima) e BDQ (focos).
 # Saídas:
 #   - data/dataset/inmet_bdq_{YYYY}_{biome}.csv (ano a ano, a partir de 2003)
@@ -62,24 +62,86 @@ def _list_bdq_years_for_biome(biome: str) -> List[int]:
 # -----------------------------------------------------------------------------
 # [SEÇÃO 2] PARSERS E CHAVES DE JUNÇÃO
 # -----------------------------------------------------------------------------
-def _build_ts_from_inmet(row: pd.Series) -> str:
+# Colunas possíveis no INMET (pré-2019 vs 2019+)
+DATE_COL_NEW = "Data"
+HOUR_COL_NEW = "Hora UTC"
+
+DATE_COL_OLD = "DATA (YYYY-MM-DD)"
+HOUR_COL_OLD = "HORA (UTC)"
+
+def _detect_inmet_schema(df: pd.DataFrame) -> Tuple[str, str]:
     """
-    INMET:
-      - DATA (YYYY-MM-DD)
-      - HORA (UTC) -> "HH:MM" ou "H:MM" etc.
-    Retorna "YYYY-MM-DD HH:00:00".
+    Detecta automaticamente quais colunas de data/hora usar no INMET.
+    Retorna (date_col, hour_col).
+    Regras:
+      - Se existir par (Data, Hora UTC) -> novo esquema (2019+).
+      - Caso contrário, usa (DATA (YYYY-MM-DD), HORA (UTC)) -> antigo.
+      - Se nenhum par existir, lança KeyError informativo.
     """
-    d = str(row.get("DATA (YYYY-MM-DD)", "")).strip()
-    h = str(row.get("HORA (UTC)", "")).strip()
-    m = re.match(r"^\s*(\d{1,2})", h)
-    hh = int(m.group(1)) if m else 0
+    has_new = (DATE_COL_NEW in df.columns) and (HOUR_COL_NEW in df.columns)
+    has_old = (DATE_COL_OLD in df.columns) and (HOUR_COL_OLD in df.columns)
+    if has_new:
+        return DATE_COL_NEW, HOUR_COL_NEW
+    if has_old:
+        return DATE_COL_OLD, HOUR_COL_OLD
+    raise KeyError(
+        "Colunas de data/hora não encontradas no INMET. "
+        f"Esperado {DATE_COL_NEW}+{HOUR_COL_NEW} ou {DATE_COL_OLD}+{HOUR_COL_OLD}. "
+        f"Encontradas: {list(df.columns)}"
+    )
+
+_HH_PREFIX_RE = re.compile(r"^\s*(\d{1,2})")              # captura 1-2 dígitos iniciais (ex.: '7', '07', '07:00')
+_HH_0100_RE   = re.compile(r"^\s*(\d{2})\d{2}\s*(?:UTC)?", flags=re.IGNORECASE)  # captura '01' em '0100 UTC'
+
+def _parse_hour_to_hh(hour_text: str) -> int:
+    """
+    Converte diferentes representações de hora em inteiro 0-23.
+    Casos:
+      - '0100 UTC' -> 1
+      - '0200'     -> 2
+      - '7' ou '7:00' ou '07:00' -> 7
+      - '12:34' -> 12
+      - fallback: tenta primeiros 1-2 dígitos; se falhar, 0
+    """
+    if not isinstance(hour_text, str):
+        return 0
+    s = hour_text.strip()
+
+    m2 = _HH_0100_RE.match(s)
+    if m2:
+        try:
+            hh = int(m2.group(1))
+            return max(0, min(23, hh))
+        except Exception:
+            pass
+
+    m1 = _HH_PREFIX_RE.match(s)
+    if m1:
+        try:
+            hh = int(m1.group(1))
+            return max(0, min(23, hh))
+        except Exception:
+            pass
+
+    return 0
+
+def _build_ts_from_inmet_row(row: pd.Series, date_col: str, hour_col: str) -> str:
+    """
+    Constrói timestamp horário 'YYYY-MM-DD HH:00:00' a partir das colunas detectadas.
+    Suporta:
+      - date_col ∈ {'DATA (YYYY-MM-DD)', 'Data'}
+      - hour_col ∈ {'HORA (UTC)', 'Hora UTC'} com formatos 'H', 'HH', 'HH:MM', '0100 UTC'
+    """
+    d = str(row.get(date_col, "")).strip()
+    h = str(row.get(hour_col, "")).strip()
+    hh = _parse_hour_to_hh(h)
     return f"{d} {hh:02d}:00:00"
 
 def _build_ts_from_bdq(series: pd.Series) -> pd.Series:
     """
     BDQ:
-      - DATAHORA -> "YYYY-MM-DD HH:MM:SS"
-    Retorna coluna 'ts_hour' formatada "YYYY-MM-DD HH:00:00".
+      - DATAHORA -> 'YYYY-MM-DD HH:MM:SS'
+    Retorna coluna 'ts_hour' formatada 'YYYY-MM-DD HH:00:00'.
     """
     ts = pd.to_datetime(series["DATAHORA"], errors="coerce", utc=False)
     return ts.dt.strftime("%Y-%m-%d %H:00:00")
@@ -90,23 +152,33 @@ def _build_ts_from_bdq(series: pd.Series) -> pd.Series:
 def _read_inmet_year(year: int, biome: str, encoding: str = "utf-8") -> pd.DataFrame:
     """
     Lê INMET para um ano/bioma como strings (sem converter decimais),
-    cria chaves de junção: 'cidade_norm' e 'ts_hour'.
+    normaliza 'CIDADE' e cria 'ts_hour' robusto a ambos esquemas (antigo e 2019+).
     """
     path = _inmet_consolidated_dir() / f"inmet_{year}_{biome}.csv"
     if not path.exists():
         raise FileNotFoundError(f"INMET não encontrado: {path}")
+
     df = pd.read_csv(path, dtype=str, encoding=encoding)
-    # normalização de cidade
+    if "CIDADE" not in df.columns:
+        raise KeyError(f"Coluna 'CIDADE' ausente em {path.name}. Colunas: {list(df.columns)}")
+
+    # cidade normalizada
     df["cidade_norm"] = df["CIDADE"].map(normalize_key)
-    # chave temporal por hora
-    df["ts_hour"] = df.apply(_build_ts_from_inmet, axis=1)
+
+    # detectar schema de data/hora e construir ts_hour
+    date_col, hour_col = _detect_inmet_schema(df)
+    df["ts_hour"] = df.apply(lambda r: _build_ts_from_inmet_row(r, date_col, hour_col), axis=1)
+
+    # guarda quais colunas de data/hora serão úteis para ordenação posterior
+    df.attrs["date_col"] = date_col
+    df.attrs["hour_col"] = hour_col
     return df
 
 def _read_bdq_year_reduced(year: int, biome: str, encoding: str = "utf-8") -> pd.DataFrame:
     """
     Lê BDQ targets do ano/bioma, reduz para uma linha por (municipio_norm, ts_hour)
-    usando o foco de maior FRP (determinístico).
-    Mantém colunas: ['municipio_norm','ts_hour','RISCO_FOGO','FRP','FOCO_ID'].
+    escolhendo o foco de maior FRP. Mantém:
+      ['municipio_norm','ts_hour','RISCO_FOGO','FRP','FOCO_ID'].
     """
     path = _bdq_consolidated_dir() / f"bdq_targets_{year}_{biome}.csv"
     if not path.exists():
@@ -119,11 +191,9 @@ def _read_bdq_year_reduced(year: int, biome: str, encoding: str = "utf-8") -> pd
     df["municipio_norm"] = df["MUNICIPIO"].map(normalize_key)
     df["ts_hour"] = _build_ts_from_bdq(df)
 
-    # Força FRP numérico para escolher o maior; NaN vira -inf na ordenação
     frp_num = pd.to_numeric(df["FRP"], errors="coerce")
     df["_FRP_num"] = frp_num.fillna(float("-inf"))
 
-    # idx da linha com maior FRP por (municipio_norm, ts_hour)
     idx = df.groupby(["municipio_norm", "ts_hour"])["_FRP_num"].idxmax()
     red = df.loc[idx, ["municipio_norm", "ts_hour", "RISCO_FOGO", "FRP", "FOCO_ID"]].reset_index(drop=True)
     return red
@@ -136,7 +206,6 @@ def _fuse_inmet_bdq_year(year: int, biome: str, out_dir: Path, encoding: str = "
     Une um ano de INMET (filtrado por bioma) com BDQ targets:
       - join por (cidade_norm == municipio_norm) + ts_hour
       - adiciona HAS_FOCO (0/1), RISCO_FOGO, FRP, FOCO_ID
-    Retorna caminho do CSV gerado no dataset/.
     """
     inmet = _read_inmet_year(year, biome, encoding=encoding)
     bdq   = _read_bdq_year_reduced(year, biome, encoding=encoding)
@@ -149,15 +218,14 @@ def _fuse_inmet_bdq_year(year: int, biome: str, out_dir: Path, encoding: str = "
         suffixes=("", "_bdq"),
     )
 
-    # flag de foco
     merged["HAS_FOCO"] = merged["FOCO_ID"].notna().astype("int64")
-
-    # limpeza de colunas auxiliares
     merged = merged.drop(columns=["municipio_norm"], errors="ignore")
 
-    # ordenação opcional: por DATA/HORA para facilitar leitura
-    if "DATA (YYYY-MM-DD)" in merged.columns and "HORA (UTC)" in merged.columns:
-        merged = merged.sort_values(["DATA (YYYY-MM-DD)", "HORA (UTC)", "CIDADE"], kind="stable")
+    # ordenação opcional: usa colunas detectadas para data/hora se existirem
+    date_col = inmet.attrs.get("date_col")
+    hour_col = inmet.attrs.get("hour_col")
+    if date_col and hour_col and date_col in merged.columns and hour_col in merged.columns:
+        merged = merged.sort_values([date_col, hour_col, "CIDADE"], kind="stable")
 
     out_path = out_dir / f"inmet_bdq_{year}_{biome}.csv"
     merged.to_csv(out_path, index=False, encoding=encoding)
@@ -185,7 +253,6 @@ def build_hourly_dataset(
     inmet_years = _list_inmet_years_for_biome(biome)
     bdq_years   = _list_bdq_years_for_biome(biome)
 
-    # interseção, a partir de 2003
     candidate_years = sorted(set(inmet_years).intersection(bdq_years))
     candidate_years = [y for y in candidate_years if y >= 2003]
 
@@ -215,7 +282,6 @@ def build_hourly_dataset(
         log.info(f"[WRITE] {path}")
         written.append(path)
 
-    # consolidado final
     final_path = out_dir / f"inmet_bdq_all_years_{biome}.csv"
     if (not final_path.exists()) or overwrite:
         frames = [pd.read_csv(p, dtype=str, encoding=encoding) for p in written]
