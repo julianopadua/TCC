@@ -18,6 +18,7 @@ paths:
     processed: "./data/processed"
     external: "./data/consolidated"
     dictionarys: "./data/dictionarys"
+    dataset: "./data/dataset"
   providers:
     bdqueimadas:
       raw: "./data/raw/BDQUEIMADAS"
