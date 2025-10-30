@@ -1,0 +1,1182 @@
+# City coverage 2023 — Biome: cerrado
+
+- n_cidades_bdq: **1115**
+- n_cidades_inmet: **111**
+- n_comuns: **108**
+- n_bdq_exclusivas: **1007**
+- n_inmet_exclusivas: **3**
+- prop_inmet_cobre_bdq: **0.0969**
+- prop_bdq_cobre_inmet: **0.9730**
+
+### COMMON (city_norm)
+
+- agua boa
+- agua clara
+- almas
+- alto araguaia
+- alto paraiso de goias
+- alto parnaiba
+- alto taquari
+- aquidauana
+- aragarcas
+- araguacu
+- araguaina
+- araguatins
+- bacabal
+- balsas
+- barra
+- barra do corda
+- barreiras
+- bataguassu
+- bom jesus da lapa
+- brasilia
+- buritirama
+- caiaponia
+- campo grande
+- campo verde
+- campos lindos
+- carolina
+- cassilandia
+- catalao
+- caxias
+- chapadao do sul
+- chapadinha
+- colinas
+- colinas do tocantins
+- comodoro
+- correntina
+- corumba
+- costa rica
+- coxim
+- cristalina
+- cuiaba
+- dianopolis
+- dourados
+- edeia
+- estreito
+- formosa do rio preto
+- formoso do araguaia
+- gaucha do norte
+- goianesia
+- goiania
+- goias
+- grajau
+- guiratinga
+- gurupi
+- ibotirama
+- imperatriz
+- ipora
+- itapaci
+- itiquira
+- itumbiara
+- jardim
+- jatai
+- juina
+- lagoa da confusao
+- luziania
+- maracaju
+- mateiros
+- mineiros
+- miranda
+- monte alegre de goias
+- morrinhos
+- nova maringa
+- nova ubirata
+- palmas
+- parana
+- paranaiba
+- paranatinga
+- parauna
+- pedro afonso
+- peixe
+- piranhas
+- pium
+- ponta pora
+- porangatu
+- porto estrela
+- porto murtinho
+- posse
+- primavera do leste
+- rio brilhante
+- rio sono
+- rio verde
+- rondonopolis
+- rosario oeste
+- santa rita de cassia
+- santa rosa do tocantins
+- santo antonio do leste
+- sao felix do araguaia
+- sao gabriel do oeste
+- sao miguel do araguaia
+- sao simao
+- sapezal
+- serra nova dourada
+- sidrolandia
+- silvania
+- sonora
+- sorriso
+- tangara da serra
+- tres lagoas
+- vilhena
+
+### BDQ_only (city_norm)
+
+- abadia dos dourados
+- abadiania
+- abaete
+- abreulandia
+- acorizal
+- acreuna
+- afonso cunha
+- agua doce do maranhao
+- agua fria de goias
+- aguai
+- aguanil
+- aguas de santa barbara
+- aguas lindas de goias
+- agudos
+- aguiarnopolis
+- alcinopolis
+- aldeias altas
+- alexania
+- alianca do tocantins
+- aloandia
+- alpinopolis
+- altair
+- altinopolis
+- alto alegre do maranhao
+- alto boa vista
+- alto garcas
+- alto horizonte
+- alto paraguai
+- alvorada
+- alvorada do gurgueia
+- alvorada do norte
+- amaralina
+- amarante
+- amarante do maranhao
+- americana
+- americo brasiliense
+- amorinopolis
+- analandia
+- ananas
+- anapolis
+- anapurus
+- anastacio
+- anaurilandia
+- angatuba
+- angelandia
+- angical
+- angico
+- anhembi
+- anicuns
+- antonio almeida
+- antonio joao
+- aparecida de goiania
+- aparecida do rio doce
+- aparecida do rio negro
+- aparecida do taboado
+- apore
+- aracai
+- aragoiania
+- aragominas
+- araguacema
+- araguaiana
+- araguapaz
+- araguari
+- araioses
+- arame
+- aramina
+- arandu
+- arapua
+- araraquara
+- araras
+- arari
+- araujos
+- araxa
+- arcos
+- arealva
+- arenopolis
+- arinos
+- arraias
+- artur nogueira
+- aruana
+- assis
+- augustinopolis
+- augusto de lima
+- aurilandia
+- aurora do tocantins
+- avai
+- avare
+- avelino lopes
+- avelinopolis
+- axixa do tocantins
+- babaculandia
+- baianopolis
+- baixa grande do ribeiro
+- baldim
+- baliza
+- bambui
+- bandeirantes
+- bandeirantes do tocantins
+- barao de grajau
+- bariri
+- barra bonita
+- barra do bugres
+- barra do garcas
+- barra do ouro
+- barras
+- barreiras do piaui
+- barreirinhas
+- barretos
+- barrinha
+- barro alto
+- barrolandia
+- batatais
+- bataypora
+- bauru
+- bebedouro
+- bela vista
+- bela vista de goias
+- belagua
+- belo horizonte
+- benedito leite
+- berilo
+- bernardo do mearim
+- bertolinia
+- betim
+- boa esperanca
+- boa esperanca do sul
+- bocaina
+- bocaiuva
+- bodoquena
+- bofete
+- bom despacho
+- bom jardim de goias
+- bom jesus
+- bom jesus de goias
+- bom jesus do amparo
+- bom jesus do araguaia
+- bom jesus do tocantins
+- bonfinopolis de minas
+- bonito
+- bonito de minas
+- bonopolis
+- borborema
+- botucatu
+- botumirim
+- brasilandia
+- brasilandia de minas
+- brasilandia do tocantins
+- brasilia de minas
+- brasnorte
+- brejinho de nazare
+- brejo
+- brejo de areia
+- brejolandia
+- britania
+- brodowski
+- brotas
+- buenopolis
+- buri
+- buriti
+- buriti alegre
+- buriti bravo
+- buriti do tocantins
+- buriti dos lopes
+- buritirana
+- buritis
+- buritizal
+- buritizeiro
+- cabeceira grande
+- cabeceiras
+- cabralia paulista
+- caceres
+- cachoeira alta
+- cachoeira da prata
+- cachoeira de goias
+- cachoeira dourada
+- cachoeira grande
+- cachoeirinha
+- cacu
+- caetanopolis
+- caete
+- caldas novas
+- camapua
+- campestre de goias
+- campestre do maranhao
+- campina verde
+- campinacu
+- campinapolis
+- campinorte
+- campo alegre de goias
+- campo florido
+- campo limpo de goias
+- campo novo do parecis
+- campos altos
+- campos belos
+- campos de julio
+- campos verdes
+- canabrava do norte
+- canapolis
+- canarana
+- canavieira
+- candeias
+- cantanhede
+- canto do buriti
+- capao bonito
+- capelinha
+- capim branco
+- capinopolis
+- capinzal do norte
+- capitao eneas
+- capitolio
+- caracol
+- carbonita
+- cardoso
+- carinhanha
+- cariri do tocantins
+- carmo do cajuru
+- carmo do paranaiba
+- carmo do rio claro
+- carmolandia
+- carneirinho
+- carrasco bonito
+- casa branca
+- caseara
+- cassia
+- castelandia
+- catolandia
+- cavalcante
+- cedro do abaete
+- centenario
+- ceres
+- cerqueira cesar
+- chapada da natividade
+- chapada de areia
+- chapada do norte
+- chapada dos guimaraes
+- chapada gaucha
+- chapadao do ceu
+- cidade ocidental
+- claraval
+- claro dos pocoes
+- claudio
+- cocalinho
+- cocalzinho de goias
+- cocos
+- codo
+- coelho neto
+- colina
+- colinas do sul
+- colmeia
+- colombia
+- colonia do gurgueia
+- combinado
+- comendador gomes
+- conceicao das alagoas
+- conceicao do mato dentro
+- conceicao do para
+- conceicao do tocantins
+- conchal
+- conchas
+- conego marinho
+- confresa
+- conquista
+- conquista d oeste
+- coracao de jesus
+- cordisburgo
+- corguinho
+- coribe
+- corinto
+- coroata
+- coromandel
+- coronel murta
+- corrego danta
+- corrego do ouro
+- corrego fundo
+- corrente
+- corumba de goias
+- corumbaiba
+- cosmopolis
+- cosmorama
+- cotegipe
+- couto de magalhaes de minas
+- couto magalhaes
+- cristais
+- cristais paulista
+- cristalandia
+- cristalandia do piaui
+- cristalia
+- cristianopolis
+- cristino castro
+- cristopolis
+- crixas
+- crixas do tocantins
+- cumari
+- curimata
+- currais
+- curral de dentro
+- curvelo
+- damianopolis
+- darcinopolis
+- datas
+- davinopolis
+- delfinopolis
+- descalvado
+- diamantina
+- diamantino
+- diorama
+- divinopolis
+- divinopolis de goias
+- divinopolis do tocantins
+- dobrada
+- dois corregos
+- dois irmaos do buriti
+- dois irmaos do tocantins
+- dom aquino
+- dom bosco
+- dom pedro
+- dores do indaia
+- doresopolis
+- dourado
+- doverlandia
+- duartina
+- duere
+- dumont
+- duque bacelar
+- edealina
+- eliseu martins
+- engenheiro coelho
+- engenheiro navarro
+- esmeraldas
+- esperantinopolis
+- espinosa
+- espirito santo do pinhal
+- estiva gerbi
+- estrela do indaia
+- estrela do norte
+- estrela do sul
+- faina
+- fatima
+- fazenda nova
+- feira da mata
+- feira nova do maranhao
+- felicio dos santos
+- felixlandia
+- fernando falcao
+- figueirao
+- figueiropolis
+- filadelfia
+- flores de goias
+- floriano
+- formiga
+- formosa
+- formosa da serra negra
+- formoso
+- fortaleza do tabocao
+- fortaleza dos nogueiras
+- fortuna
+- fortuna de minas
+- franca
+- francisco badaro
+- francisco dumont
+- francisco sa
+- fronteira
+- fruta de leite
+- frutal
+- funilandia
+- gameleira de goias
+- gameleiras
+- gaviao peixoto
+- general carneiro
+- gilbues
+- goiandira
+- goianira
+- goianorte
+- goiatins
+- goiatuba
+- goncalves dias
+- gouveia
+- governador archer
+- governador edison lobao
+- governador eugenio barros
+- governador luiz rocha
+- graca aranha
+- grao mogol
+- grupiara
+- guadalupe
+- guaira
+- guape
+- guapiacu
+- guapo
+- guara
+- guaraciama
+- guarai
+- guarani de goias
+- guarda mor
+- guariba
+- guaribas
+- guarinos
+- guatapara
+- guia lopes da laguna
+- guimarania
+- gurinhata
+- heitorai
+- hidrolandia
+- hidrolina
+- humberto de campos
+- iaciara
+- iaras
+- ibate
+- ibia
+- ibiai
+- ibiraci
+- ibitinga
+- icarai de minas
+- icatu
+- igarapava
+- igarape grande
+- iguatama
+- ilha grande
+- ilicinea
+- inaciolandia
+- indaiabira
+- indianopolis
+- indiara
+- inhauma
+- inhumas
+- inimutaba
+- inocencia
+- ipameri
+- ipigua
+- ipiranga de goias
+- ipiranga do norte
+- ipua
+- ipueiras
+- israelandia
+- itabera
+- itaberai
+- itabira
+- itacaja
+- itacambira
+- itacarambi
+- itaguaru
+- itaguatins
+- itai
+- itaipava do grajau
+- itaja
+- itamarandiba
+- itamogi
+- itapagipe
+- itapecerica
+- itapecuru mirim
+- itapetininga
+- itapeva
+- itapira
+- itapirapua
+- itapiratins
+- itapolis
+- itapuranga
+- itarare
+- itaruma
+- itatinga
+- itaueira
+- itauna
+- itirapina
+- ituiutaba
+- iturama
+- ituverava
+- iuiu
+- ivolandia
+- jaborandi
+- jaboticabal
+- jaboticatubas
+- jaguariaiva
+- jaiba
+- janauba
+- jandaia
+- jangada
+- januaria
+- japonvar
+- jaragua
+- jaraguari
+- jardinopolis
+- jatoba
+- jau do tocantins
+- jaupaci
+- jenipapo dos vieiras
+- jequitai
+- jequitiba
+- jeriquara
+- jerumenha
+- jesupolis
+- joao lisboa
+- joao pinheiro
+- joaquim felicio
+- jose de freitas
+- jose goncalves de minas
+- joselandia
+- josenopolis
+- joviania
+- juarina
+- julio borges
+- juramento
+- juscimeira
+- jussara
+- juvenilia
+- lagamar
+- lago da pedra
+- lago dos rodrigues
+- lagoa da prata
+- lagoa do mato
+- lagoa do tocantins
+- lagoa dos patos
+- lagoa grande
+- lagoa grande do maranhao
+- lagoa santa
+- lajeado
+- lajeado novo
+- landri sales
+- lassance
+- lavandeira
+- leandro ferreira
+- leme
+- lima campos
+- limeira
+- lizarda
+- loreto
+- lucas do rio verde
+- lucianopolis
+- luciara
+- luis antonio
+- luis correia
+- luis eduardo magalhaes
+- luz
+- luzilandia
+- luzinopolis
+- magalhaes de almeida
+- malhada
+- mambai
+- manga
+- manoel emidio
+- mansidao
+- mara rosa
+- maracai
+- maraja do sena
+- marcos parente
+- marianopolis do tocantins
+- martinho campos
+- martinopolis
+- marzagao
+- mata roma
+- matao
+- matias cardoso
+- matias olimpio
+- mato verde
+- matoes
+- matoes do norte
+- matozinhos
+- matrincha
+- maurilandia
+- maurilandia do tocantins
+- medeiros
+- miguel alves
+- miguelopolis
+- milagres do maranhao
+- mimoso de goias
+- minacu
+- minas novas
+- mineiros do tiete
+- mirabela
+- miracema do tocantins
+- mirador
+- miranda do norte
+- miranorte
+- mirassol
+- miravania
+- mococa
+- moema
+- mogi guacu
+- mogi mirim
+- moipora
+- monjolos
+- montalvania
+- monte alegre de minas
+- monte alegre do piaui
+- monte aprazivel
+- monte azul
+- monte carmelo
+- monte do carmo
+- monte santo de minas
+- monte santo do tocantins
+- montes altos
+- montes claros
+- montes claros de goias
+- montezuma
+- montividiu
+- montividiu do norte
+- morada nova de minas
+- morro agudo
+- morro cabeca no tempo
+- morro da garca
+- morro do pilar
+- morros
+- mossamedes
+- mozarlandia
+- mundo novo
+- muquem do sao francisco
+- murici dos portelas
+- muricilandia
+- mutunopolis
+- natalandia
+- natividade
+- nazare
+- nazario
+- nhandeara
+- nina rodrigues
+- nioaque
+- niquelandia
+- nobres
+- nossa senhora do livramento
+- nova alvorada do sul
+- nova andradina
+- nova aurora
+- nova brasilandia
+- nova colinas
+- nova crixas
+- nova europa
+- nova gloria
+- nova iorque
+- nova lacerda
+- nova mutum
+- nova nazare
+- nova olinda
+- nova ponte
+- nova porteirinha
+- nova roma
+- nova rosalandia
+- nova serrana
+- nova uniao
+- nova xavantina
+- novo acordo
+- novo alegre
+- novo brasil
+- novo gama
+- novo jardim
+- novo planalto
+- novo santo antonio
+- novo sao joaquim
+- novorizonte
+- ocaucu
+- olhos d agua
+- oliveira de fatima
+- orindiuva
+- orizona
+- orlandia
+- ouro verde de goias
+- ouvidor
+- padre bernardo
+- padre carvalho
+- paineiras
+- pains
+- palestina de goias
+- palmas de monte alto
+- palmeira do piaui
+- palmeirais
+- palmeirante
+- palmeiras de goias
+- palmeiras do tocantins
+- palmeiropolis
+- panama
+- papagaios
+- paracatu
+- paraguacu paulista
+- paraibano
+- paraiso das aguas
+- paraiso do tocantins
+- paranaiguara
+- paranapanema
+- paraopeba
+- paratinga
+- parnagua
+- parnaiba
+- parnarama
+- passagem franca
+- passos
+- pastos bons
+- patis
+- patos de minas
+- patrocinio
+- patrocinio paulista
+- pau d arco
+- paulinia
+- paulino neves
+- paulistania
+- paulo de faria
+- paulo ramos
+- pederneiras
+- pedra preta
+- pedras de maria da cruz
+- pedregulho
+- pedreiras
+- pedrinopolis
+- pedro gomes
+- pedro leopoldo
+- pequizeiro
+- perdigao
+- perdizes
+- peritoro
+- perolandia
+- petrolina de goias
+- pilao arcado
+- pilar de goias
+- pindorama do tocantins
+- pintopolis
+- piracanjuba
+- piracicaba
+- pirai do sul
+- pirapemas
+- pirapora
+- piratininga
+- pirenopolis
+- pitangueiras
+- pitangui
+- piumhi
+- planaltina
+- planalto da serra
+- planura
+- platina
+- pocao de pedras
+- pocone
+- pompeu
+- pontal
+- pontal do araguaia
+- pontalina
+- ponte alta do bom jesus
+- ponte alta do tocantins
+- ponte branca
+- ponto chique
+- porteirao
+- porteirinha
+- portelandia
+- porto
+- porto alegre do norte
+- porto alegre do piaui
+- porto alegre do tocantins
+- porto franco
+- porto nacional
+- poxoreu
+- pradopolis
+- praia norte
+- prata
+- pratapolis
+- pratinha
+- presidente dutra
+- presidente juscelino
+- presidente kennedy
+- presidente olegario
+- presidente vargas
+- primeira cruz
+- professor jamil
+- prudente de morais
+- pugmil
+- quirinopolis
+- recursolandia
+- redencao do gurgueia
+- riachao
+- riachao das neves
+- riachinho
+- riacho de santana
+- riacho dos machados
+- riacho frio
+- rialma
+- rianapolis
+- ribamar fiquene
+- ribas do rio pardo
+- ribeirao cascalheira
+- ribeirao das neves
+- ribeirao preto
+- ribeiraozinho
+- ribeiro goncalves
+- rio claro
+- rio da conceicao
+- rio das pedras
+- rio dos bois
+- rio negro
+- rio paranaiba
+- rio pardo de minas
+- rio verde de mato grosso
+- rochedo
+- romaria
+- rubelita
+- rubiataba
+- sabara
+- sacramento
+- saltinho
+- sambaiba
+- sampaio
+- sanclerlandia
+- sandolandia
+- santa barbara de goias
+- santa cruz de goias
+- santa cruz de salinas
+- santa ernestina
+- santa fe de goias
+- santa fe de minas
+- santa filomena
+- santa filomena do maranhao
+- santa helena de goias
+- santa isabel
+- santa juliana
+- santa lucia
+- santa luz
+- santa luzia
+- santa maria da vitoria
+- santa maria do tocantins
+- santa quiteria do maranhao
+- santa rita
+- santa rita do araguaia
+- santa rita do novo destino
+- santa rita do pardo
+- santa rita do passa quatro
+- santa rita do tocantins
+- santa rita do trivelato
+- santa rosa da serra
+- santa rosa de goias
+- santa rosa de viterbo
+- santa tereza de goias
+- santa tereza do tocantins
+- santa terezinha
+- santa terezinha de goias
+- santa vitoria
+- santana
+- santana de pirapama
+- santana do maranhao
+- santana do riacho
+- santo amaro do maranhao
+- santo antonio da alegria
+- santo antonio da barra
+- santo antonio do descoberto
+- santo antonio do leverger
+- santo antonio do monte
+- santo antonio do retiro
+- santo antonio dos lopes
+- sao benedito do rio preto
+- sao bento do tocantins
+- sao bernardo
+- sao carlos
+- sao desiderio
+- sao domingos
+- sao domingos do azeitao
+- sao domingos do maranhao
+- sao felix de balsas
+- sao felix do coribe
+- sao felix do tocantins
+- sao francisco
+- sao francisco de goias
+- sao francisco de sales
+- sao francisco do maranhao
+- sao goncalo do abaete
+- sao goncalo do gurgueia
+- sao goncalo do rio preto
+- sao gotardo
+- sao joao batista do gloria
+- sao joao d alianca
+- sao joao da lagoa
+- sao joao da parauna
+- sao joao da ponte
+- sao joao das missoes
+- sao joao do arraial
+- sao joao do pacui
+- sao joao do paraiso
+- sao joao do soter
+- sao joao dos patos
+- sao joaquim da barra
+- sao jose da barra
+- sao jose do rio claro
+- sao jose do rio preto
+- sao jose dos basilios
+- sao luis de montes belos
+- sao luis gonzaga do maranhao
+- sao luiz do norte
+- sao mateus do maranhao
+- sao miguel do passa quatro
+- sao miguel do tocantins
+- sao pedro
+- sao pedro da cipa
+- sao pedro do turvo
+- sao pedro dos crentes
+- sao raimundo das mangabeiras
+- sao raimundo do doca bezerra
+- sao roberto
+- sao romao
+- sao roque de minas
+- sao salvador do tocantins
+- sao sebastiao do oeste
+- sao sebastiao do paraiso
+- sao sebastiao do rio preto
+- sao tomas de aquino
+- sao valerio
+- sebastiao barros
+- sebastiao laranjeiras
+- sebastiao leal
+- selviria
+- senador alexandre costa
+- senador canedo
+- senador modestino goncalves
+- senges
+- serra da saudade
+- serra do ramalho
+- serra do salitre
+- serra dourada
+- serrana
+- serranopolis
+- serranopolis de minas
+- serro
+- sertaozinho
+- sete lagoas
+- silvanopolis
+- simolandia
+- sitio d abadia
+- sitio do mato
+- sitio novo
+- sitio novo do tocantins
+- sucupira
+- sucupira do norte
+- sucupira do riachao
+- tabatinga
+- tabocas do brejo velho
+- taguatinga
+- taiobeiras
+- taipas do tocantins
+- talisma
+- tambau
+- tanabi
+- tapira
+- tapirai
+- tapurah
+- taquaracu de minas
+- taquaral
+- taquaritinga
+- tasso fragoso
+- tejupa
+- terenos
+- teresina
+- teresina de goias
+- terezopolis de goias
+- tesouro
+- tibagi
+- timbiras
+- timon
+- tiros
+- tocantinia
+- tocantinopolis
+- torixoreu
+- torrinha
+- trabiju
+- tres marias
+- tres ranchos
+- trindade
+- trizidela do vale
+- trombas
+- tuntum
+- tupaciguara
+- tupirama
+- tupiratins
+- turmalina
+- turvania
+- turvelandia
+- tutoia
+- ubai
+- uberaba
+- uberlandia
+- ubirajara
+- uirapuru
+- unai
+- uniao
+- uniao de minas
+- urandi
+- urbano santos
+- uruacu
+- uruana de minas
+- urucui
+- urucuia
+- urutai
+- vale de sao domingos
+- valentim gentil
+- valparaiso de goias
+- vargem bonita
+- vargem grande
+- vargem grande do rio pardo
+- varzea da palma
+- varzea grande
+- varzelandia
+- vazante
+- verdelandia
+- veredinha
+- verissimo
+- vespasiano
+- vianopolis
+- vicentinopolis
+- vila boa
+- vila propicio
+- vila rica
+- viradouro
+- virgem da lapa
+- votuporanga
+- wanderlandia
+- wanderley
+- xique xique
+
+### INMET_only (city_norm)
+
+- pires do rio
+- pontes e lacerda
+- salto do ceu
+
+### BDQ raw examples (top 20)
+
+- MIRADOR (1325)
+- LAGOA DA CONFUSAO (1082)
+- BALSAS (831)
+- ALTO PARNAIBA (808)
+- URUCUI (781)
+- FORMOSA DO RIO PRETO (732)
+- FORMOSO DO ARAGUAIA (680)
+- FERNANDO FALCAO (648)
+- CAXIAS (523)
+- GRAJAU (514)
+- BAIXA GRANDE DO RIBEIRO (492)
+- SANTA FILOMENA (462)
+- PARANA (443)
+- MATEIROS (439)
+- SAO DESIDERIO (433)
+- GOIATINS (417)
+- COCOS (408)
+- BARRA DO CORDA (403)
+- LORETO (398)
+- PORTO MURTINHO (391)
+
+### INMET raw examples (top 20)
+
+- BRASILIA (17518)
+- GOIANIA (17518)
+- MORRINHOS (17518)
+- PORANGATU (17518)
+- SAO SIMAO (17518)
+- LUZIANIA (17518)
+- ARAGARCAS (17518)
+- GOIAS (17518)
+- ITAPACI (17518)
+- JATAI (17518)
+- POSSE (17518)
+- GOIANESIA (17518)
+- CAIAPONIA (17518)
+- ALTO PARAISO DE GOIAS (17518)
+- RIO VERDE (17518)
+- MINEIROS (17518)
+- PARAUNA (17518)
+- IPORA (17518)
+- EDEIA (17518)
+- SAO MIGUEL DO ARAGUAIA (17518)
