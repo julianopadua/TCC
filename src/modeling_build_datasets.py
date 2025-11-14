@@ -43,7 +43,7 @@
 #      - Mantem radiacao global
 #      - Imputa features numericas com KNNImputer (ano a ano)
 #
-# - "Features" aqui = colunas numericas ou de contexto, exceto:
+# - "Features" aqui = colunas numericas de contexto, exceto:
 #   * colunas em EXCLUDE_NON_NUMERIC (datas, cidade, etc.)
 #   * colunas alvo (RISCO_FOGO, FRP, FOCO_ID)
 #   * label HAS_FOCO
@@ -95,13 +95,14 @@ FILENAME_PATTERN = "inmet_bdq_*_cerrado.csv"
 MISSING_CODES = {-999, -9999}
 MISSING_CODES_STR = {str(v) for v in MISSING_CODES}
 
-# Colunas que nao entram como features (IDs, datas, textos)
+# Colunas que nao entram como features (datas, IDs, texto, etc.)
 EXCLUDE_NON_NUMERIC = {
     "DATA (YYYY-MM-DD)",
     "HORA (UTC)",
     "CIDADE",
     "cidade_norm",
     "ts_hour",
+    "ANO",  # ANO é contexto, mas não entra no KNN das features
 }
 
 # Colunas alvo (labels auxiliares)
@@ -138,6 +139,8 @@ class ModelingDatasetBuilder:
     target_cols: set[str] = field(default_factory=lambda: TARGET_COLS.copy())
     label_col: str = LABEL_COL
     radiacao_col: str = RADIACAO_COL
+    # Por default, NAO sobrescreve parquets ja existentes.
+    overwrite_existing: bool = False
 
     def __post_init__(self) -> None:
         self.missing_codes_str = {str(v) for v in self.missing_codes}
@@ -215,7 +218,7 @@ class ModelingDatasetBuilder:
         df = pd.read_csv(
             fp,
             sep=",",
-            decimal=",",
+            decimal=",",  # trata "898,1" como 898.1, etc.
             encoding="utf-8",
             low_memory=False,
         )
@@ -252,6 +255,28 @@ class ModelingDatasetBuilder:
         return df
 
     # ------------------------------
+    # Forcar features a numerico (pos missing_semantics)
+    # ------------------------------
+    def coerce_feature_columns_to_numeric(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Forca as colunas de feature a serem numericas via pd.to_numeric(errors='coerce').
+        Isso garante que o KNNImputer enxergue todas como numericas,
+        desde que os valores sejam de fato numericos ou NaN.
+        """
+        df = df.copy()
+        feature_cols = self.get_feature_columns(df)
+
+        for c in feature_cols:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+        n_num = sum(pd.api.types.is_numeric_dtype(df[c]) for c in feature_cols)
+        log.info(
+            f"[COERCE] {len(feature_cols)} features candidatas; "
+            f"{n_num} colunas numericas apos to_numeric."
+        )
+        return df
+
+    # ------------------------------
     # Determinar colunas de feature
     # ------------------------------
     def get_feature_columns(self, df: pd.DataFrame) -> List[str]:
@@ -270,12 +295,12 @@ class ModelingDatasetBuilder:
             if c in self.exclude_non_numeric:
                 continue
             feature_cols.append(c)
-        log.info(f"[FEATURES] {len(feature_cols)} colunas de feature encontradas.")
+        log.info(f"[FEATURES] {len(feature_cols)} colunas de feature encontradas: {feature_cols}")
         return feature_cols
 
     def get_numeric_feature_columns(self, df: pd.DataFrame, feature_cols: List[str]) -> List[str]:
         num_cols = [c for c in feature_cols if pd.api.types.is_numeric_dtype(df[c])]
-        log.info(f"[NUM FEATURES] {len(num_cols)} colunas numericas para KNNImputer.")
+        log.info(f"[NUM FEATURES] {len(num_cols)} colunas numericas para KNNImputer: {num_cols}")
         return num_cols
 
     # ------------------------------
@@ -333,23 +358,48 @@ class ModelingDatasetBuilder:
         return df_clean
 
     # ------------------------------
+    # Helper: caminho do parquet de um cenario/ano
+    # ------------------------------
+    def get_scenario_path(self, scenario: str, year: int) -> Path:
+        """
+        Retorna o caminho completo do parquet para um dado cenario e ano,
+        sem criar o diretorio ainda.
+        """
+        return self.modeling_dir / scenario / f"inmet_bdq_{year}_cerrado.parquet"
+
+
+    # ------------------------------
     # Helper para salvar cenarios (por ano)
     # ------------------------------
     def save_scenario_year(self, df: pd.DataFrame, scenario: str, year: int) -> None:
         """
         Salva um parquet para um determinado cenario e ano.
         Ex: data/modeling/base_A_no_rad/inmet_bdq_2004_cerrado.parquet
+
+        Por default NAO sobrescreve se o arquivo ja existir. Para forcar
+        sobrescrita, use overwrite_existing=True no builder ou --overwrite-existing na CLI.
         """
-        scenario_dir = ensure_dir(self.modeling_dir / scenario)
-        path = scenario_dir / f"inmet_bdq_{year}_cerrado.parquet"
+        path = self.get_scenario_path(scenario, year)
+        scenario_dir = ensure_dir(path.parent)
+
+        if path.exists() and not self.overwrite_existing:
+            log.info(
+                f"[SKIP] {scenario} ({year}) ja existe em {path}, nao sobrescrevendo "
+                f"(overwrite_existing={self.overwrite_existing})."
+            )
+            return
+
+        if path.exists() and self.overwrite_existing:
+            log.info(
+                f"[OVERWRITE] {scenario} ({year}) ja existia em {path}, sera sobrescrito."
+            )
+
         df.to_parquet(path, index=False)
         log.info(
             f"[SAVE] {scenario} ({year}): {df.shape[0]} linhas, {df.shape[1]} colunas -> {path}"
         )
 
-    # ------------------------------
-    # Construir e salvar as 6 bases para UM ANO
-    # ------------------------------
+
     def build_and_save_scenarios_for_year(
         self,
         df_year: pd.DataFrame,
@@ -358,14 +408,40 @@ class ModelingDatasetBuilder:
     ) -> None:
         """
         Constroi e salva as 6 bases para um ano especifico.
+
+        IMPORTANTE:
+        - Se TODOS os 6 parquets ja existirem e overwrite_existing=False,
+          o ano inteiro eh pulado antes de qualquer processamento pesado.
+        - Para cada cenario, se o parquet ja existir e overwrite_existing=False,
+          o cenario eh pulado ANTES de rodar KNN/drop/etc.
         """
         if self.label_col not in df_year.columns:
             raise KeyError(
                 f"Coluna de label '{self.label_col}' nao encontrada no ano {year}."
             )
 
-        # Garante semantica de missing aplicada neste ano
+        scenarios = [
+            "base_F_full_original",
+            "base_A_no_rad",
+            "base_B_no_rad_knn",
+            "base_C_no_rad_drop_rows",
+            "base_D_with_rad_drop_rows",
+            "base_E_with_rad_knn",
+        ]
+
+        # 1) Checa se TODOS os cenarios ja existem para este ano
+        if not self.overwrite_existing:
+            all_exist = all(self.get_scenario_path(s, year).exists() for s in scenarios)
+            if all_exist:
+                log.info(
+                    f"[YEAR {year}] Todos os cenarios ja existem e overwrite_existing=False. "
+                    f"Pulando ano inteiro."
+                )
+                return
+
+        # 2) So agora aplicamos missing/coerce, pois de fato teremos algo a fazer
         df_year = self.apply_missing_semantics(df_year)
+        df_year = self.coerce_feature_columns_to_numeric(df_year)
 
         # Opcional: ordena por data/hora se existirem
         sort_cols = [c for c in ["ANO", "DATA (YYYY-MM-DD)", "HORA (UTC)"] if c in df_year.columns]
@@ -373,48 +449,90 @@ class ModelingDatasetBuilder:
             df_year = df_year.sort_values(sort_cols).reset_index(drop=True)
 
         log.info(
-            f"[YEAR {year}] Base original apos missing: "
+            f"[YEAR {year}] Base original apos missing/coerce: "
             f"{df_year.shape[0]} linhas, {df_year.shape[1]} colunas."
         )
 
-        # 1) Base F: full original (apenas com sentinelas -> NaN)
-        df_F = df_year.copy()
-        self.save_scenario_year(df_F, "base_F_full_original", year)
-
-        # 2) Base A: sem radiacao, sem imputacao, sem remocao de linhas
-        df_A = df_year.copy()
-        if self.radiacao_col in df_A.columns:
-            df_A = df_A.drop(columns=[self.radiacao_col])
-            log.info(f"[YEAR {year}][A] Coluna de radiacao '{self.radiacao_col}' removida.")
+        # --------------------------
+        # 1) Base F: full original
+        # --------------------------
+        path_F = self.get_scenario_path("base_F_full_original", year)
+        if path_F.exists() and not self.overwrite_existing:
+            log.info(f"[YEAR {year}][SKIP] base_F_full_original ja existe em {path_F}.")
         else:
-            log.warning(f"[YEAR {year}][A] Coluna de radiacao '{self.radiacao_col}' nao encontrada.")
-        self.save_scenario_year(df_A, "base_A_no_rad", year)
+            df_F = df_year.copy()
+            self.save_scenario_year(df_F, "base_F_full_original", year)
 
-        # 3) Base B: sem radiacao + KNNImputer
-        df_B = df_A.copy()
-        feature_cols_no_rad = self.get_feature_columns(df_B)
-        df_B = self.apply_knn_imputation(df_B, feature_cols_no_rad, n_neighbors=n_neighbors)
-        self.save_scenario_year(df_B, "base_B_no_rad_knn", year)
+        # --------------------------
+        # 2) Base A: sem radiacao
+        # --------------------------
+        path_A = self.get_scenario_path("base_A_no_rad", year)
+        if path_A.exists() and not self.overwrite_existing:
+            log.info(f"[YEAR {year}][SKIP] base_A_no_rad ja existe em {path_A}.")
+            # Mas ainda vamos precisar de uma versao sem radiacao para B/C se forem rodar.
+            df_A = df_year.copy()
+            if self.radiacao_col in df_A.columns:
+                df_A = df_A.drop(columns=[self.radiacao_col])
+        else:
+            df_A = df_year.copy()
+            if self.radiacao_col in df_A.columns:
+                df_A = df_A.drop(columns=[self.radiacao_col])
+                log.info(f"[YEAR {year}][A] Coluna de radiacao '{self.radiacao_col}' removida.")
+            else:
+                log.warning(
+                    f"[YEAR {year}][A] Coluna de radiacao '{self.radiacao_col}' nao encontrada."
+                )
+            self.save_scenario_year(df_A, "base_A_no_rad", year)
 
-        # 4) Base C: sem radiacao + drop de linhas com features faltantes
-        df_C = df_A.copy()
-        feature_cols_no_rad = self.get_feature_columns(df_C)
-        df_C = self.drop_rows_with_missing_features(df_C, feature_cols_no_rad)
-        self.save_scenario_year(df_C, "base_C_no_rad_drop_rows", year)
+        # --------------------------
+        # 3) Base B: sem radiacao + KNN
+        # --------------------------
+        path_B = self.get_scenario_path("base_B_no_rad_knn", year)
+        if path_B.exists() and not self.overwrite_existing:
+            log.info(f"[YEAR {year}][SKIP] base_B_no_rad_knn ja existe em {path_B}.")
+        else:
+            df_B = df_A.copy()
+            feature_cols_no_rad = self.get_feature_columns(df_B)
+            df_B = self.apply_knn_imputation(df_B, feature_cols_no_rad, n_neighbors=n_neighbors)
+            self.save_scenario_year(df_B, "base_B_no_rad_knn", year)
 
-        # 5) Base D: com radiacao + drop de linhas com features faltantes
-        df_D = df_year.copy()
-        feature_cols_full = self.get_feature_columns(df_D)
-        df_D = self.drop_rows_with_missing_features(df_D, feature_cols_full)
-        self.save_scenario_year(df_D, "base_D_with_rad_drop_rows", year)
+        # --------------------------
+        # 4) Base C: sem radiacao + drop rows
+        # --------------------------
+        path_C = self.get_scenario_path("base_C_no_rad_drop_rows", year)
+        if path_C.exists() and not self.overwrite_existing:
+            log.info(f"[YEAR {year}][SKIP] base_C_no_rad_drop_rows ja existe em {path_C}.")
+        else:
+            df_C = df_A.copy()
+            feature_cols_no_rad = self.get_feature_columns(df_C)
+            df_C = self.drop_rows_with_missing_features(df_C, feature_cols_no_rad)
+            self.save_scenario_year(df_C, "base_C_no_rad_drop_rows", year)
 
-        # 6) Base E: com radiacao + KNNImputer
-        df_E = df_year.copy()
-        feature_cols_full = self.get_feature_columns(df_E)
-        df_E = self.apply_knn_imputation(df_E, feature_cols_full, n_neighbors=n_neighbors)
-        self.save_scenario_year(df_E, "base_E_with_rad_knn", year)
+        # --------------------------
+        # 5) Base D: com radiacao + drop rows
+        # --------------------------
+        path_D = self.get_scenario_path("base_D_with_rad_drop_rows", year)
+        if path_D.exists() and not self.overwrite_existing:
+            log.info(f"[YEAR {year}][SKIP] base_D_with_rad_drop_rows ja existe em {path_D}.")
+        else:
+            df_D = df_year.copy()
+            feature_cols_full = self.get_feature_columns(df_D)
+            df_D = self.drop_rows_with_missing_features(df_D, feature_cols_full)
+            self.save_scenario_year(df_D, "base_D_with_rad_drop_rows", year)
 
-        log.info(f"[YEAR {year}] Todos os cenarios salvos para este ano.")
+        # --------------------------
+        # 6) Base E: com radiacao + KNN
+        # --------------------------
+        path_E = self.get_scenario_path("base_E_with_rad_knn", year)
+        if path_E.exists() and not self.overwrite_existing:
+            log.info(f"[YEAR {year}][SKIP] base_E_with_rad_knn ja existe em {path_E}.")
+        else:
+            df_E = df_year.copy()
+            feature_cols_full = self.get_feature_columns(df_E)
+            df_E = self.apply_knn_imputation(df_E, feature_cols_full, n_neighbors=n_neighbors)
+            self.save_scenario_year(df_E, "base_E_with_rad_knn", year)
+
+        log.info(f"[YEAR {year}] Processamento concluido.")
 
     # ------------------------------
     # Pipeline principal: processar varios anos
@@ -492,6 +610,14 @@ def main() -> None:
         default=RADIACAO_COL,
         help=f"Nome da coluna de radiacao global (default: {RADIACAO_COL!r}).",
     )
+    parser.add_argument(
+        "--overwrite-existing",
+        action="store_true",
+        help=(
+            "Se informado, sobrescreve parquets ja existentes em data/modeling. "
+            "Sem esta flag, arquivos existentes sao mantidos e o cenario/ano eh pulado."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -500,6 +626,7 @@ def main() -> None:
         modeling_dir=MODELING_DIR,
         file_pattern=args.pattern,
         radiacao_col=args.radiacao_col,
+        overwrite_existing=args.overwrite_existing,
     )
 
     log.info(
@@ -507,7 +634,8 @@ def main() -> None:
         f"pattern={builder.file_pattern} "
         f"modeling_dir={builder.modeling_dir} "
         f"radiacao_col={builder.radiacao_col} "
-        f"n_neighbors={args.n_neighbors}"
+        f"n_neighbors={args.n_neighbors} "
+        f"overwrite_existing={builder.overwrite_existing}"
     )
 
     builder.run_for_years(years=args.years, n_neighbors=args.n_neighbors)
