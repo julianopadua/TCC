@@ -3,28 +3,24 @@
 # EDA DATASET — AUDITORIA DE DADOS FALTANTES (INMET + BDQueimadas, CERRADO)
 # =============================================================================
 # Objetivo:
-# - Analisar, por ano e por coluna, a presença de dados faltantes nos arquivos
-#   consolidados inmet_bdq_{ANO}_cerrado.csv.
+# - Analisar, por ano e por coluna de feature, a presença de dados faltantes nos
+#   arquivos consolidados inmet_bdq_{ANO}_cerrado.csv.
 # - Considerar como faltante:
 #     * NaN / null
 #     * strings vazias (após strip)
 #     * códigos especiais negativos como -999 e -9999
-# - Destacar:
-#     * impacto em exemplos com foco (HAS_FOCO == 1)
-#     * impacto global por ano
-#     * colunas com missing extremo
-#     * anos problemáticos em variáveis de entrada relevantes
-# - Diferenciar variáveis alvo (RISCO_FOGO, FRP, FOCO_ID) de variáveis explicativas:
-#     * missing nas alvos é esperado e não define ano ruim
-# - Harmonizar nomes de colunas equivalentes (ex.: radiação global Kj/KJ).
-# - Persistir resultados em reports/eda/dataset.
+# - Gerar, para cada ano:
+#     * um CSV com contagem de missing por coluna de feature
+#     * um README_missing.md explicando o CSV e resumindo o ano
+# - Ignorar colunas alvo (RISCO_FOGO, FRP, FOCO_ID) nas estatísticas por coluna.
+# - Persistir resultados em data/eda/dataset/{ANO}.
 # =============================================================================
 
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import pandas as pd
 
@@ -48,15 +44,15 @@ try:
 except Exception:
     DATASET_DIR = (PROJECT_ROOT / "data" / "dataset").resolve()
 
-# Diretório base de reports/eda
+# Diretório base de EDA em data/
 try:
-    REPORTS_EDA_DIR: Path = get_path("paths", "reports", "eda")
-    REPORTS_EDA_DIR = ensure_dir(REPORTS_EDA_DIR)
+    DATA_EDA_DIR: Path = get_path("paths", "data", "eda")
+    DATA_EDA_DIR = ensure_dir(DATA_EDA_DIR)
 except Exception:
-    REPORTS_EDA_DIR = ensure_dir(PROJECT_ROOT / "reports" / "eda")
+    DATA_EDA_DIR = ensure_dir(PROJECT_ROOT / "data" / "eda")
 
-# Diretório específico para EDA relacionada a dataset
-REPORTS_DATASET_DIR: Path = ensure_dir(REPORTS_EDA_DIR / "dataset")
+# Diretório específico para EDA do dataset
+DATASET_EDA_DIR: Path = ensure_dir(DATA_EDA_DIR / "dataset")
 
 # Logger dedicado
 log = get_logger("eda.missing_dataset", kind="eda", per_run_file=True)
@@ -77,33 +73,21 @@ EXCLUDE_NON_NUMERIC = {
     "ts_hour",
 }
 
-# Colunas alvo (labels / auxiliares de rótulo)
+# Colunas alvo (labels / auxiliares de rótulo) que NÃO entram na auditoria de features
 TARGET_COLS = {
     "RISCO_FOGO",
     "FRP",
     "FOCO_ID",
 }
 
-# Colunas críticas de features (para classificar anos bons/ruins)
-# Importante: não inclui RISCO_FOGO, FRP, FOCO_ID.
-CRITICAL_COLS = [
-    "HAS_FOCO",
-    "PRECIPITAÇÃO TOTAL, HORÁRIO (mm)",
-    "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)",
-    "TEMPERATURA DO PONTO DE ORVALHO (°C)",
-    "UMIDADE RELATIVA DO AR, HORARIA (%)",
-    "VENTO, VELOCIDADE HORARIA (m/s)",
-    "RADIACAO GLOBAL (KJ/m²)",  # após harmonização de nomes
-]
-
-# Limiares padrão
-COL_MISSING_THRESHOLD = 0.40       # 40% global na coluna
-YEAR_CRITICAL_THRESHOLD = 0.20     # 20% em qualquer coluna crítica no ano
+# Limiares padrão (podem ser úteis se você quiser reaproveitar em outro lugar)
+COL_MISSING_THRESHOLD = 0.40  # 40% global na coluna
+YEAR_CRITICAL_THRESHOLD = 0.20  # 20% em qualquer coluna crítica no ano
 
 # Validação imediata
 if not DATASET_DIR.exists():
     raise FileNotFoundError(
-        f"Diretório de datasets não encontrado.\nTentado: {DATASET_DIR}"
+        f"Diretorio de datasets nao encontrado.\nTentado: {DATASET_DIR}"
     )
 
 
@@ -113,7 +97,8 @@ if not DATASET_DIR.exists():
 @dataclass
 class YearMissingSummary:
     """
-    Resumo compacto, por ano, da presença de dados faltantes.
+    Resumo compacto, por ano, da presença de dados faltantes (visão agregada).
+    Mantido para possivel reuso, embora o foco atual seja o audit ano a ano.
     """
     year: int
     rows_total: int
@@ -135,7 +120,7 @@ class YearMissingSummary:
 @dataclass
 class DatasetMissingAnalyzer:
     dataset_dir: Path
-    reports_dir: Path
+    eda_root_dir: Path
     file_pattern: str = FILENAME_PATTERN
     missing_codes: set[int] = field(default_factory=lambda: MISSING_CODES.copy())
     exclude: set[str] = field(default_factory=lambda: EXCLUDE_NON_NUMERIC.copy())
@@ -170,7 +155,7 @@ class DatasetMissingAnalyzer:
         mapping = dict(sorted(mapping.items()))
         if not mapping:
             raise FileNotFoundError(
-                f"Nenhum CSV encontrado em {self.dataset_dir} com padrão {self.file_pattern}"
+                f"Nenhum CSV encontrado em {self.dataset_dir} com padrao {self.file_pattern}"
             )
 
         log.info(f"[DISCOVER] {len(mapping)} arquivos anuais detectados.")
@@ -182,7 +167,7 @@ class DatasetMissingAnalyzer:
     def harmonize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Harmoniza inconsistências de nomenclatura entre anos.
-        Exemplo principal: unificar radiação global Kj/m² e KJ/m².
+        Exemplo principal: unificar radiacao global Kj/m² e KJ/m².
         """
         df = df.copy()
 
@@ -207,7 +192,7 @@ class DatasetMissingAnalyzer:
             df = df.drop(columns=[old])
 
         elif old in df.columns:
-            # Só existe a versão com Kj: renomeia para a versão canônica.
+            # So existe a versao com Kj: renomeia para a versao canonica.
             df = df.rename(columns={old: new})
 
         return df
@@ -217,7 +202,7 @@ class DatasetMissingAnalyzer:
     # ------------------------------
     def read_year_csv(self, fp: Path) -> pd.DataFrame:
         """
-        Lê CSV consolidado e aplica harmonização de nomes.
+        Le CSV consolidado e aplica harmonizacao de nomes.
         """
         df = pd.read_csv(
             fp,
@@ -234,12 +219,12 @@ class DatasetMissingAnalyzer:
     # ------------------------------
     def build_missing_matrix(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Retorna um DataFrame booleano indicando, para cada coluna (exceto excluídas),
-        se a célula é faltante segundo as regras:
+        Retorna um DataFrame booleano indicando, para cada coluna (exceto excluidas),
+        se a celula e faltante segundo as regras:
 
         - NaN / null
-        - string vazia (após strip)
-        - códigos especiais como -999 e -9999
+        - string vazia (apos strip)
+        - codigos especiais como -999 e -9999
         """
         cols = [c for c in df.columns if c not in self.exclude]
         missing = pd.DataFrame(index=df.index)
@@ -264,11 +249,11 @@ class DatasetMissingAnalyzer:
         return missing
 
     # ------------------------------
-    # Resumo por ano
+    # Resumo por ano (visão agregada)
     # ------------------------------
     def compute_year_summary(self, df: pd.DataFrame, year: int) -> YearMissingSummary:
         if "HAS_FOCO" not in df.columns:
-            raise KeyError(f"Coluna HAS_FOCO não encontrada no ano {year}")
+            raise KeyError(f"Coluna HAS_FOCO nao encontrada no ano {year}")
 
         missing = self.build_missing_matrix(df)
         any_missing = missing.any(axis=1)
@@ -309,31 +294,24 @@ class DatasetMissingAnalyzer:
             pct_rows_with_missing_nonfocus=pct_rows_with_missing_nonfocus,
         )
 
-    def compute_all_year_summaries(self) -> pd.DataFrame:
-        year_files = self.discover_year_files()
-        summaries: List[YearMissingSummary] = []
-
-        for year, fp in year_files.items():
-            log.info(f"[YEAR] {year} — lendo {fp.name}")
-            df = self.read_year_csv(fp)
-            summaries.append(self.compute_year_summary(df, year))
-
-        return (
-            pd.DataFrame(asdict(s) for s in summaries)
-            .sort_values("year")
-            .reset_index(drop=True)
-        )
-
     # ------------------------------
-    # Breakdown por coluna e ano
+    # Breakdown por coluna (features) para um ano
     # ------------------------------
-    def compute_column_breakdown_for_year(
+    def compute_feature_breakdown_for_year(
         self,
         df: pd.DataFrame,
         year: int,
-    ) -> pd.DataFrame:
+    ) -> tuple[pd.DataFrame, YearMissingSummary]:
+        """
+        Calcula, para um ano, estatisticas de missing apenas para colunas de feature.
+
+        - Ignora:
+          * colunas em EXCLUDE_NON_NUMERIC
+          * colunas em TARGET_COLS
+          * coluna HAS_FOCO (label)
+        """
         if "HAS_FOCO" not in df.columns:
-            raise KeyError(f"Coluna HAS_FOCO não encontrada no ano {year}")
+            raise KeyError(f"Coluna HAS_FOCO nao encontrada no ano {year}")
 
         missing = self.build_missing_matrix(df)
         foco_mask = df["HAS_FOCO"] == 1
@@ -345,6 +323,10 @@ class DatasetMissingAnalyzer:
         records: List[dict] = []
 
         for c in missing.columns:
+            # Ignora targets e label
+            if c in TARGET_COLS or c == "HAS_FOCO":
+                continue
+
             m = missing[c]
 
             missing_total = int(m.sum())
@@ -374,140 +356,173 @@ class DatasetMissingAnalyzer:
                 }
             )
 
-        return (
+        feature_df = (
             pd.DataFrame(records)
-            .sort_values(["year", "pct_missing_total"], ascending=[True, False])
+            .sort_values("pct_missing_total", ascending=False)
             .reset_index(drop=True)
         )
 
-    def compute_all_years_column_breakdown(self) -> pd.DataFrame:
-        year_files = self.discover_year_files()
-        frames: List[pd.DataFrame] = []
-
-        for year, fp in year_files.items():
-            log.info(f"[YEAR-COLS] {year} — breakdown por coluna")
-            df = self.read_year_csv(fp)
-            frames.append(self.compute_column_breakdown_for_year(df, year))
-
-        return pd.concat(frames, ignore_index=True)
-
-    # ------------------------------
-    # Vistas globais derivadas
-    # ------------------------------
-    def compute_global_column_missing(
-        self,
-        breakdown_df: pd.DataFrame,
-        col_missing_threshold: float = COL_MISSING_THRESHOLD,
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Calcula, para cada coluna, a proporção global de missing (somando anos).
-        Retorna:
-          - tabela completa
-          - tabela filtrada com colunas acima do limiar.
-        """
-        global_missing = (
-            breakdown_df.groupby("col")
-            .apply(lambda x: x["missing_total"].sum() / x["rows_total"].sum())
-            .sort_values(ascending=False)
-            .rename("pct_missing_global")
-            .to_frame()
+        summary = YearMissingSummary(
+            year=year,
+            rows_total=rows_total,
+            focos_total=focos_total,
+            nonfocos_total=nonfocos_total,
+            rows_with_any_missing=int(self.build_missing_matrix(df).any(axis=1).sum()),
+            rows_with_any_missing_focus=int(
+                (self.build_missing_matrix(df).any(axis=1) & foco_mask).sum()
+            ),
+            rows_with_any_missing_nonfocus=0,  # nao e foco aqui, so reutilizando a estrutura
+            pct_rows_with_any_missing=0.0,
+            pct_rows_with_missing_focus=0.0,
+            pct_rows_with_missing_nonfocus=0.0,
         )
 
-        high_missing = global_missing[
-            global_missing["pct_missing_global"] >= col_missing_threshold
-        ]
-        return global_missing, high_missing
-
-    def evaluate_critical_years(
-        self,
-        breakdown_df: pd.DataFrame,
-        critical_cols: List[str] = CRITICAL_COLS,
-        year_threshold: float = YEAR_CRITICAL_THRESHOLD,
-    ) -> pd.DataFrame:
-        """
-        Define anos ruins olhando apenas para colunas críticas de entrada.
-
-        Importante:
-        - RISCO_FOGO, FRP e FOCO_ID NÃO entram aqui.
-        - Se apenas essas alvos estiverem muito faltantes, o ano não é marcado como ruim.
-        """
-        crit = breakdown_df[breakdown_df["col"].isin(critical_cols)]
-        if crit.empty:
-            log.warning(
-                "[CRITICAL] Nenhuma coluna crítica encontrada para avaliação anual."
-            )
-            return pd.DataFrame(
-                columns=["year", "max_pct_missing_critical", "bad_year"]
-            )
-
-        year_max = (
-            crit.groupby("year")["pct_missing_total"]
-            .max()
-            .rename("max_pct_missing_critical")
-            .to_frame()
-            .sort_index()
-        )
-        year_max["bad_year"] = year_max["max_pct_missing_critical"] > year_threshold
-
-        return year_max.reset_index()
+        return feature_df, summary
 
     # ------------------------------
-    # Pipeline completo com persistência
+    # Escrita do README por ano
     # ------------------------------
-    def run_and_persist(
+    def write_year_readme(
         self,
-        col_missing_threshold: float = COL_MISSING_THRESHOLD,
-        year_threshold: float = YEAR_CRITICAL_THRESHOLD,
+        year_dir: Path,
+        year: int,
+        summary: YearMissingSummary,
+        feature_df: pd.DataFrame,
+        csv_name: str,
     ) -> None:
         """
-        Executa a auditoria completa e salva CSVs em reports/eda/dataset.
+        Gera o README_missing.md dentro do diretorio do ano, explicando o CSV.
         """
-        ensure_dir(self.reports_dir)
+        rows_total = summary.rows_total
+        focos_total = summary.focos_total
+        foco_ratio = (focos_total / rows_total) if rows_total else 0.0
 
-        # 1) Resumo anual
-        log.info("[RUN] Resumo anual de dados faltantes")
-        year_summary = self.compute_all_year_summaries()
-        year_summary_path = self.reports_dir / "missing_summary_by_year.csv"
-        year_summary.to_csv(year_summary_path, index=False, encoding="utf-8")
-        log.info(f"[WRITE] {year_summary_path}")
+        top = feature_df.copy()
+        if not top.empty:
+            top = top.sort_values("pct_missing_total", ascending=False).head(5)
 
-        # 2) Breakdown coluna x ano
-        log.info("[RUN] Breakdown por coluna e ano")
-        col_breakdown = self.compute_all_years_column_breakdown()
-        col_breakdown_path = (
-            self.reports_dir / "missing_breakdown_by_year_and_column.csv"
+        lines: List[str] = []
+        lines.append(f"# Auditoria de dados faltantes - {year}")
+        lines.append("")
+        lines.append(
+            "Este diretorio contem a auditoria de valores faltantes nas colunas de "
+            "feature do arquivo consolidado "
+            f"`inmet_bdq_{year}_cerrado.csv`."
         )
-        col_breakdown.to_csv(col_breakdown_path, index=False, encoding="utf-8")
-        log.info(f"[WRITE] {col_breakdown_path}")
+        lines.append("")
+        lines.append("## Resumo geral")
+        lines.append("")
+        lines.append(f"- Linhas totais: {rows_total}")
+        lines.append(f"- Linhas com foco (HAS_FOCO == 1): {focos_total}")
+        lines.append(f"- Proporcao de focos: {foco_ratio:.4f}")
+        lines.append("")
+        lines.append("## Arquivo de resultados")
+        lines.append("")
+        lines.append(
+            f"O arquivo `{csv_name}` traz, para cada coluna de feature, a contagem "
+            "e a proporcao de valores faltantes."
+        )
+        lines.append("")
+        lines.append("Colunas do CSV:")
+        lines.append("")
+        lines.append("- `year`: ano de referencia dos dados.")
+        lines.append("- `col`: nome da coluna de feature na base original.")
+        lines.append("- `rows_total`: numero total de linhas no arquivo do ano.")
+        lines.append("- `focos_total`: numero total de linhas com HAS_FOCO == 1.")
+        lines.append(
+            "- `missing_total`: numero de linhas em que nao ha valor valido para essa coluna."
+        )
+        lines.append(
+            "- `missing_focus`: numero de linhas com foco (HAS_FOCO == 1) em que nao ha valor valido para essa coluna."
+        )
+        lines.append(
+            "- `missing_nonfocus`: numero de linhas sem foco em que nao ha valor valido para essa coluna."
+        )
+        lines.append(
+            "- `pct_missing_total`: proporcao de linhas com valor faltante na coluna."
+        )
+        lines.append(
+            "- `pct_missing_focus`: proporcao de linhas com foco que estao com valor faltante na coluna."
+        )
+        lines.append(
+            "- `pct_missing_nonfocus`: proporcao de linhas sem foco que estao com valor faltante na coluna."
+        )
+        lines.append("")
+        lines.append("## Top colunas com mais faltantes")
+        lines.append("")
+        if top.empty:
+            lines.append("Nao ha colunas com valores faltantes neste ano.")
+        else:
+            lines.append(
+                "As 5 colunas com maior `pct_missing_total` neste ano sao:"
+            )
+            lines.append("")
+            lines.append("| col | missing_total | pct_missing_total |")
+            lines.append("| --- | ------------- | ----------------- |")
+            for _, row in top.iterrows():
+                col_name = str(row["col"])
+                miss_tot = int(row["missing_total"])
+                pct_tot = float(row["pct_missing_total"])
+                lines.append(
+                    f"| {col_name} | {miss_tot} | {pct_tot:.4f} |"
+                )
 
-        # 3) Missing global por coluna
-        log.info("[RUN] Missing global por coluna")
-        global_missing, high_missing = self.compute_global_column_missing(
-            col_breakdown,
-            col_missing_threshold=col_missing_threshold,
+        readme_path = year_dir / "README_missing.md"
+        readme_path.write_text("\n".join(lines), encoding="utf-8")
+        log.info(f"[WRITE] {readme_path}")
+
+    # ------------------------------
+    # Pipeline principal: audit ano a ano
+    # ------------------------------
+    def run_per_year_audit(self, years: List[int] | None = None) -> None:
+        """
+        Executa a auditoria ano a ano, gerando:
+
+        data/eda/dataset/{ANO}/
+          - missing_by_column.csv
+          - README_missing.md
+
+        Se `years` for None, processa todos os anos detectados.
+        """
+        year_files = self.discover_year_files()
+
+        if years is not None:
+            selected = {y: fp for y, fp in year_files.items() if y in years}
+            if not selected:
+                raise ValueError(
+                    f"Nenhum dos anos especificados {years} foi encontrado entre "
+                    f"os arquivos detectados: {sorted(year_files.keys())}"
+                )
+            year_files = dict(sorted(selected.items()))
+
+        log.info(
+            f"[RUN] Auditoria ano a ano em data/eda/dataset "
+            f"para {len(year_files)} anos."
         )
 
-        global_missing_path = self.reports_dir / "missing_global_by_column.csv"
-        high_missing_path = (
-            self.reports_dir
-            / f"missing_columns_over_{int(col_missing_threshold * 100)}pct.csv"
-        )
+        for year, fp in year_files.items():
+            log.info(f"[YEAR] {year} - lendo {fp.name}")
+            df = self.read_year_csv(fp)
 
-        global_missing.to_csv(global_missing_path, index=True, encoding="utf-8")
-        high_missing.to_csv(high_missing_path, index=True, encoding="utf-8")
-        log.info(f"[WRITE] {global_missing_path}")
-        log.info(f"[WRITE] {high_missing_path}")
+            feature_df, summary = self.compute_feature_breakdown_for_year(df, year)
 
-        # 4) Anos críticos (somente features críticas)
-        log.info("[RUN] Avaliação de anos críticos (features críticas)")
-        critical_years = self.evaluate_critical_years(
-            col_breakdown,
-            critical_cols=CRITICAL_COLS,
-            year_threshold=year_threshold,
-        )
-        critical_years_path = self.reports_dir / "missing_critical_years.csv"
-        critical_years.to_csv(critical_years_path, index=False, encoding="utf-8")
-        log.info(f"[WRITE] {critical_years_path}")
+            # Diretorio do ano em data/eda/dataset/{ANO}
+            year_dir = ensure_dir(self.eda_root_dir / str(year))
+
+            csv_name = "missing_by_column.csv"
+            csv_path = year_dir / csv_name
+
+            feature_df.to_csv(csv_path, index=False, encoding="utf-8")
+            log.info(f"[WRITE] {csv_path}")
+
+            # README para explicar o CSV
+            self.write_year_readme(
+                year_dir=year_dir,
+                year=year,
+                summary=summary,
+                feature_df=feature_df,
+                csv_name=csv_name,
+            )
 
 
 # -----------------------------------------------------------------------------
@@ -519,31 +534,23 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Auditoria de dados faltantes nos CSVs inmet_bdq_{ANO}_cerrado.\n"
-            "Considera como faltantes: NaN, null, vazios e códigos especiais negativos."
+            "Gera, para cada ano, um CSV com missing por coluna de feature e "
+            "um README explicativo em data/eda/dataset/{ANO}."
         )
     )
 
     parser.add_argument(
         "--pattern",
         default=FILENAME_PATTERN,
-        help=f"Padrão dos arquivos (default: {FILENAME_PATTERN})",
+        help=f"Padrao dos arquivos (default: {FILENAME_PATTERN})",
     )
     parser.add_argument(
-        "--col-threshold",
-        type=float,
-        default=COL_MISSING_THRESHOLD,
+        "--years",
+        nargs="+",
+        type=int,
         help=(
-            "Limiar para destacar colunas com missing global elevado "
-            f"(default: {COL_MISSING_THRESHOLD:.2f})."
-        ),
-    )
-    parser.add_argument(
-        "--year-threshold",
-        type=float,
-        default=YEAR_CRITICAL_THRESHOLD,
-        help=(
-            "Limiar para marcar anos ruins com base em features críticas "
-            f"(default: {YEAR_CRITICAL_THRESHOLD:.2f})."
+            "Lista de anos a processar. "
+            "Se nao for informada, processa todos os anos detectados."
         ),
     )
 
@@ -551,20 +558,17 @@ def main() -> None:
 
     analyzer = DatasetMissingAnalyzer(
         dataset_dir=DATASET_DIR,
-        reports_dir=REPORTS_DATASET_DIR,
+        eda_root_dir=DATASET_EDA_DIR,
         file_pattern=args.pattern,
     )
 
     log.info(
         f"[CONFIG] dataset_dir={analyzer.dataset_dir} "
         f"pattern={analyzer.file_pattern} "
-        f"reports_dir={analyzer.reports_dir}"
+        f"eda_root_dir={analyzer.eda_root_dir}"
     )
 
-    analyzer.run_and_persist(
-        col_missing_threshold=args.col_threshold,
-        year_threshold=args.year_threshold,
-    )
+    analyzer.run_per_year_audit(years=args.years)
 
 
 if __name__ == "__main__":
