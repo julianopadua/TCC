@@ -20,3 +20,6 @@ python-dateutil==2.9.0.post0
 requests==2.32.3
 beautifulsoup4>=4.12.3
 lxml>=5.2.2
+
+# Modelagem e aprendizado de máquina
+scikit-learn>=1.5.0,<1.7
