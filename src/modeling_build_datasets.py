@@ -123,6 +123,18 @@ if not DATASET_DIR.exists():
         f"Diretorio de datasets nao encontrado.\nTentado: {DATASET_DIR}"
     )
 
+# --- Cenários disponíveis e seus nomes de pasta ---
+SCENARIO_MAP = {
+    "A": "base_A_no_rad",
+    "B": "base_B_no_rad_knn",
+    "C": "base_C_no_rad_drop_rows",
+    "D": "base_D_with_rad_drop_rows",
+    "E": "base_E_with_rad_knn",
+    "F": "base_F_full_original",
+}
+# Ordem canônica para execução
+SCENARIO_ORDER = ["F", "A", "B", "C", "D", "E"]
+
 
 # -----------------------------------------------------------------------------
 # CLASSE PRINCIPAL
@@ -141,6 +153,8 @@ class ModelingDatasetBuilder:
     radiacao_col: str = RADIACAO_COL
     # Por default, NAO sobrescreve parquets ja existentes.
     overwrite_existing: bool = False
+    enabled_scenarios: set[str] = field(default_factory=lambda: set(SCENARIO_ORDER))
+
 
     def __post_init__(self) -> None:
         self.missing_codes_str = {str(v) for v in self.missing_codes}
@@ -177,6 +191,14 @@ class ModelingDatasetBuilder:
 
         log.info(f"[DISCOVER] {len(mapping)} arquivos anuais detectados.")
         return mapping
+
+    def is_enabled(self, code: str) -> bool:
+        """Retorna True se o cenário (A..F) está habilitado."""
+        return code in self.enabled_scenarios
+
+    def scenario_path_exists(self, code: str, year: int) -> bool:
+        """Checa existência do parquet do cenário code (A..F) para o ano."""
+        return self.get_scenario_path(SCENARIO_MAP[code], year).exists()
 
     # ------------------------------
     # Harmonizacao de colunas
@@ -407,132 +429,123 @@ class ModelingDatasetBuilder:
         n_neighbors: int = 5,
     ) -> None:
         """
-        Constroi e salva as 6 bases para um ano especifico.
+        Constroi e salva as bases (apenas as habilitadas em self.enabled_scenarios) para um ano.
 
-        IMPORTANTE:
-        - Se TODOS os 6 parquets ja existirem e overwrite_existing=False,
-          o ano inteiro eh pulado antes de qualquer processamento pesado.
-        - Para cada cenario, se o parquet ja existir e overwrite_existing=False,
-          o cenario eh pulado ANTES de rodar KNN/drop/etc.
+        Regras:
+        - Se TODOS os cenários habilitados já existem e overwrite_existing=False, pula o ano.
+        - Para cada cenário, só computa o necessário (evita montar df_A se A/B/C não estiverem habilitados).
+        - Evita rodar KNN/descarte se o parquet do cenário já existir (quando overwrite_existing=False).
         """
         if self.label_col not in df_year.columns:
             raise KeyError(
                 f"Coluna de label '{self.label_col}' nao encontrada no ano {year}."
             )
 
-        scenarios = [
-            "base_F_full_original",
-            "base_A_no_rad",
-            "base_B_no_rad_knn",
-            "base_C_no_rad_drop_rows",
-            "base_D_with_rad_drop_rows",
-            "base_E_with_rad_knn",
-        ]
+        # Lista de códigos de cenário realmente habilitados (na ordem canônica)
+        enabled_codes = [c for c in SCENARIO_ORDER if self.is_enabled(c)]
 
-        # 1) Checa se TODOS os cenarios ja existem para este ano
+        # Se todos os parquets dos cenários habilitados existem, pula tudo
         if not self.overwrite_existing:
-            all_exist = all(self.get_scenario_path(s, year).exists() for s in scenarios)
-            if all_exist:
-                log.info(
-                    f"[YEAR {year}] Todos os cenarios ja existem e overwrite_existing=False. "
-                    f"Pulando ano inteiro."
-                )
+            if all(self.scenario_path_exists(c, year) for c in enabled_codes):
+                log.info(f"[YEAR {year}] Todos os cenarios habilitados {enabled_codes} ja existem. Pulando ano.")
                 return
 
-        # 2) So agora aplicamos missing/coerce, pois de fato teremos algo a fazer
+        # Só agora aplicamos missing/coerce se houver algo para fazer
         df_year = self.apply_missing_semantics(df_year)
         df_year = self.coerce_feature_columns_to_numeric(df_year)
 
-        # Opcional: ordena por data/hora se existirem
         sort_cols = [c for c in ["ANO", "DATA (YYYY-MM-DD)", "HORA (UTC)"] if c in df_year.columns]
         if sort_cols:
             df_year = df_year.sort_values(sort_cols).reset_index(drop=True)
 
-        log.info(
-            f"[YEAR {year}] Base original apos missing/coerce: "
-            f"{df_year.shape[0]} linhas, {df_year.shape[1]} colunas."
-        )
+        log.info(f"[YEAR {year}] Base original apos missing/coerce: {df_year.shape[0]} linhas, {df_year.shape[1]} colunas.")
+
+        # Cache leve para reaproveitar dataframes intermediários somente quando necessário
+        df_A = None  # versão "sem radiacao" se precisarmos de A/B/C
 
         # --------------------------
-        # 1) Base F: full original
+        # F) full original
         # --------------------------
-        path_F = self.get_scenario_path("base_F_full_original", year)
-        if path_F.exists() and not self.overwrite_existing:
-            log.info(f"[YEAR {year}][SKIP] base_F_full_original ja existe em {path_F}.")
-        else:
-            df_F = df_year.copy()
-            self.save_scenario_year(df_F, "base_F_full_original", year)
-
-        # --------------------------
-        # 2) Base A: sem radiacao
-        # --------------------------
-        path_A = self.get_scenario_path("base_A_no_rad", year)
-        if path_A.exists() and not self.overwrite_existing:
-            log.info(f"[YEAR {year}][SKIP] base_A_no_rad ja existe em {path_A}.")
-            # Mas ainda vamos precisar de uma versao sem radiacao para B/C se forem rodar.
-            df_A = df_year.copy()
-            if self.radiacao_col in df_A.columns:
-                df_A = df_A.drop(columns=[self.radiacao_col])
-        else:
-            df_A = df_year.copy()
-            if self.radiacao_col in df_A.columns:
-                df_A = df_A.drop(columns=[self.radiacao_col])
-                log.info(f"[YEAR {year}][A] Coluna de radiacao '{self.radiacao_col}' removida.")
+        if "F" in enabled_codes:
+            path_F = self.get_scenario_path(SCENARIO_MAP["F"], year)
+            if path_F.exists() and not self.overwrite_existing:
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['F']} ja existe.")
             else:
-                log.warning(
-                    f"[YEAR {year}][A] Coluna de radiacao '{self.radiacao_col}' nao encontrada."
-                )
-            self.save_scenario_year(df_A, "base_A_no_rad", year)
+                self.save_scenario_year(df_year, SCENARIO_MAP["F"], year)
+
+        # Precisaremos da base sem radiação se A ou B ou C estiverem habilitados
+        need_no_rad = any(c in enabled_codes for c in ("A", "B", "C"))
+        if need_no_rad:
+            df_A = df_year.copy()
+            if self.radiacao_col in df_A.columns:
+                df_A = df_A.drop(columns=[self.radiacao_col])
+                log.info(f"[YEAR {year}] Base sem radiacao preparada para A/B/C.")
+            else:
+                log.warning(f"[YEAR {year}] Coluna de radiacao '{self.radiacao_col}' nao encontrada (A/B/C).")
 
         # --------------------------
-        # 3) Base B: sem radiacao + KNN
+        # A) sem radiacao
         # --------------------------
-        path_B = self.get_scenario_path("base_B_no_rad_knn", year)
-        if path_B.exists() and not self.overwrite_existing:
-            log.info(f"[YEAR {year}][SKIP] base_B_no_rad_knn ja existe em {path_B}.")
-        else:
-            df_B = df_A.copy()
-            feature_cols_no_rad = self.get_feature_columns(df_B)
-            df_B = self.apply_knn_imputation(df_B, feature_cols_no_rad, n_neighbors=n_neighbors)
-            self.save_scenario_year(df_B, "base_B_no_rad_knn", year)
+        if "A" in enabled_codes:
+            path_A = self.get_scenario_path(SCENARIO_MAP["A"], year)
+            if path_A.exists() and not self.overwrite_existing:
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['A']} ja existe.")
+            else:
+                self.save_scenario_year(df_A, SCENARIO_MAP["A"], year)
 
         # --------------------------
-        # 4) Base C: sem radiacao + drop rows
+        # B) sem radiacao + KNN
         # --------------------------
-        path_C = self.get_scenario_path("base_C_no_rad_drop_rows", year)
-        if path_C.exists() and not self.overwrite_existing:
-            log.info(f"[YEAR {year}][SKIP] base_C_no_rad_drop_rows ja existe em {path_C}.")
-        else:
-            df_C = df_A.copy()
-            feature_cols_no_rad = self.get_feature_columns(df_C)
-            df_C = self.drop_rows_with_missing_features(df_C, feature_cols_no_rad)
-            self.save_scenario_year(df_C, "base_C_no_rad_drop_rows", year)
+        if "B" in enabled_codes:
+            path_B = self.get_scenario_path(SCENARIO_MAP["B"], year)
+            if path_B.exists() and not self.overwrite_existing:
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['B']} ja existe.")
+            else:
+                df_B = df_A.copy()
+                feature_cols_no_rad = self.get_feature_columns(df_B)
+                df_B = self.apply_knn_imputation(df_B, feature_cols_no_rad, n_neighbors=n_neighbors)
+                self.save_scenario_year(df_B, SCENARIO_MAP["B"], year)
 
         # --------------------------
-        # 5) Base D: com radiacao + drop rows
+        # C) sem radiacao + drop rows
         # --------------------------
-        path_D = self.get_scenario_path("base_D_with_rad_drop_rows", year)
-        if path_D.exists() and not self.overwrite_existing:
-            log.info(f"[YEAR {year}][SKIP] base_D_with_rad_drop_rows ja existe em {path_D}.")
-        else:
-            df_D = df_year.copy()
-            feature_cols_full = self.get_feature_columns(df_D)
-            df_D = self.drop_rows_with_missing_features(df_D, feature_cols_full)
-            self.save_scenario_year(df_D, "base_D_with_rad_drop_rows", year)
+        if "C" in enabled_codes:
+            path_C = self.get_scenario_path(SCENARIO_MAP["C"], year)
+            if path_C.exists() and not self.overwrite_existing:
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['C']} ja existe.")
+            else:
+                df_C = df_A.copy()
+                feature_cols_no_rad = self.get_feature_columns(df_C)
+                df_C = self.drop_rows_with_missing_features(df_C, feature_cols_no_rad)
+                self.save_scenario_year(df_C, SCENARIO_MAP["C"], year)
 
         # --------------------------
-        # 6) Base E: com radiacao + KNN
+        # D) com radiacao + drop rows
         # --------------------------
-        path_E = self.get_scenario_path("base_E_with_rad_knn", year)
-        if path_E.exists() and not self.overwrite_existing:
-            log.info(f"[YEAR {year}][SKIP] base_E_with_rad_knn ja existe em {path_E}.")
-        else:
-            df_E = df_year.copy()
-            feature_cols_full = self.get_feature_columns(df_E)
-            df_E = self.apply_knn_imputation(df_E, feature_cols_full, n_neighbors=n_neighbors)
-            self.save_scenario_year(df_E, "base_E_with_rad_knn", year)
+        if "D" in enabled_codes:
+            path_D = self.get_scenario_path(SCENARIO_MAP["D"], year)
+            if path_D.exists() and not self.overwrite_existing:
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['D']} ja existe.")
+            else:
+                df_D = df_year.copy()
+                feature_cols_full = self.get_feature_columns(df_D)
+                df_D = self.drop_rows_with_missing_features(df_D, feature_cols_full)
+                self.save_scenario_year(df_D, SCENARIO_MAP["D"], year)
 
-        log.info(f"[YEAR {year}] Processamento concluido.")
+        # --------------------------
+        # E) com radiacao + KNN
+        # --------------------------
+        if "E" in enabled_codes:
+            path_E = self.get_scenario_path(SCENARIO_MAP["E"], year)
+            if path_E.exists() and not self.overwrite_existing:
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['E']} ja existe.")
+            else:
+                df_E = df_year.copy()
+                feature_cols_full = self.get_feature_columns(df_E)
+                df_E = self.apply_knn_imputation(df_E, feature_cols_full, n_neighbors=n_neighbors)
+                self.save_scenario_year(df_E, SCENARIO_MAP["E"], year)
+
+        log.info(f"[YEAR {year}] Processamento concluido para cenarios {enabled_codes}.")
 
     # ------------------------------
     # Pipeline principal: processar varios anos
@@ -619,7 +632,39 @@ def main() -> None:
         ),
     )
 
+    # ===== NOVO: seleção de cenários =====
+    parser.add_argument(
+        "--only-scenarios",
+        nargs="+",
+        choices=list(SCENARIO_MAP.keys()),  # ["A","B","C","D","E","F"]
+        help=(
+            "Processa somente os cenarios indicados (letras A..F). "
+            "Ex.: --only-scenarios A C F"
+        ),
+    )
+    parser.add_argument(
+        "--skip-scenarios",
+        nargs="+",
+        choices=list(SCENARIO_MAP.keys()),
+        help=(
+            "Pula os cenarios indicados (letras A..F). "
+            "Ex.: --skip-scenarios E"
+        ),
+    )
+
     args = parser.parse_args()
+
+    # Resolve conjunto final de cenarios habilitados
+    if args.only_scenarios:
+        enabled = set(args.only_scenarios)
+    else:
+        enabled = set(SCENARIO_ORDER)  # todos por padrao
+
+    if args.skip_scenarios:
+        enabled -= set(args.skip_scenarios)
+
+    if not enabled:
+        raise SystemExit("Nenhum cenario habilitado apos aplicar only/skip.")
 
     builder = ModelingDatasetBuilder(
         dataset_dir=DATASET_DIR,
@@ -627,6 +672,7 @@ def main() -> None:
         file_pattern=args.pattern,
         radiacao_col=args.radiacao_col,
         overwrite_existing=args.overwrite_existing,
+        enabled_scenarios=enabled,
     )
 
     log.info(
@@ -635,7 +681,8 @@ def main() -> None:
         f"modeling_dir={builder.modeling_dir} "
         f"radiacao_col={builder.radiacao_col} "
         f"n_neighbors={args.n_neighbors} "
-        f"overwrite_existing={builder.overwrite_existing}"
+        f"overwrite_existing={builder.overwrite_existing} "
+        f"enabled_scenarios={sorted(builder.enabled_scenarios)}"
     )
 
     builder.run_for_years(years=args.years, n_neighbors=args.n_neighbors)
