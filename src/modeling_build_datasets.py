@@ -111,6 +111,9 @@ EXCLUDE_NON_NUMERIC = {
     "cidade_norm",
     "ts_hour",
     "ANO",  # ANO é contexto, mas não entra no KNN das features
+    # aliases 2019+
+    "Data",
+    "Hora UTC",
 }
 
 # Colunas alvo (labels auxiliares)
@@ -230,10 +233,25 @@ class ModelingDatasetBuilder:
     # Harmonização / leitura
     # ------------------------------
     def harmonize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Harmoniza inconsistencias de nomenclatura entre anos:
+        - Data/Hora (2019+): 'Data' -> 'DATA (YYYY-MM-DD)', 'Hora UTC' -> 'HORA (UTC)'
+        - Radiacao: 'RADIACAO GLOBAL (Kj/m²)' -> self.radiacao_col, preservando valores existentes
+        """
         df = df.copy()
+
+        # 1) Datas/Horas (2019+ -> canônico)
+        date_time_renames = {
+            "Data": "DATA (YYYY-MM-DD)",
+            "Hora UTC": "HORA (UTC)",
+        }
+        cols_to_rename = {k: v for k, v in date_time_renames.items() if k in df.columns}
+        if cols_to_rename:
+            df = df.rename(columns=cols_to_rename)
+
+        # 2) Radiacao (une Kj/m² em KJ/m²)
         old = "RADIACAO GLOBAL (Kj/m²)"
         new = self.radiacao_col
-
         if old in df.columns and new in df.columns:
             filled = df[new].combine_first(df[old])
             conflict_mask = df[old].notna() & df[new].notna() & (df[old] != df[new])
@@ -246,6 +264,7 @@ class ModelingDatasetBuilder:
             df = df.drop(columns=[old])
         elif old in df.columns:
             df = df.rename(columns={old: new})
+
         return df
 
     def read_year_csv(self, fp: Path, year: int) -> pd.DataFrame:
