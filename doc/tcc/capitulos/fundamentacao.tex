@@ -1,21 +1,103 @@
-% !TEX root = ./main.tex
+% !TEX root = ../main.tex
 
-\chapter{Fundamentação Teórica}
+\chapter{Fundamentação teórica}
+\label{cap:fundamentacao}
 
-\section{Modelos Estatísticos e Ensembles}
-Estudos pioneiros apontam Random Forest como técnica robusta para classificação binária da ocorrência de focos. Em solo chinês, \cite{pang2022china} compararam quatro algoritmos e registraram AUC de 0,96 para RF em série de quatorze anos. No Paquistão, \cite{shahzad2024pakistan} confirmaram vantagem do mesmo algoritmo, com acurácia de 87\,\% diante de condições agroclimáticas diversificadas.
+Este capítulo apresenta a base conceitual que sustenta as escolhas metodológicas deste trabalho. A fundamentação está organizada em três eixos principais: (i) inteligência artificial e aprendizado de máquina aplicados à previsão de queimadas, (ii) extração e organização de dados em pipelines climáticos e de focos e (iii) tratamento de dados faltantes em séries temporais ambientais, com ênfase em variáveis meteorológicas do INMET e na construção de diferentes cenários de base de modelagem.
 
-\section{Abordagens Híbridas e Espaço-Temporais}
-Para o Alasca, \cite{ahajjam2025wildfire} propuseram combinação de clustering espaço-temporal, seleção de atributos via algoritmo genético e Histogram Gradient Boosting. O framework elevou a acurácia da previsão diária de ignição para 0,92 e permitiu estimar área queimada e duração com erro médio inferior a 20\,\%.
+\section{Inteligência Artificial e Aprendizado de Máquina}
+\label{subsec:ia-e-ml}
 
-\section{Estudos Nacionais}
-Freitas et~al.~\cite{freitas2025xingu} utilizaram Random Forest e XGBoost para estimar suscetibilidade a incêndios na APA Triunfo do Xingu (Pará), alcançando precisão superior a 0,9 e destacando a influência de variáveis de precipitação acumulada e densidade de estradas.
+A Inteligência Artificial (IA) é um vasto campo da ciência da computação focado na criação de sistemas que exibem comportamento inteligente. Define-se formalmente como "a ciência e engenharia de fazer máquinas inteligentes" \cite{mccarthy2007what}, ou, numa abordagem moderna dominante, como o estudo de agentes racionais — entidades que percebem seu ambiente e atuam sobre ele de forma a maximizar uma medida de desempenho \cite{russell2016artificial}.
 
-\section{Qualidade dos Dados e Redução de Alarmes Falsos}
-\cite{giuseppe2025global} avaliaram três arquiteturas (Random Forest, XGBoost, rede neural rasa) em resolução de 9 km, demonstrando que a inclusão de combustível e ignições reduz em 30\,\% o \textit{false-alarm rate} dos índices meteorológicos tradicionais.
+O Aprendizado de Máquina (ML), um subcampo fundamental da IA, é o que permite a esses agentes aprender com dados, em vez de serem explicitamente programados para todas as contingências. Conforme a definição canônica de Tom M. Mitchell (1997), um programa aprende da "experiência E com respeito a alguma classe de tarefas T e medida de desempenho P, se seu desempenho em T, medido por P, melhora com a experiência E" \cite{mitchell1997machine}.
 
-\section{Explicabilidade e Transparência}
-\cite{cilli2022xai} aplicaram valores de Shapley para interpretar um Random Forest treinado no sul da Europa, identificando Fire Weather Index e NDVI como variáveis críticas. Complementarmente, \cite{shmuel2025lightning} treinaram modelos explicáveis para incêndios causados por raios.
+A previsão de queimadas é uma Tarefa (T) complexa e não determinística, onde as interações entre dezenas de variáveis (climáticas, geográficas, antrópicas) tornam a programação manual de regras inviável. Este cenário alinha-se ao princípio demonstrado por A. L. Samuel (1959), que provou que um computador poderia aprender a jogar damas em nível especialista, não por memorização (\textit{rote learning}), mas por generalização \cite{samuel1959some}. O sistema de Samuel aprendeu a ponderar uma "lista redundante e incompleta de parâmetros" para criar uma "função de avaliação" (o modelo) eficaz \cite{samuel1959some, samuel1959some}.
 
-\section{Revisões e Desafios}
-A revisão sistemática de \cite{andrianarivony2024review} aponta que CNNs multi-escala e ConvLSTM alcançam F1 acima de 0,95 na propagação em curto prazo, mas ressaltam desafios de generalização~\cite{illarionova2025geo}.
+Analogamente, este trabalho aplica o aprendizado supervisionado (a "generalização" de Samuel) usando dados históricos (a "experiência E") para descobrir a "função de avaliação" (o modelo preditivo) que melhor mapeia as variáveis climáticas à ocorrência de fogo. Esta abordagem é amplamente validada na literatura recente sobre incêndios florestais. Estudos aplicam rotineiramente algoritmos de ML, como Random Forest \cite{breiman2001randomForest} e XGBoost \cite{chen2016xgboost}, para modelar a suscetibilidade e ocorrência de fogo, tanto no Brasil \cite{freitas2025xingu} quanto em outras regiões do globo, como China \cite{pang2022china}, Paquistão \cite{shahzad2024pakistan}, Indonésia \cite{karurung2025indonesia} e Alasca \cite{ahajjam2025wildfire}.
+
+A pesquisa moderna também avança na direção da interpretabilidade com IA Explicável (XAI) \cite{cilli2022xai, shmuel2025lightning} e na modelagem da própria dinâmica de propagação do fogo \cite{zhang2024ensemble, andrianarivony2024review}. O consenso é que, dada a complexidade dos dados geoespaciais e climáticos \cite{illarionova2025geo, giuseppe2025global}, o aprendizado de máquina é a ferramenta mais adequada para extrair padrões preditivos \cite{sayad2019predictive, kotsiantis2007supervised}.
+
+Contudo, o sucesso destes modelos depende da qualidade dos dados de entrada \cite{sculley2014hidden}. A presença de dados faltantes em séries temporais climáticas é um desafio central \cite{alejosanchez2025review, afridayamoah2020imputation, navarro2023precipitation, ribeiro2021imputation}. Portanto, um pilar desta fundamentação é que a metodologia de imputação de dados não é apenas um pré-processamento, mas uma etapa crítica que afeta diretamente o desempenho do aprendizado \cite{chehal2023imputation}.
+
+\section{Extração de dados e pipelines climáticos}
+\label{sec:pipelines}
+
+\subsection{Fontes de dados climáticos e de focos}
+\label{subsec:fontes-dados}
+
+A previsão de queimadas em escala regional depende da integração de diferentes fontes de dados. Em linhas gerais, podem ser distinguidos dois blocos principais: dados de focos de calor e dados climáticos. No contexto brasileiro, focos de calor são disponibilizados por sistemas de monitoramento baseados em satélite, enquanto variáveis meteorológicas horárias são obtidas em redes de estações automáticas. Além disso, variáveis derivadas, índices meteorológicos de risco de fogo e indicadores de uso e cobertura da terra complementam o conjunto de preditores.
+
+Trabalhos recentes em previsão de incêndios adotam estratégia semelhante em outros contextos, combinando dados de histórico de focos, variáveis meteorológicas, índices de vegetação e informações topográficas ou de uso do solo \cite{pang2022china,shahzad2024pakistan,freitas2025xingu,giuseppe2025global}. O presente TCC segue esse padrão ao integrar focos do BDQueimadas e variáveis climáticas do INMET, com foco no bioma Cerrado, enfatizando a necessidade de um pipeline reproduzível para extrair, transformar e combinar essas fontes em bases integradas anuais.
+
+\subsection{Arquitetura de pipelines de dados}
+\label{subsec:arquitetura-pipeline}
+
+Do ponto de vista de engenharia de dados, o pipeline construído neste trabalho pode ser visto como uma sequência modular de etapas do tipo \textit{Extract Transform Load}. Em alto nível, a arquitetura envolve:
+
+\begin{itemize}
+  \item extração automatizada de arquivos anuais de focos de calor e séries meteorológicas brutas, com armazenamento em diretórios específicos para dados manuais e automáticos;
+  \item consolidação interna de cada fonte, incluindo padronização de nomes de colunas, tipos de dados e unidades, e resolução de chaves temporais e espaciais;
+  \item integração entre as duas fontes, por meio de junções que alinham focos de queimadas e observações de estações meteorológicas em nível horário, filtradas para o bioma de interesse;
+  \item auditoria e tratamento de dados faltantes, com aplicação de semântica unificada para códigos sentinela e geração de relatórios anuais de qualidade;
+  \item construção de múltiplos cenários de base de modelagem, variando presença de variáveis, estratégias de imputação e critérios de remoção de linhas com lacunas.
+\end{itemize}
+
+A separação desse fluxo em módulos independentes, parametrizados por meio de arquivos de configuração, segue boas práticas de reprodutibilidade em ciência de dados e permite que o mesmo pipeline seja reexecutado para novos períodos, outros recortes espaciais ou ajustes nas regras de tratamento de missing. Na literatura de imputação climática, é comum que experimentos sejam implementados em ambientes de programação de propósito geral, como R e Python, com pipelines explicitando etapas de seleção de sub-séries completas, simulação de lacunas, imputação e avaliação \cite{afridayamoah2020imputation,navarro2023precipitation}. O presente trabalho adota abordagem semelhante, mas voltada à geração de bases de modelagem para previsão de queimadas.
+
+\subsection{Auditoria e versionamento de bases}
+\label{subsec:auditoria}
+
+A presença de códigos sentinela e formatos heterogêneos em séries meteorológicas torna necessária uma auditoria explícita dos dados. Revisões como a de Alejo Sanchez et al.\ mostram que redes operacionais apresentam padrões complexos de ausência, incluindo lacunas em blocos longos, falhas de sensores e mudanças na infraestrutura ao longo do tempo \cite{alejosanchez2025review}. Ignorar essas questões pode levar a análises inconsistentes, especialmente quando modelos são treinados assumindo que os dados de entrada são completos e homogêneos.
+
+Diante disso, o pipeline implementado neste TCC contempla um módulo dedicado à auditoria de missing, que converte códigos sentinela numéricos e textuais em valores ausentes, calcula proporções de lacunas por coluna e por ano e produz resumos em formato tabular e textual. Essas saídas são utilizadas tanto para decisões de exclusão de colunas e variáveis quanto para o desenho dos cenários de imputação. O versionamento explícito das bases geradas (por ano e por cenário) permite rastrear quais transformações foram aplicadas em cada conjunto e comparar o desempenho dos modelos sob condições controladas.
+
+\section{Dados faltantes em séries climáticas}
+\label{sec:dados-faltantes}
+
+Séries climáticas reais apresentam lacunas por falhas de sensores, interrupções de comunicação, problemas de armazenamento e alterações em procedimentos de medição. Lacunas não tratadas podem enviesar estatísticas, distorcer variáveis derivadas e comprometer modelos que assumem observações regulares ao longo do tempo. Revisões recentes classificam o problema como um dos desafios centrais em monitoramento climático, ressaltando que praticamente todas as redes operacionais convivem com dados faltantes em diferentes graus de severidade \cite{alejosanchez2025review}.
+
+Do ponto de vista estatístico, o impacto de dados ausentes depende do mecanismo de ausência. Em clima de alta resolução, é comum assumir mecanismos do tipo MCAR ou MAR, considerados ignoráveis na teoria clássica de imputação, embora na prática haja componentes não ignoráveis, como falhas sistemáticas em determinadas condições meteorológicas \cite{afridayamoah2020imputation}. Além disso, séries climáticas exibem autocorrelação temporal forte, sazonalidade marcada, ciclos e dependência espacial, o que torna o tratamento de lacunas mais delicado do que em bases tabulares genéricas \cite{afridayamoah2020imputation,alejosanchez2025review}.
+
+\section{Métodos de imputação em séries climáticas}
+\label{sec:metodos-imputacao}
+
+\subsection{Revisões gerais e classificação de métodos}
+\label{subsec:revisoes-metodos}
+
+A revisão sistemática de Alejo Sanchez et al.\ sintetiza a literatura recente sobre imputação em séries climáticas e organiza as abordagens em três grupos principais: métodos convencionais, métodos de aprendizado de máquina e métodos de aprendizado profundo \cite{alejosanchez2025review}. No primeiro grupo estão substituições simples por média ou mediana, regressões lineares, interpolação temporal e espacial, PCA e MICE, entre outros. Esses métodos são computacionalmente acessíveis e amplamente usados em redes operacionais, mas tendem a achatar a variância, reduzir extremos e depender de fortes correlações entre estações ou variáveis para funcionar bem.
+
+No segundo grupo, a revisão destaca algoritmos como missForest, KNN, Random Forest e modelos híbridos com PCA ou triangulação espacial. Em muitos estudos, missForest e KNN se estabelecem como baselines fortes para séries multivariadas, por lidarem bem com não linearidade e mistura de variáveis contínuas e categóricas \cite{alejosanchez2025review}. O custo é maior complexidade computacional e sensibilidade à escolha de hiperparâmetros. No terceiro grupo, métodos de aprendizado profundo como LSTM, autoencoders, GANs e arquiteturas híbridas espaço temporais mostram bom desempenho em lacunas longas e padrões complexos, à custa de treinamento caro, necessidade de grandes volumes de dados e risco elevado de sobreajuste.
+
+Um ponto central da revisão é que não existe um método universalmente superior. O desempenho depende do tipo de variável, da resolução temporal, do padrão de missing e da densidade da rede de estações. Variáveis pouco medidas e mais ruidosas, como radiação solar e fluxos de energia, aparecem em menos estudos e tendem a exigir abordagens mais cuidadosas, com maior incerteza associada às imputações~\cite{alejosanchez2025review}. Isso reforça a necessidade de tratar tais variáveis como casos especiais em projetos aplicados.
+
+\subsection{Imputação em séries climáticas de alta resolução}
+\label{subsec:alta-resolucao}
+
+Afrifa Yamoah et al.\ estudaram especificamente a imputação em séries horárias de temperatura, umidade relativa e velocidade do vento em estações da Austrália Ocidental \cite{afridayamoah2020imputation}. Os autores preservaram a escala horária das observações e consideraram um cenário de cerca de dez por cento de dados faltantes, gerados artificialmente em blocos consecutivos para imitar falhas de sensores. A partir de subsequências completas, foram criadas lacunas artificiais, imputadas com diferentes modelos e comparadas aos valores verdadeiros por validação cruzada.
+
+Três classes de modelos foram avaliadas: ARIMA formulado em espaço de estados com filtro e suavização de Kalman, modelos estruturais de séries temporais com componentes de nível, tendência e sazonalidade, também com Kalman, e regressão linear múltipla explorando defasagens e variáveis auxiliares, como precipitação, direção do vento e pressão ao nível do mar \cite{afridayamoah2020imputation}. No agregado dos experimentos, a regressão múltipla apresentou os menores erros médios, seguida de perto pelos modelos ARIMA com Kalman. Em todas as variáveis, os erros absolutos médios foram pequenos e as distribuições dos valores imputados praticamente coincidiram com as distribuições originais, com correlações acima de 0,95 entre observado e imputado.
+
+Os autores enfatizam que essa boa performance depende de condições específicas: porcentagens moderadas de missing, estrutura temporal relativamente simples, forte correlação entre variáveis e disponibilidade de séries auxiliares completas \cite{afridayamoah2020imputation}. Além disso, lembram que qualquer técnica de imputação corresponde à introdução de um modelo adicional sobre os dados, com hipóteses próprias sobre o mecanismo de missing. Em contextos em que falhas de sensores possam estar associadas ao próprio fenômeno climático, a suposição de mecanismos ignoráveis pode ser violada, o que exige cautela na interpretação dos resultados.
+
+\subsection{Estudos comparativos e riscos de distorção}
+\label{subsec:comparativos}
+
+Embora situados fora do domínio climático, estudos comparativos em outras áreas ajudam a entender como diferentes técnicas de imputação se comportam em cenários controlados. Chehal et al.\ conduziram um experimento com ratings de produtos de comércio eletrônico, introduzindo artificialmente cerca de quatro por cento de dados faltantes em uma única coluna e assumindo um mecanismo completamente aleatório \cite{chehal2023imputation}. A partir daí, compararam métodos simples e avançados, como média e mediana, KNN, Hot Deck, regressão linear, MissForest, Random Forest e MICE, medindo o erro de reconstrução em termos de R\textsuperscript{2}, MSE e MAE.
+
+Os resultados mostram que, nesse cenário idealizado, métodos simples ou baseados em vizinhança, como Hot Deck e KNN, podem superar abordagens mais complexas. Hot Deck obteve os melhores valores de MSE e MAE, com R\textsuperscript{2} muito próximo de 1, e KNN apresentou desempenho semelhante \cite{chehal2023imputation}. Já MissForest e algumas abordagens de aprendizado profundo tiveram desempenho pior, com erros mais altos e até R\textsuperscript{2} negativos. Conceitualmente, o estudo reforça que imputações diferentes podem alterar de forma significativa a distribuição dos dados e que não é possível assumir a priori que métodos mais sofisticados serão sempre melhores.
+
+No domínio hidrometeorológico, Navarro Céspedes et al.\ analisaram métodos de imputação aplicados a séries de precipitação diária em duas regiões climáticas contrastantes do México, uma semiárida e outra úmida \cite{navarro2023precipitation}. As séries cobrem décadas de observação e foram inicialmente filtradas para remover estações com mais de vinte e cinco por cento de dados faltantes, consideradas excessivamente problemáticas. A partir das estações remanescentes, os autores mascararam artificialmente observações em trechos completos e compararam diferentes métodos de preenchimento com base no erro absoluto médio.
+
+O conjunto de métodos incluía esquemas de ponderação espacial e por correlação, como versões de IDW e combinações de distância, correlação e altitude, além de abordagens mais gerais como MICE, Expectation Maximization e regressão linear \cite{navarro2023precipitation}. Na região semiárida, métodos especializados apresentaram os menores erros médios. Já na região úmida, a hierarquia de métodos se alterou, ilustrando a forte dependência dos resultados em relação ao regime de precipitação, à variabilidade local e à porcentagem de lacunas. Um resultado importante é que alguns métodos genéricos, como EM e regressão, chegaram a imputar valores negativos de precipitação, fisicamente impossíveis, que precisaram ser truncados a zero \cite{navarro2023precipitation}.
+
+\subsection{Implicações para este trabalho}
+\label{subsec:implicacoes}
+
+Os estudos revisados convergem em três pontos centrais. Primeiro, dados faltantes são onipresentes em séries climáticas e podem carregar mecanismos de ausência complexos, nem sempre ignoráveis \cite{alejosanchez2025review,afridayamoah2020imputation}. Segundo, não há um método único de imputação que seja superior em todos os contextos. O desempenho depende do tipo de variável, da escala temporal, do padrão de lacunas e da densidade da rede de observações \cite{alejosanchez2025review,navarro2023precipitation}. Terceiro, a imputação deve ser encarada como mais uma decisão de modelagem, com custos e benefícios próprios, e seus efeitos precisam ser avaliados explicitamente, em vez de presumidos \cite{chehal2023imputation,afridayamoah2020imputation}.
+
+À luz dessas evidências, o tratamento de valores faltantes adotado neste trabalho para a base integrada INMET e BDQueimadas foi estruturado para refletir essas recomendações. Em vez de preencher automaticamente todas as lacunas, foram construídos cenários de modelagem distintos, incluindo bases que apenas harmonizam variáveis e convertem códigos sentinela para valores ausentes, bases que removem linhas com qualquer dado faltante em variáveis preditoras e bases que aplicam imputação numérica via KNN para subconjuntos específicos de colunas.
+
+A variável de radiação global é tratada como caso especial. Por um lado, ela é fisicamente relevante para processos de secagem de combustível e risco de fogo, o que sugere que descartá la completamente pode empobrecer os modelos. Por outro, apresenta percentuais elevados de dados faltantes em vários anos, situação análoga à de estações excluídas por Navarro Céspedes et al.\ por ultrapassar o limite de aceitabilidade \cite{navarro2023precipitation}. Inspirado na revisão de Alejo Sanchez et al., que destaca a necessidade de métodos mais cuidadosos para radiação, e nos resultados de Afrifa Yamoah et al.\ e Chehal et al., este trabalho opta por tratar a radiação global em cenários separados: alguns em que a variável é excluída da base e outros em que ela é imputada com um método relativamente simples e transparente, como o KNN \cite{alejosanchez2025review,afridayamoah2020imputation,chehal2023imputation}.
+
+Por fim, a combinação de bases com e sem imputação, especialmente no que se refere à radiação global, é parte integrante da contribuição metodológica deste estudo. Em vez de assumir uma única versão corrigida da base, o pipeline de dados foi desenhado para comparar explicitamente o impacto de decisões de imputação sobre o desempenho dos modelos de previsão de queimadas no Cerrado, em linha com a literatura que recomenda tratar a imputação como um fator experimental e documentar suas consequências sobre as análises subsequentes \cite{alejosanchez2025review,afridayamoah2020imputation,chehal2023imputation,navarro2023precipitation}.

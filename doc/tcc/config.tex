@@ -1,6 +1,16 @@
 % !TEX root = main.tex
 \documentclass[12pt,openright,twoside,a4paper]{abntex2}
 
+% --------------------------------------------------
+% Fonte principal: Helvetica (parecida com Arial)
+% (funciona com pdfLaTeX, não precisa trocar compilador)
+% --------------------------------------------------
+\usepackage[scaled=0.92]{helvet} % ajusta o tamanho pra ficar mais elegante
+\renewcommand{\familydefault}{\sfdefault}
+
+% Matemática mais "padrão" (Times-like)
+\usepackage{newtxmath}
+
 % Margens padrão da UFSCar
 \usepackage[top=3cm,bottom=2cm,left=3cm,right=2cm]{geometry}
 
@@ -9,7 +19,7 @@
 \usepackage[T1]{fontenc}
 \usepackage[brazil]{babel}
 \usepackage{graphicx}
-\usepackage{amsmath, amssymb}
+\usepackage{amsmath}
 \usepackage{setspace}
 \usepackage{fancyhdr}
 \usepackage{ragged2e}
@@ -23,8 +33,14 @@
 \usepackage{subcaption}
 \usepackage{tikz}
 \usepackage{listings}
-\usepackage{libertine}
-\usepackage[libertine]{newtxmath}
+
+% Config básica pros códigos não ficarem gigantes e quebrarem linha
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  breakatwhitespace=true,
+  columns=fullflexible
+}
 
 % Hiperlinks
 \usepackage{hyperref}

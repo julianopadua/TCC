@@ -9,4 +9,4 @@
 *.jsonl.gz.part
 *.jsonl.gz.part.1
 doc/tcc/output/*
-doc/templates/TCC_Guilherme_Arcencio__Final.pdf
+doc/templates/*

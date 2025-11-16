@@ -1,263 +1,149 @@
 % !TEX root = ./main.tex
 
 \chapter{Metodologia}
+\label{cap:metodologia}
 
-A metodologia adotada neste trabalho foi organizada em torno do próprio fluxo de dados implementado no repositório do TCC. Em vez de assumir uma base estática previamente pronta, toda a cadeia de obtenção, consolidação, auditoria e preparação das bases de modelagem foi explicitamente construída como um pipeline de \textit{Extract–Transform–Load} (ETL) reproducível, com scripts versionados, configuração centralizada e logs de execução.
+Neste capítulo são descritos o fluxo de dados, os procedimentos de preparação das bases e a forma como os conjuntos finais foram utilizados na etapa de modelagem. A ênfase está no pipeline de \textit{Extract-Transform-Load} (ETL) desenvolvido especificamente para este trabalho, que integra focos de calor do BDQueimadas e variáveis climáticas do INMET, com foco no bioma Cerrado.
 
-De forma geral, o processo é composto pelas seguintes camadas: (i) ingestão dos dados de focos de calor do BDQueimadas e dos dados meteorológicos do INMET; (ii) consolidação interna de cada fonte; (iii) integração BDQueimadas + INMET com foco no bioma Cerrado; (iv) auditoria sistemática de dados faltantes e códigos sentinela; (v) construção de múltiplas visões da base para modelagem. As etapas de treinamento, avaliação e interpretabilidade dos modelos se apoiam diretamente nessas bases, e são descritas ao final do capítulo.
+\section{Obtenção e organização dos dados}
+\label{sec:obtencao-dados}
 
-\section{Arquitetura geral de dados e organização do repositório}
+Os dados de focos de calor foram obtidos a partir do sistema BDQueimadas (INPE), na coleção anual Brasil\_sat\_ref, enquanto as variáveis climáticas foram extraídas das séries de estações automáticas do INMET. A obtenção não foi feita de forma manual pontual, mas estruturada em um pipeline de scripts Python, localizado na pasta \texttt{src/} do repositório.
 
-Todo o fluxo de dados é descrito e automatizado por meio de scripts Python na pasta \texttt{src/} e por uma estrutura de diretórios que separa claramente dados brutos, processados, datasets integrados, saídas de auditoria e bases de modelagem. O arquivo \texttt{config.yaml} centraliza os caminhos relevantes, permitindo que qualquer script obtenha os diretórios corretos por meio de funções auxiliares em \texttt{utils.py}.
-
-A Figura ilustra, em alto nível, o caminho percorrido pelos dados desde a extração bruta até a geração dos arquivos \texttt{.parquet} de modelagem, destacando os módulos principais: \texttt{bdqueimadas\_scraper.py}, \texttt{consolidated\_bdqueimadas.py}, \texttt{inmet\_scraper.py}, \texttt{inmet\_consolidated.py}, \texttt{build\_dataset.py}, \texttt{dataset\_missing\_audit.py} e \texttt{modeling\_build\_datasets.py}.
-
-
-Os dados são armazenados em subdiretórios da pasta \texttt{data/}, seguindo a convenção:
+De maneira resumida, são utilizadas duas frentes complementares do BDQueimadas:
 
 \begin{itemize}
-    \item \texttt{data/raw/}: dados brutos obtidos diretamente das fontes (downloads automáticos e exportações manuais);
-    \item \texttt{data/processed/}: saídas intermediárias após transformações e padronizações internas à mesma fonte;
-    \item \texttt{data/external/}: produtos consolidados que integram múltiplas camadas internas de uma mesma fonte (por exemplo, BDQueimadas manual e processado);
-    \item \texttt{data/dataset/}: datasets integrados BDQueimadas + INMET, prontos para análise exploratória;
-    \item \texttt{data/eda/}: saídas de auditoria de qualidade (\textit{exploratory data analysis}), como relatórios de dados faltantes;
-    \item \texttt{data/modeling/}: bases específicas para modelagem, em múltiplos cenários de tratamento de dados faltantes.
+  \item \textbf{Exportações manuais} (\texttt{data/raw/BDQUEIMADAS/}): arquivos \texttt{exportador\_*{\_}ref{\_}YYYY.csv} baixados diretamente pelo portal, que contêm variáveis de risco e física do foco (como \texttt{RiscoFogo} e \texttt{FRP}), mas não incluem o identificador interno \texttt{foco\_id};
+  \item \textbf{Arquivos oficiais Brasil\_sat\_ref} (\texttt{data/raw/ID\_BDQUEIMADAS/}): arquivos \texttt{focos\_br\_ref\_YYYY.zip}, baixados automaticamente do \textit{dataserver} do COIDS pelo script \texttt{bdqueimadas\_scraper.py}, que, após extração, fornecem \texttt{foco\_id}, \texttt{id\_bdq} e coordenadas geográficas.
 \end{itemize}
 
-Essa organização garante reprodutibilidade e rastreabilidade: qualquer resultado usado na modelagem pode ser rastreado até arquivos brutos específicos e até a combinação de parâmetros utilizada em cada etapa do pipeline.
+Os dados meteorológicos são obtidos pelo módulo \texttt{inmet\_scraper.py}, que coleta e organiza as séries do INMET em \texttt{data/processed/INMET/}, padronizando nomes de colunas e unidades para que diferentes anos e estações possam ser combinados com os focos de calor.
 
-\section{Fontes de dados e escopo do estudo}
+A Figura~\ref{fig:pipeline-dataset} apresenta, em alto nível, o fluxo de dados construído neste trabalho, desde a ingestão das fontes brutas até a geração das bases anuais em formato \texttt{.parquet} utilizadas na modelagem.
 
-\subsection{Dados de focos de calor (BDQueimadas)}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{imagens/dataset_pipeline.png}
+    \caption{Fluxo geral do pipeline de dados BDQueimadas + INMET.}
+    \label{fig:pipeline-dataset}
+\end{figure}
 
-Os dados de focos de calor são obtidos a partir do sistema BDQueimadas do INPE, operado via COIDS, com foco na coleção anual Brasil\_sat\_ref. O projeto faz uso intencionalmente de duas camadas distintas, porém complementares, dessa mesma fonte:
-
-\begin{enumerate}
-    \item \textbf{Exportações manuais de focos de calor} (\texttt{data/raw/BDQUEIMADAS/}): arquivos \texttt{exportador\_*{\_}ref{\_}YYYY.csv} obtidos diretamente pelo portal BDQueimadas. Esses arquivos possuem variáveis importantes de risco e física do foco, como \texttt{RiscoFogo} e \texttt{FRP}, mas não expõem o identificador \texttt{foco\_id} usado na infraestrutura interna do sistema;
-    \item \textbf{Arquivos oficiais anuais Brasil\_sat\_ref} (\texttt{data/raw/ID\_BDQUEIMADAS/}): arquivos \texttt{focos\_br\_ref\_YYYY.zip}, baixados automaticamente a partir do \textit{dataserver} do COIDS pelo módulo \texttt{bdqueimadas\_scraper.py}. Após extração em \texttt{data/processed/ID\_BDQUEIMADAS/focos\_br\_ref\_YYYY/}, esses arquivos fornecem, para cada foco, identificadores estáveis como \texttt{foco\_id} e \texttt{id\_bdq}, bem como coordenadas geográficas em alta resolução.
-\end{enumerate}
-
-A decisão metodológica central é combinar essas duas camadas em uma única base consolidada por ano, de forma que cada registro agregue simultaneamente: (i) a física do foco (por exemplo, intensidade radiativa via FRP e o \textit{RiscoFogo} calculado pelo INPE) e (ii) um identificador consistente com o ecossistema oficial de dados de queimadas (\texttt{FOCO\_ID}, \texttt{ID\_BDQ}). Essa consolidação é descrita na Seção~\ref{subsec:consol-bdq}.
-
-\subsection{Dados meteorológicos (INMET)}
-
-Os dados meteorológicos são obtidos a partir do Instituto Nacional de Meteorologia (INMET). O pipeline implementado considera:
+Os arquivos de dados são organizados na pasta \texttt{data/} de forma hierárquica:
 
 \begin{itemize}
-    \item séries de estações automáticas, com resolução temporal originalmente horária;
-    \item variáveis de interesse para a modelagem de queimadas, incluindo temperatura do ar, umidade relativa, precipitação, pressão atmosférica e componentes de vento, além de radiação global quando disponível;
-    \item códigos sentinela usados pelo INMET para indicar dados ausentes ou não confiáveis, com ênfase em valores como \texttt{-999} e \texttt{-9999}.
+    \item \texttt{data/raw/}: dados brutos (downloads automáticos e exportações manuais);
+    \item \texttt{data/processed/}: saídas intermediárias após consolidação interna de cada fonte;
+    \item \texttt{data/external/}: consolidações que integram diferentes camadas do BDQueimadas (manual e processado);
+    \item \texttt{data/dataset/}: arquivos anuais \texttt{inmet\_bdq\_ANO\_cerrado.csv}, já integrando focos e variáveis climáticas;
+    \item \texttt{data/eda/}: resultados das auditorias de dados faltantes;
+    \item \texttt{data/modeling/}: bases finais de modelagem para cada cenário de tratamento de \textit{missing}.
 \end{itemize}
 
-Os scripts \texttt{inmet\_scraper.py} e \texttt{inmet\_consolidated.py} são responsáveis por baixar, padronizar e consolidar essas séries, produzindo arquivos organizados em \texttt{data/processed/INMET/} com nomenclatura e esquema consistentes entre anos e estações. A Figura reserva espaço para uma visão mais detalhada dessa etapa.
+Essa estrutura, configurada via \texttt{config.yaml} e acessada pelos utilitários de \texttt{utils.py}, permite reproduzir todo o fluxo apenas executando os scripts na ordem descrita nas próximas seções.
 
-\subsection{Escopo espacial e temporal}
+\section{Pipeline de extração e consolidação}
+\label{sec:pipeline-extracao}
 
-O estudo restringe-se ao bioma Cerrado, tanto do ponto de vista dos focos de calor quanto das estações meteorológicas relevantes. A filtragem espacial é aplicada na etapa de integração BDQueimadas + INMET, garantindo que apenas registros situados no Cerrado (de acordo com a classificação presente nos próprios arquivos do BDQueimadas) participem das análises e da modelagem.
+O pipeline de ETL foi construído em blocos modulares, cada um responsável por uma etapa bem definida: ingestão do BDQueimadas, ingestão do INMET, integração das duas fontes e filtragem para o bioma Cerrado.
 
-O período temporal considerado corresponde ao intervalo de anos em que há simultaneamente dados de focos de calor e dados meteorológicos com qualidade suficiente para a integração e para a construção das bases de modelagem. Esse intervalo é operacionalizado na forma de arquivos anuais \texttt{inmet\_bdq\_ANO\_cerrado.csv} em \texttt{data/dataset/}, e pode ser ajustado caso haja ampliação ou restrição do período de estudo.
+\subsection{Consolidação do BDQueimadas}
 
-\section{Ingestão e consolidação do BDQueimadas}
-\label{subsec:consol-bdq}
+A consolidação dos focos de calor é feita pelo módulo \texttt{consolidated\_bdqueimadas.py}. O objetivo é combinar, para cada ano, as exportações manuais e os arquivos oficiais Brasil\_sat\_ref em uma única base consolidada.
 
-\subsection{Download automático dos arquivos oficiais Brasil\_sat\_ref}
-
-O módulo \texttt{bdqueimadas\_scraper.py} automatiza a descoberta e o download dos arquivos \texttt{focos\_br\_ref\_YYYY.zip} a partir da página anual da coleção Brasil\_sat\_ref no COIDS, com URL base:
-
-\begin{center}
-\texttt{https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/anual/Brasil\_sat\_ref/}
-\end{center}
-
-A lógica empregada pode ser resumida da seguinte forma:
-
-\begin{enumerate}
-    \item abertura de uma sessão HTTP reutilizável para reduzir overhead de conexão;
-    \item varredura da página HTML com extração de todos os links de arquivos \texttt{.zip};
-    \item filtragem dos links que seguem o padrão \texttt{focos\_br\_ref\_YYYY.zip};
-    \item filtragem adicional por ano, de acordo com a lista passada pela interface de linha de comando;
-    \item download para \texttt{data/raw/ID\_BDQUEIMADAS/} e extração automática para \texttt{data/processed/ID\_BDQUEIMADAS/focos\_br\_ref\_YYYY/}.
-\end{enumerate}
-
-Esse processo é executável, por exemplo, com:
-
-\begin{verbatim}
-python src/bdqueimadas_scraper.py --years 2015 2016 2017
-\end{verbatim}
-
-A extração em subpastas por ano evita colisões de nomes e permite ao módulo de consolidação localizar de forma determinística o arquivo \texttt{focos\_br\_ref\_YYYY.csv} correspondente.
-
-\subsection{Consolidação MANUAL × PROCESSADO}
-
-O módulo \texttt{consolidated\_bdqueimadas.py} é responsável por unir as exportações manuais e os arquivos Brasil\_sat\_ref oficiais em uma base consolidada para cada ano. De forma simplificada, para cada ano de interesse, são lidos:
+Para isso, o script lê:
 
 \begin{itemize}
     \item o arquivo manual \texttt{exportador\_*{\_}ref{\_}YYYY.csv} em \texttt{data/raw/BDQUEIMADAS/};
-    \item o arquivo processado \texttt{focos\_br\_ref\_YYYY.csv} em \texttt{data/processed/ID\_BDQUEIMADAS/focos\_br\_ref\_YYYY/}.
+    \item o arquivo \texttt{focos\_br\_ref\_YYYY.csv} extraído em \texttt{data/processed/ID\_BDQUEIMADAS/focos\_br\_ref\_YYYY/}.
 \end{itemize}
 
-A junção é feita a partir de uma chave sintética \texttt{\_\_KEY}, composta por:
+A junção é feita a partir de uma chave sintética \texttt{\_\_KEY}, composta por data e hora arredondadas à hora cheia, país, unidade da federação e município, após normalização de acentos e conversão para uma forma ASCII maiúscula. No lado manual, a data-hora é extraída da coluna \texttt{DataHora}; no lado processado, da coluna \texttt{data\_pas}.
+
+Com essa chave é realizado um \textit{left join} das exportações manuais com o conjunto processado, de modo que cada foco do arquivo manual receba, quando possível, os identificadores e coordenadas do arquivo oficial. O resultado agrega:
 
 \begin{itemize}
-    \item data e hora arredondadas à hora cheia (\texttt{\_\_DT\_H});
-    \item país, unidade da federação e município, após normalização e remoção de acentos.
-\end{itemize}
-
-No lado manual, a data e hora são extraídas da coluna \texttt{DataHora}; no lado processado, da coluna \texttt{data\_pas}. Em ambos os casos são aplicados procedimentos de limpeza de texto, remoção de caracteres de controle e padronização para uma forma ASCII maiúscula sem diacríticos, de modo que valores como ``Uberlândia'' e ``UBERLANDIA'' sejam tratados de forma consistente.
-
-A partir dessa chave, é realizado um \textit{left join} do conjunto manual com o conjunto processado. O resultado agrega:
-
-\begin{itemize}
-    \item do manual: variáveis como \texttt{RiscoFogo} e \texttt{FRP};
+    \item do manual: \texttt{RiscoFogo}, \texttt{FRP} e demais variáveis descritivas;
     \item do processado: \texttt{FOCO\_ID}, \texttt{ID\_BDQ}, latitude e longitude.
 \end{itemize}
 
-Os produtos finais são arquivos \texttt{bdq\_targets\_*.csv} em \texttt{data/external/BDQUEIMADAS/}, que podem representar um único ano (\texttt{bdq\_targets\_YYYY\_cerrado.csv}) ou um intervalo multi-anos (\texttt{bdq\_targets\_Y1\_Y2\_cerrado.csv}), sempre com filtragem opcional por bioma. A Figura reserva espaço para um diagrama da lógica de construção da chave \texttt{\_\_KEY} e da junção entre as camadas.
+Os produtos finais são arquivos \texttt{bdq\_targets\_*.csv}, gravados em \texttt{data/external/BDQUEIMADAS/}, que podem representar um único ano ou intervalos multi-anos, com filtragem opcional por bioma (por exemplo, Cerrado).
 
+\subsection{Consolidação do INMET e integração BDQueimadas + INMET}
 
-\section{Ingestão, consolidação e integração do INMET}
-
-\subsection{Scraping e padronização das séries do INMET}
-
-Os módulos \texttt{inmet\_scraper.py} e \texttt{inmet\_consolidated.py} implementam a cadeia de obtenção e padronização dos dados do INMET. Conceitualmente, a metodologia adotada é:
+Os módulos \texttt{inmet\_scraper.py} e \texttt{inmet\_consolidated.py} são responsáveis por baixar e padronizar as séries do INMET. Conceitualmente, o fluxo segue os passos:
 
 \begin{enumerate}
-    \item listar as estações meteorológicas relevantes para o bioma Cerrado e para o período temporal de interesse;
-    \item baixar os arquivos de séries horárias correspondentes, utilizando a API ou interface web disponibilizada pelo INMET;
-    \item converter todos os arquivos para uma estrutura tabular homogênea, com nomes de colunas padronizados entre anos e estações;
-    \item registrar, a cada etapa, erros de conexão, arquivos ausentes e possíveis inconsistências de formato.
+    \item seleção das estações automáticas relevantes para o bioma Cerrado e para o período de interesse;
+    \item download das séries horárias, utilizando a API ou interface web do INMET;
+    \item padronização de nomes de colunas, unidades e formatos de data/hora;
+    \item gravação de arquivos já consolidados em \texttt{data/processed/INMET/}.
 \end{enumerate}
 
-As saídas são salvas em \texttt{data/processed/INMET/}, servindo de insumo direto para a integração com os dados de focos de calor.
-
-\subsection{Integração BDQueimadas + INMET e filtragem do Cerrado}
-
-A integração propriamente dita é executada pelo módulo \texttt{build\_dataset.py}. Esse script consome:
+A integração entre focos e variáveis climáticas é feita pelo módulo \texttt{build\_dataset.py}, que consome simultaneamente as consolidações do BDQueimadas e do INMET. Esse script:
 
 \begin{itemize}
-    \item as bases consolidadas de focos (\texttt{bdq\_targets\_*.csv}), em \texttt{data/external/BDQUEIMADAS/};
-    \item as séries meteorológicas consolidadas, em \texttt{data/processed/INMET/}.
+    \item filtra os registros para o bioma Cerrado, utilizando a classificação presente nos próprios arquivos de focos;
+    \item alinha temporalmente os dados de estação e os focos, garantindo consistência na granularidade utilizada;
+    \item constrói, para cada ano, um arquivo \texttt{inmet\_bdq\_ANO\_cerrado.csv} em \texttt{data/dataset/}.
 \end{itemize}
 
-O resultado são arquivos \texttt{inmet\_bdq\_ANO\_cerrado.csv} em \texttt{data/dataset/}, que constituem a base integrada, já:
+Nessa base integrada é criada a variável binária \texttt{HAS\_FOCO}, que indica se, naquele registro (combinação de local e instante de tempo), houve ao menos um foco de queimada registrado no BDQueimadas. Essa variável é a base para a tarefa de classificação tratada na etapa de modelagem.
+
+\section{Tratamento de dados faltantes e bases de modelagem}
+\label{sec:bases-modelagem}
+
+\subsection{Auditoria de dados faltantes e códigos sentinela}
+
+Antes da construção das bases de modelagem, foi necessário definir de forma clara o que seria considerado dado faltante. Para isso foi desenvolvido o módulo \texttt{dataset\_missing\_audit.py}, que aplica uma semântica unificada de \textit{missing} às colunas das bases integradas \texttt{inmet\_bdq\_ANO\_cerrado.csv}.
+
+São tratados como valores faltantes:
 
 \begin{itemize}
-    \item filtrada espacialmente para o bioma Cerrado;
-    \item alinhada temporalmente de forma consistente entre focos de calor e variáveis meteorológicas;
-    \item enriquecida com uma variável binária de ocorrência de foco, usualmente denominada \texttt{HAS\_FOCO}.
+    \item valores \texttt{NaN} ou nulos;
+    \item códigos sentinela numéricos \texttt{-999} e \texttt{-9999};
+    \item as strings \texttt{"-999"} e \texttt{"-9999"} em colunas textuais;
+    \item strings vazias após aplicação de \textit{strip}.
 \end{itemize}
 
-A definição operacional exata da variável alvo (\texttt{HAS\_FOCO}) segue a lógica de indicar se, naquele registro integrado (referente a uma combinação de local e instante de tempo), houve ao menos um foco de calor detectado na base BDQueimadas. Essa base integrada é o ponto de partida para a etapa de auditoria de dados faltantes e para a construção das bases de modelagem.
-
-\section{Auditoria de dados faltantes e códigos sentinela}
-
-\subsection{Definição operacional de dado faltante}
-
-Antes de qualquer modelagem, foi necessário definir de forma explícita o que será tratado como dado faltante na base integrada. O módulo \texttt{dataset\_missing\_audit.py} implementa uma semântica unificada de \textit{missing} que combina três componentes:
+Para cada ano, o script gera uma matriz booleana de faltantes e produz um resumo em \texttt{data/eda/dataset/ANO/}, contendo:
 
 \begin{itemize}
-    \item valores \texttt{NaN} ou nulos, conforme identificados pelo \texttt{pandas};
-    \item códigos sentinela numéricos usados historicamente por INMET e outras fontes, em especial \texttt{-999} e \texttt{-9999};
-    \item códigos sentinela representados como texto, como as strings \texttt{"-999"} e \texttt{"-9999"}.
+    \item um arquivo \texttt{missing\_by\_column.csv} com contagem e proporção de faltantes por coluna, separando registros com e sem foco;
+    \item um \texttt{README\_missing.md} que descreve o número total de linhas, a proporção de linhas com foco e as colunas mais críticas em termos de ausência de dados.
 \end{itemize}
 
-Essa definição é aplicada de forma diferenciada por tipo de coluna:
+Algumas colunas são explicitamente excluídas da análise de \textit{features}, como identificadores temporais e espaciais (\texttt{DATA (YYYY-MM-DD)}, \texttt{HORA (UTC)}, \texttt{CIDADE}, \texttt{cidade\_norm}, \texttt{ts\_hour}, \texttt{ANO}), a variável \texttt{HAS\_FOCO} e as colunas diretamente associadas ao foco (\texttt{RISCO\_FOGO}, \texttt{FRP}, \texttt{FOCO\_ID}).
 
-\begin{itemize}
-    \item colunas numéricas: são consideradas faltantes se forem \texttt{NaN} ou se estiverem no conjunto de sentinelas numéricos;
-    \item colunas de texto: são consideradas faltantes se forem \texttt{NaN}, strings vazias (após \textit{strip}) ou se coincidirem com os sentinelas textuais;
-    \item colunas booleanas: apenas \texttt{NaN} são consideradas faltantes.
-\end{itemize}
+\subsection{Construção das bases de modelagem}
 
-\subsection{Relatórios anuais de auditoria}
-
-Para cada arquivo \texttt{inmet\_bdq\_ANO\_cerrado.csv} em \texttt{data/dataset/}, o módulo \texttt{dataset\_missing\_audit.py} produz:
-
-\begin{itemize}
-    \item um arquivo \texttt{missing\_by\_column.csv} em \texttt{data/eda/dataset/ANO/}, contendo, para cada coluna de \textit{feature}:
-    \begin{itemize}
-        \item número total de valores faltantes;
-        \item número de valores faltantes entre registros com foco (\texttt{HAS\_FOCO = 1});
-        \item número de valores faltantes entre registros sem foco;
-        \item proporção relativa de valores faltantes em cada um desses subconjuntos;
-    \end{itemize}
-    \item um arquivo \texttt{README\_missing.md}, descrevendo:
-    \begin{itemize}
-        \item o total de linhas naquele ano;
-        \item a proporção de registros com foco;
-        \item a interpretação das colunas presentes em \texttt{missing\_by\_column.csv};
-        \item as colunas com maior proporção de dados faltantes, destacando potenciais problemas de uso em modelagem.
-    \end{itemize}
-\end{itemize}
-
-As colunas explicitamente excluídas da auditoria como \textit{features} são:
-
-\begin{itemize}
-    \item colunas de identificação temporal e espacial: \texttt{DATA (YYYY-MM-DD)}, \texttt{HORA (UTC)}, \texttt{CIDADE}, \texttt{cidade\_norm}, \texttt{ts\_hour}, \texttt{ANO};
-    \item a coluna de rótulo \texttt{HAS\_FOCO};
-    \item colunas de alvo relacionadas diretamente ao foco: \texttt{RISCO\_FOGO}, \texttt{FRP}, \texttt{FOCO\_ID}.
-\end{itemize}
-
-Esses relatórios são utilizados como insumo na etapa seguinte, que constrói múltiplas bases de modelagem com diferentes estratégias de tratamento de dados faltantes.
-
-\section{Construção das bases de modelagem}
-
-\subsection{Harmonização de variáveis e semântica de missing}
-
-O módulo \texttt{modeling\_build\_datasets.py} lê os arquivos \texttt{inmet\_bdq\_ANO\_cerrado.csv} em \texttt{data/dataset/} e aplica, antes de qualquer cenário de modelagem, duas operações de padronização:
+A partir dos arquivos \texttt{inmet\_bdq\_ANO\_cerrado.csv}, o módulo \texttt{modeling\_build\_datasets.py} gera múltiplos cenários de base, já em formato \texttt{.parquet}, armazenados em \texttt{data/modeling/}. Antes de separar os cenários, são aplicadas duas padronizações:
 
 \begin{enumerate}
-    \item \textbf{Harmonização da radiação global}: diferentes anos podem apresentar a variável de radiação global sob nomes ligeiramente distintos, como \texttt{RADIACAO GLOBAL (Kj/m²)} e \texttt{RADIACAO GLOBAL (KJ/m²)}. O script consolida essas variantes em uma única coluna canônica, \texttt{RADIACAO GLOBAL (KJ/m²)}, descartando a duplicata após o merge;
-    \item \textbf{Aplicação da semântica de missing}: todos os códigos sentinela numéricos \texttt{-999} e \texttt{-9999} são convertidos em \texttt{NaN} nas colunas numéricas, e strings vazias são convertidas em \texttt{NaN} nas colunas de texto.
+    \item \textbf{Harmonização da radiação global}: quando a variável de radiação aparece com nomes ligeiramente diferentes em anos distintos (por exemplo, \texttt{RADIACAO GLOBAL (Kj/m²)} e \texttt{RADIACAO GLOBAL (KJ/m²)}), os valores são unificados em uma única coluna canônica, descartando duplicatas;
+    \item \textbf{Aplicação da semântica de \textit{missing}}: os códigos sentinela numéricos são convertidos em \texttt{NaN} nas colunas numéricas, e strings vazias são convertidas em \texttt{NaN} nas colunas textuais.
 \end{enumerate}
 
-Em seguida, o script identifica as colunas de \textit{feature} como sendo todas as colunas que não pertencem aos conjuntos:
+Em seguida, são definidas as colunas de \textit{features} como todas aquelas que não pertencem aos conjuntos:
 
 \begin{itemize}
     \item colunas alvo: \texttt{RISCO\_FOGO}, \texttt{FRP}, \texttt{FOCO\_ID};
     \item coluna de rótulo: \texttt{HAS\_FOCO};
-    \item colunas explicitamente excluídas (identificação temporal e espacial), como \texttt{ANO}, \texttt{DATA (YYYY-MM-DD)}, \texttt{HORA (UTC)}, \texttt{CIDADE}, \texttt{cidade\_norm}, \texttt{ts\_hour}.
+    \item colunas de identificação temporal e espacial, como \texttt{ANO}, \texttt{DATA (YYYY-MM-DD)}, \texttt{HORA (UTC)}, \texttt{CIDADE}, \texttt{cidade\_norm}, \texttt{ts\_hour}.
 \end{itemize}
 
-Essas colunas de \textit{feature} são então coercitivamente convertidas para tipo numérico, com qualquer valor não numérico sendo convertido em \texttt{NaN}. Sempre que disponíveis, os registros são ordenados por \texttt{ANO}, \texttt{DATA (YYYY-MM-DD)} e \texttt{HORA (UTC)}.
+Essas \textit{features} são convertidas para tipo numérico (\texttt{errors="coerce"}), de modo que valores inconsistentes passem a ser tratados como \textit{missing} e entrem na lógica já descrita.
 
-\subsection{Cenários de bases de modelagem}
-
-Para cada ano disponível, o script tenta construir seis cenários de base, gravando cada um deles em formato \texttt{.parquet} sob \texttt{data/modeling/<cenario>/inmet\_bdq\_ANO\_cerrado.parquet}:
-
-\begin{enumerate}
-    \item \textbf{\texttt{base\_F\_full\_original}}: mantém a coluna de radiação global e aplica apenas a harmonização de nomes, a semântica de missing e a coercitividade numérica das \textit{features}. Não remove linhas, nem realiza imputação;
-    \item \textbf{\texttt{base\_A\_no\_rad}}: remove a coluna de radiação global, se presente, mantendo as demais características da base harmonizada. Não remove linhas, nem realiza imputação;
-    \item \textbf{\texttt{base\_B\_no\_rad\_knn}}: parte da \texttt{base\_A} e aplica imputação via \textit{KNNImputer} em todas as colunas de \textit{features} numéricas, usando um número configurável de vizinhos mais próximos. A coluna de rótulo e as colunas alvo não entram no processo de imputação;
-    \item \textbf{\texttt{base\_C\_no\_rad\_drop\_rows}}: parte da \texttt{base\_A} e remove todas as linhas que apresentem qualquer valor faltante em colunas de \textit{features}. O objetivo é obter uma base sem dados faltantes, à custa de reduzir o número de registros;
-    \item \textbf{\texttt{base\_D\_with\_rad\_drop\_rows}}: parte da base harmonizada com radiação, removendo todas as linhas com valores faltantes em \textit{features}. Preserva a variável de radiação, mas considera apenas registros completamente observados;
-    \item \textbf{\texttt{base\_E\_with\_rad\_knn}}: parte da base harmonizada com radiação e aplica imputação \textit{KNN} nas colunas de \textit{features} numéricas, incluindo a radiação se ela for numérica. Mantém a coluna de radiação na base final.
-\end{enumerate}
-
-Por padrão, o script não sobrescreve arquivos \texttt{.parquet} já existentes. Caso os seis cenários de um ano já estejam disponíveis, o ano é inteiramente pulado. É possível forçar a reconstrução das bases ao executar o script com a opção de sobrescrita, o que é útil quando se altera a definição de \textit{features}, o número de vizinhos no KNN ou a semântica de missing.
-
-\section{Modelagem de aprendizado de máquina}
-
-A partir das bases construídas na seção anterior, são treinados modelos de aprendizado de máquina para prever, em diferentes horizontes e granularidades temporais, a ocorrência de focos de queimada indicada pela variável \texttt{HAS\_FOCO}. O uso de múltiplos cenários de base permite comparar, de forma controlada, o impacto de diferentes decisões de pré-processamento (presença de radiação, imputação versus remoção de registros incompletos) sobre o desempenho dos modelos.
-
-Embora o foco deste trabalho esteja em modelos baseados em árvores de decisão para classificação binária, o pipeline de dados foi desenhado de forma flexível, permitindo incluir outros algoritmos. Em todos os casos, são seguidos princípios comuns:
+Com essa base harmonizada, o script gera, para cada ano, seis cenários distintos, variando a presença da radiação global e a estratégia de tratamento de dados faltantes:
 
 \begin{itemize}
-    \item separação temporal entre treino e teste, de forma a respeitar a natureza sequencial dos dados e evitar vazamento de informação temporal;
-    \item definição de métricas adequadas a problemas desbalanceados (por exemplo, AUC-ROC, AUC-PR, F1 para a classe minoritária, taxa de detecção precoce);
-    \item uso das múltiplas bases disponíveis em \texttt{data/modeling/} para comparar cenários de tratamento de dados faltantes.
+    \item \textbf{base\_F\_full\_original}: mantém a radiação; aplica apenas harmonização e conversão de sentinelas para \textit{missing}, sem remoção de linhas nem imputação;
+    \item \textbf{base\_A\_no\_rad}: remove a coluna de radiação (se existir), mantendo as demais variáveis e sem remoção de linhas;
+    \item \textbf{base\_B\_no\_rad\_knn}: parte de \texttt{base\_A} e aplica \textit{KNNImputer} nas colunas numéricas de \textit{features};
+    \item \textbf{base\_C\_no\_rad\_drop\_rows}: parte de \texttt{base\_A} e remove todas as linhas com qualquer \textit{missing} em \textit{features};
+    \item \textbf{base\_D\_with\_rad\_drop\_rows}: parte da base com radiação e remove todas as linhas com \textit{missing} em \textit{features};
+    \item \textbf{base\_E\_with\_rad\_knn}: parte da base com radiação e aplica \textit{KNNImputer} nas \textit{features} numéricas, incluindo a radiação.
 \end{itemize}
 
-A parametrização específica dos modelos e a estratégia de validação cruzada temporal são detalhadas no capítulo dedicado à modelagem.
+Esses cenários permitem comparar, na etapa de modelagem, o impacto da presença da variável de radiação e de diferentes estratégias de tratamento de dados faltantes sobre o desempenho dos modelos preditivos.
 
-\section{Interpretabilidade e análise de importância}
-
-Por fim, a infraestrutura de dados construída permite aplicar métodos de interpretabilidade baseados em decomposição de importância e efeitos marginais, particularmente adequados a modelos de árvore. Para os modelos selecionados, são calculadas:
-
-\begin{itemize}
-    \item medidas de importância global de variáveis (por exemplo, \textit{feature importance} e valores SHAP agregados por variável);
-    \item curvas de dependência parcial das principais variáveis climáticas, destacando a forma funcional da relação entre elas e a probabilidade estimada de ocorrência de queimadas.
-\end{itemize}
-
-Essas análises são sempre realizadas sobre bases cuja semântica de missing e de radiação está claramente definida, o que permite interpretar, de forma comparável entre anos e cenários, o papel de cada variável na previsão de queimadas no Cerrado.
-
-Em síntese, a metodologia integra explicitamente o pipeline de ETL e auditoria de dados ao desenho da etapa de modelagem, de modo que cada escolha de pré-processamento (códigos sentinela, harmonização de variáveis, estratégias de imputação e remoção de registros) possa ser rastreada e avaliada em termos do impacto sobre o desempenho e a interpretabilidade dos modelos de previsão de queimadas.
+Ao final, toda a implementação do pipeline de ETL, scripts de auditoria e construção das bases de modelagem encontra-se disponível em repositório público de código\footnote{Substituir pelo endereço oficial do repositório, por exemplo: \url{https://github.com/seu-usuario/seu-repo-tcc}}.
