@@ -60,6 +60,14 @@ from sklearn.impute import KNNImputer
 
 from utils import loadConfig, get_logger, get_path, ensure_dir
 
+import time
+import numpy as np
+
+try:
+    import psutil
+except Exception:
+    psutil = None
+
 
 # -----------------------------------------------------------------------------
 # CONFIG, LOG E CONSTANTES
@@ -135,6 +143,20 @@ SCENARIO_MAP = {
 # Ordem canônica para execução
 SCENARIO_ORDER = ["F", "A", "B", "C", "D", "E"]
 
+def _fmt_bytes(n: float) -> str:
+    for unit in ["B","KB","MB","GB","TB"]:
+        if n < 1024:
+            return f"{n:,.1f} {unit}"
+        n /= 1024
+    return f"{n:,.1f} PB"
+
+def _mem_info() -> str:
+    if psutil is None:
+        return "psutil indisponível"
+    p = psutil.Process()
+    rss = p.memory_info().rss
+    vm = psutil.virtual_memory()
+    return f"RSS={_fmt_bytes(rss)} | RAM livre={_fmt_bytes(vm.available)}"
 
 # -----------------------------------------------------------------------------
 # CLASSE PRINCIPAL
@@ -145,28 +167,35 @@ class ModelingDatasetBuilder:
     modeling_dir: Path
     file_pattern: str = FILENAME_PATTERN
     missing_codes: set[int] = field(default_factory=lambda: MISSING_CODES.copy())
-    exclude_non_numeric: set[str] = field(
-        default_factory=lambda: EXCLUDE_NON_NUMERIC.copy()
-    )
+    exclude_non_numeric: set[str] = field(default_factory=lambda: EXCLUDE_NON_NUMERIC.copy())
     target_cols: set[str] = field(default_factory=lambda: TARGET_COLS.copy())
     label_col: str = LABEL_COL
     radiacao_col: str = RADIACAO_COL
-    # Por default, NAO sobrescreve parquets ja existentes.
+
     overwrite_existing: bool = False
     enabled_scenarios: set[str] = field(default_factory=lambda: set(SCENARIO_ORDER))
 
+    # ---- KNN: performance & logging ----
+    imputer_chunk_rows: int = 50_000          # tamanho do bloco no transform
+    log_heartbeat_sec: int = 20               # frequência dos heartbeats
+
+    # ---- KNN: otimizações simples mas efetivas ----
+    imputer_fit_max_rows: Optional[int] = 80_000  # treine o imputer em no máx. M linhas; None/0 = usa tudo
+    imputer_prefer_complete_fit: bool = True      # prioriza linhas com menos NaNs no FIT
+    imputer_fit_max_missing_frac: float = 0.40    # ao priorizar "completas": máximo % de NaN por linha (0.40 = 40%)
+    imputer_weights: str = "uniform"              # 'uniform' ou 'distance'
+
+    # ---- KNN: opcionalmente imputar por mês (reduz N por grupo) ----
+    imputer_group_by_month: bool = False
+    imputer_min_group_rows: int = 40_000          # grupo < este tamanho cai em fallback (ano inteiro)
 
     def __post_init__(self) -> None:
-        self.missing_codes_str = {str(v) for v in self.missing_codes}
+        pass
 
     # ------------------------------
     # Descoberta de arquivos
     # ------------------------------
     def discover_year_files(self) -> Dict[int, Path]:
-        """
-        Localiza arquivos ano a ano pelo padrao informado e extrai o ano do nome.
-        Retorna {ano: caminho}.
-        """
         mapping: Dict[int, Path] = {}
         for fp in self.dataset_dir.glob(self.file_pattern):
             digits = "".join(ch if ch.isdigit() else " " for ch in fp.stem).split()
@@ -188,38 +217,26 @@ class ModelingDatasetBuilder:
             raise FileNotFoundError(
                 f"Nenhum CSV encontrado em {self.dataset_dir} com padrao {self.file_pattern}"
             )
-
         log.info(f"[DISCOVER] {len(mapping)} arquivos anuais detectados.")
         return mapping
 
     def is_enabled(self, code: str) -> bool:
-        """Retorna True se o cenário (A..F) está habilitado."""
         return code in self.enabled_scenarios
 
     def scenario_path_exists(self, code: str, year: int) -> bool:
-        """Checa existência do parquet do cenário code (A..F) para o ano."""
         return self.get_scenario_path(SCENARIO_MAP[code], year).exists()
 
     # ------------------------------
-    # Harmonizacao de colunas
+    # Harmonização / leitura
     # ------------------------------
     def harmonize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Harmoniza inconsistencias de nomenclatura entre anos.
-        Exemplo principal: unificar radiacao global Kj/m² e KJ/m².
-        """
         df = df.copy()
-
         old = "RADIACAO GLOBAL (Kj/m²)"
         new = self.radiacao_col
 
         if old in df.columns and new in df.columns:
             filled = df[new].combine_first(df[old])
-            conflict_mask = (
-                df[old].notna()
-                & df[new].notna()
-                & (df[old] != df[new])
-            )
+            conflict_mask = df[old].notna() & df[new].notna() & (df[old] != df[new])
             if conflict_mask.any():
                 log.warning(
                     f"[HARMONIZE] Conflitos entre '{old}' e '{new}' em "
@@ -227,87 +244,44 @@ class ModelingDatasetBuilder:
                 )
             df[new] = filled
             df = df.drop(columns=[old])
-
         elif old in df.columns:
             df = df.rename(columns={old: new})
-
         return df
 
-    # ------------------------------
-    # Leitura de CSV anual
-    # ------------------------------
     def read_year_csv(self, fp: Path, year: int) -> pd.DataFrame:
-        df = pd.read_csv(
-            fp,
-            sep=",",
-            decimal=",",  # trata "898,1" como 898.1, etc.
-            encoding="utf-8",
-            low_memory=False,
-        )
+        df = pd.read_csv(fp, sep=",", decimal=",", encoding="utf-8", low_memory=False)
         df = self.harmonize_columns(df)
-
-        # Coluna ANO, se nao existir
         if "ANO" not in df.columns:
             df["ANO"] = year
-
         return df
 
     # ------------------------------
-    # Aplicar semantica de missing (NaN, vazios, sentinelas) ANO A ANO
+    # Missing semantics / coerção
     # ------------------------------
     def apply_missing_semantics(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Converte:
-        - -999 / -9999 em NaN nas colunas numericas.
-        - strings vazias em NaN nas colunas texto.
-        """
         df = df.copy()
-
         for c in df.columns:
             s = df[c]
-
             if pd.api.types.is_numeric_dtype(s):
-                # substitui sentinelas por NaN
                 df[c] = s.replace(list(self.missing_codes), pd.NA)
             else:
-                # tratamento leve para texto: vazio -> NaN
                 s_str = s.astype("string")
                 df[c] = s_str.mask(s_str.str.strip().eq(""))
-
         return df
 
-    # ------------------------------
-    # Forcar features a numerico (pos missing_semantics)
-    # ------------------------------
     def coerce_feature_columns_to_numeric(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Forca as colunas de feature a serem numericas via pd.to_numeric(errors='coerce').
-        Isso garante que o KNNImputer enxergue todas como numericas,
-        desde que os valores sejam de fato numericos ou NaN.
-        """
         df = df.copy()
         feature_cols = self.get_feature_columns(df)
-
         for c in feature_cols:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-
+            df[c] = pd.to_numeric(df[c], errors="coerce").astype("float32")
         n_num = sum(pd.api.types.is_numeric_dtype(df[c]) for c in feature_cols)
-        log.info(
-            f"[COERCE] {len(feature_cols)} features candidatas; "
-            f"{n_num} colunas numericas apos to_numeric."
-        )
+        log.info(f"[COERCE] {len(feature_cols)} features candidatas; {n_num} numéricas (float32).")
         return df
 
     # ------------------------------
-    # Determinar colunas de feature
+    # Seleção de features
     # ------------------------------
     def get_feature_columns(self, df: pd.DataFrame) -> List[str]:
-        """
-        Features = todas as colunas exceto:
-        - TARGET_COLS
-        - LABEL_COL
-        - EXCLUDE_NON_NUMERIC
-        """
         feature_cols: List[str] = []
         for c in df.columns:
             if c in self.target_cols:
@@ -317,17 +291,177 @@ class ModelingDatasetBuilder:
             if c in self.exclude_non_numeric:
                 continue
             feature_cols.append(c)
-        log.info(f"[FEATURES] {len(feature_cols)} colunas de feature encontradas: {feature_cols}")
+        log.info(f"[FEATURES] {len(feature_cols)} colunas de feature: {feature_cols}")
         return feature_cols
 
     def get_numeric_feature_columns(self, df: pd.DataFrame, feature_cols: List[str]) -> List[str]:
         num_cols = [c for c in feature_cols if pd.api.types.is_numeric_dtype(df[c])]
-        log.info(f"[NUM FEATURES] {len(num_cols)} colunas numericas para KNNImputer: {num_cols}")
+        log.info(f"[NUM FEATURES] {len(num_cols)} numéricas para KNNImputer: {num_cols}")
         return num_cols
 
     # ------------------------------
-    # Imputacao KNN em features numericas
+    # KNN: helpers
     # ------------------------------
+    def _choose_fit_indices(
+        self,
+        X: np.ndarray,
+        df_block: pd.DataFrame,
+        max_rows: int,
+        prefer_complete: bool,
+        max_missing_frac: float,
+    ) -> np.ndarray:
+        """
+        Escolhe até max_rows índices para FIT, preferindo linhas com menos NaN e
+        estratificando por mês quando possível.
+        """
+        n_rows, n_cols = X.shape
+        rng = np.random.default_rng(42)
+        if max_rows <= 0 or max_rows >= n_rows:
+            return np.arange(n_rows)
+
+        # prioridade: linhas com proporção de NaN <= max_missing_frac
+        if prefer_complete:
+            nan_per_row = np.isnan(X).sum(axis=1)
+            ok_mask = nan_per_row <= int(max_missing_frac * n_cols)
+        else:
+            ok_mask = np.ones(n_rows, dtype=bool)
+
+        idx_pool = np.nonzero(ok_mask)[0]
+        if idx_pool.size == 0:
+            idx_pool = np.arange(n_rows)
+
+        # estratificar por mês (se existir)
+        month_series = None
+        if "DATA (YYYY-MM-DD)" in df_block.columns:
+            # mais rápido que to_datetime em lotes grandes:
+            # pega mm de 'YYYY-MM-DD'
+            s = df_block["DATA (YYYY-MM-DD)"].astype("string")
+            month_series = pd.to_numeric(s.str.slice(5, 7), errors="coerce").fillna(-1).astype(int)
+
+        if month_series is None:
+            # amostra simples
+            if idx_pool.size <= max_rows:
+                return idx_pool
+            return rng.choice(idx_pool, size=max_rows, replace=False)
+
+        # amostra estratificada por mês
+        target = max_rows
+        chosen: List[int] = []
+        pool_df = pd.DataFrame({"idx": idx_pool, "m": month_series.iloc[idx_pool].to_numpy()})
+        # distribuição proporcional por mês (m = 1..12; -1 = desconhecido)
+        counts = pool_df["m"].value_counts().to_dict()
+        total = float(len(pool_df))
+        # passe 1: cota proporcional
+        for m, cnt in counts.items():
+            q = int(round(target * (cnt / total)))
+            sub = pool_df[pool_df["m"] == m]["idx"].to_numpy()
+            q = min(q, sub.size)
+            if q > 0:
+                chosen.extend(rng.choice(sub, size=q, replace=False).tolist())
+
+        # complete se faltar
+        chosen = np.array(chosen, dtype=int)
+        if chosen.size < target:
+            # pega do restante sem repetir
+            rest = np.setdiff1d(idx_pool, chosen, assume_unique=False)
+            need = min(target - chosen.size, rest.size)
+            if need > 0:
+                more = rng.choice(rest, size=need, replace=False)
+                chosen = np.concatenate([chosen, more])
+        elif chosen.size > target:
+            chosen = rng.choice(chosen, size=target, replace=False)
+
+        return np.sort(chosen)
+
+    def _impute_block(
+        self,
+        df_block: pd.DataFrame,
+        num_cols: List[str],
+        n_neighbors: int,
+    ) -> pd.DataFrame:
+        """
+        Imputa um bloco (tabela inteira ou subgrupo) usando KNNImputer,
+        com FIT possivelmente em subamostra e TRANSFORM em blocos.
+        """
+        df_block = df_block.copy()
+        X = df_block[num_cols].to_numpy(dtype=np.float32, copy=True)
+        n_rows, n_cols = X.shape
+
+        # estatísticas iniciais
+        miss_counts = np.isnan(X).sum(axis=0)
+        miss_pct = (miss_counts / max(1, n_rows)) * 100.0
+        worst_idx = np.argsort(-miss_pct)[:10]
+        worst_cols = [(num_cols[i], int(miss_counts[i]), float(miss_pct[i])) for i in worst_idx]
+
+        log.info(
+            f"[KNN] Bloco: {n_rows} linhas x {n_cols} col ({df_block.index.min()}..{df_block.index.max()}) | {_mem_info()}"
+        )
+        if worst_cols:
+            top_str = "; ".join([f"{c}: {cnt} ({pct:.1f}%)" for c, cnt, pct in worst_cols])
+            log.info(f"[KNN] TOP missing (antes): {top_str}")
+
+        # ---- FIT em subamostra (se configurado) ----
+        fit_idx = self._choose_fit_indices(
+            X,
+            df_block=df_block,
+            max_rows=(self.imputer_fit_max_rows or 0),
+            prefer_complete=self.imputer_prefer_complete_fit,
+            max_missing_frac=self.imputer_fit_max_missing_frac,
+        )
+        fit_X = X if fit_idx.size == X.shape[0] else X[fit_idx]
+        log.info(f"[KNN] Fit set: {fit_X.shape[0]} linhas (de {n_rows}). n_neighbors={n_neighbors}, weights={self.imputer_weights}")
+
+        t0 = time.perf_counter()
+        imputer = KNNImputer(n_neighbors=n_neighbors, weights=self.imputer_weights)
+        imputer.fit(fit_X)
+        t_fit = time.perf_counter() - t0
+        log.info(f"[KNN] FIT concluído em {t_fit:.1f}s | {_mem_info()}")
+
+        # ---- TRANSFORM em blocos (sempre no X inteiro) ----
+        chunk = max(1, int(self.imputer_chunk_rows))
+        out = np.empty_like(X, dtype=np.float32)
+        processed = 0
+        t_start = time.perf_counter()
+        t_last_heartbeat = t_start
+
+        log.info(f"[KNN] TRANSFORM em blocos de {chunk} linhas...")
+        for start in range(0, n_rows, chunk):
+            end = min(start + chunk, n_rows)
+            block = X[start:end]
+            # transforma contra _fit_X já armazenado no imputer
+            out[start:end] = imputer.transform(block).astype(np.float32)
+            processed = end
+
+            now = time.perf_counter()
+            if (now - t_last_heartbeat) >= self.log_heartbeat_sec:
+                elapsed = now - t_start
+                speed = processed / max(1e-9, elapsed)
+                log.info(
+                    f"[KNN] Progresso: {processed}/{n_rows} ({processed/n_rows:.1%}) | "
+                    f"{speed:,.0f} linhas/s | {_mem_info()}"
+                )
+                t_last_heartbeat = now
+
+        t_total = time.perf_counter() - t_start
+        speed_final = n_rows / max(1e-9, t_total)
+        log.info(f"[KNN] TRANSFORM terminou em {t_total:.1f}s | {speed_final:,.0f} lin/s | {_mem_info()}")
+
+        # pós-estatística
+        miss_after = np.isnan(out).sum(axis=0)
+        miss_after_pct = (miss_after / max(1, n_rows)) * 100.0
+        improved = []
+        for i in range(n_cols):
+            if abs(miss_after_pct[i] - miss_pct[i]) > 0.01:
+                improved.append((num_cols[i], float(miss_pct[i]), float(miss_after_pct[i])))
+        if improved:
+            improved.sort(key=lambda x: (x[1] - x[2]), reverse=True)
+            improved = improved[:10]
+            ch_str = "; ".join([f"{c}: {bef:.1f}% -> {aft:.1f}%" for c, bef, aft in improved])
+            log.info(f"[KNN] Redução de missing (top): {ch_str}")
+
+        df_block[num_cols] = out
+        return df_block
+
     def apply_knn_imputation(
         self,
         df: pd.DataFrame,
@@ -335,252 +469,200 @@ class ModelingDatasetBuilder:
         n_neighbors: int = 5,
     ) -> pd.DataFrame:
         """
-        Aplica KNNImputer somente nas colunas numericas de feature.
-        (Feito por ano, para evitar estouro de memoria.)
+        Imputa com KNN:
+        - se imputer_group_by_month=True e existir DATA (YYYY-MM-DD), divide por mês quando
+          o grupo tiver >= imputer_min_group_rows; senão cai para o bloco anual.
+        - sempre usa FIT subamostrado (quando configurado) e TRANSFORM em blocos.
         """
         df = df.copy()
-
         num_cols = self.get_numeric_feature_columns(df, feature_cols)
         if not num_cols:
-            log.warning("[KNN] Nenhuma coluna numerica de feature encontrada. Imputacao ignorada.")
+            log.warning("[KNN] Sem colunas numéricas de feature. Imputação ignorada.")
             return df
 
-        imputer = KNNImputer(n_neighbors=n_neighbors, weights="uniform")
+        if self.imputer_group_by_month and "DATA (YYYY-MM-DD)" in df.columns:
+            # extrai o mês de forma rápida
+            months = pd.to_numeric(
+                df["DATA (YYYY-MM-DD)"].astype("string").str.slice(5, 7),
+                errors="coerce"
+            ).fillna(-1).astype(int)
 
-        log.info(f"[KNN] Ajustando imputador com n_neighbors={n_neighbors}.")
-        num_values = df[num_cols].to_numpy()
-        imputed = imputer.fit_transform(num_values)
+            result = df.copy()
+            big_group_idx = []
+            small_idx = []
 
-        df[num_cols] = imputed
-        log.info("[KNN] Imputacao concluida para este ano.")
-        return df
+            for m in range(1, 13):
+                idx = np.where(months.values == m)[0]
+                if idx.size >= self.imputer_min_group_rows:
+                    big_group_idx.append(idx)
+                elif idx.size > 0:
+                    small_idx.append(idx)
+
+            # processa grupos grandes por mês
+            for idx in big_group_idx:
+                part = result.iloc[idx]
+                part_imp = self._impute_block(part, num_cols, n_neighbors=n_neighbors)
+                result.iloc[idx, result.columns.get_indexer(num_cols)] = part_imp[num_cols].to_numpy()
+
+            # fallback: junta os grupos pequenos + mês desconhecido
+            if small_idx:
+                idx_small = np.concatenate(small_idx)
+            else:
+                idx_small = np.array([], dtype=int)
+            idx_unk = np.where(months.values == -1)[0]
+            rest = np.sort(np.concatenate([idx_small, idx_unk])) if idx_small.size or idx_unk.size else np.array([], dtype=int)
+
+            if rest.size:
+                part = result.iloc[rest]
+                part_imp = self._impute_block(part, num_cols, n_neighbors=n_neighbors)
+                result.iloc[rest, result.columns.get_indexer(num_cols)] = part_imp[num_cols].to_numpy()
+
+            log.info("[KNN] Imputação (agrupada por mês) concluída.")
+            return result
+
+        # caso padrão: ano inteiro de uma vez
+        return self._impute_block(df, num_cols, n_neighbors=n_neighbors)
 
     # ------------------------------
-    # Remover linhas que tenham qualquer feature faltante
+    # Drop rows com missing em features
     # ------------------------------
-    def drop_rows_with_missing_features(
-        self,
-        df: pd.DataFrame,
-        feature_cols: List[str],
-    ) -> pd.DataFrame:
-        """
-        Remove linhas que tenham NaN em qualquer coluna de feature.
-        (Feito por ano.)
-        """
+    def drop_rows_with_missing_features(self, df: pd.DataFrame, feature_cols: List[str]) -> pd.DataFrame:
         df = df.copy()
         mask_missing = df[feature_cols].isna().any(axis=1)
         n_missing_rows = int(mask_missing.sum())
         n_total = int(df.shape[0])
-
         df_clean = df.loc[~mask_missing].reset_index(drop=True)
-        log.info(
-            f"[DROP] Removidas {n_missing_rows} linhas com missing em features "
-            f"({n_missing_rows/n_total:.4f} da base). Nova shape: {df_clean.shape}."
-        )
+        log.info(f"[DROP] Removidas {n_missing_rows} linhas ({n_missing_rows/n_total:.4f}). Nova shape: {df_clean.shape}.")
         return df_clean
 
     # ------------------------------
-    # Helper: caminho do parquet de um cenario/ano
+    # Paths / save
     # ------------------------------
     def get_scenario_path(self, scenario: str, year: int) -> Path:
-        """
-        Retorna o caminho completo do parquet para um dado cenario e ano,
-        sem criar o diretorio ainda.
-        """
         return self.modeling_dir / scenario / f"inmet_bdq_{year}_cerrado.parquet"
 
-
-    # ------------------------------
-    # Helper para salvar cenarios (por ano)
-    # ------------------------------
     def save_scenario_year(self, df: pd.DataFrame, scenario: str, year: int) -> None:
-        """
-        Salva um parquet para um determinado cenario e ano.
-        Ex: data/modeling/base_A_no_rad/inmet_bdq_2004_cerrado.parquet
-
-        Por default NAO sobrescreve se o arquivo ja existir. Para forcar
-        sobrescrita, use overwrite_existing=True no builder ou --overwrite-existing na CLI.
-        """
         path = self.get_scenario_path(scenario, year)
-        scenario_dir = ensure_dir(path.parent)
-
+        ensure_dir(path.parent)
         if path.exists() and not self.overwrite_existing:
-            log.info(
-                f"[SKIP] {scenario} ({year}) ja existe em {path}, nao sobrescrevendo "
-                f"(overwrite_existing={self.overwrite_existing})."
-            )
+            log.info(f"[SKIP] {scenario} ({year}) já existe em {path}.")
             return
-
         if path.exists() and self.overwrite_existing:
-            log.info(
-                f"[OVERWRITE] {scenario} ({year}) ja existia em {path}, sera sobrescrito."
-            )
-
+            log.info(f"[OVERWRITE] {scenario} ({year}) será sobrescrito.")
         df.to_parquet(path, index=False)
-        log.info(
-            f"[SAVE] {scenario} ({year}): {df.shape[0]} linhas, {df.shape[1]} colunas -> {path}"
-        )
+        log.info(f"[SAVE] {scenario} ({year}): {df.shape[0]} x {df.shape[1]} -> {path}")
 
-
-    def build_and_save_scenarios_for_year(
-        self,
-        df_year: pd.DataFrame,
-        year: int,
-        n_neighbors: int = 5,
-    ) -> None:
-        """
-        Constroi e salva as bases (apenas as habilitadas em self.enabled_scenarios) para um ano.
-
-        Regras:
-        - Se TODOS os cenários habilitados já existem e overwrite_existing=False, pula o ano.
-        - Para cada cenário, só computa o necessário (evita montar df_A se A/B/C não estiverem habilitados).
-        - Evita rodar KNN/descarte se o parquet do cenário já existir (quando overwrite_existing=False).
-        """
+    # ------------------------------
+    # Pipeline de um ano
+    # ------------------------------
+    def build_and_save_scenarios_for_year(self, df_year: pd.DataFrame, year: int, n_neighbors: int = 5) -> None:
         if self.label_col not in df_year.columns:
-            raise KeyError(
-                f"Coluna de label '{self.label_col}' nao encontrada no ano {year}."
-            )
+            raise KeyError(f"Coluna de label '{self.label_col}' nao encontrada no ano {year}.")
 
-        # Lista de códigos de cenário realmente habilitados (na ordem canônica)
         enabled_codes = [c for c in SCENARIO_ORDER if self.is_enabled(c)]
 
-        # Se todos os parquets dos cenários habilitados existem, pula tudo
         if not self.overwrite_existing:
             if all(self.scenario_path_exists(c, year) for c in enabled_codes):
-                log.info(f"[YEAR {year}] Todos os cenarios habilitados {enabled_codes} ja existem. Pulando ano.")
+                log.info(f"[YEAR {year}] Todos os cenários habilitados {enabled_codes} já existem. Pulando.")
                 return
 
-        # Só agora aplicamos missing/coerce se houver algo para fazer
         df_year = self.apply_missing_semantics(df_year)
         df_year = self.coerce_feature_columns_to_numeric(df_year)
 
         sort_cols = [c for c in ["ANO", "DATA (YYYY-MM-DD)", "HORA (UTC)"] if c in df_year.columns]
         if sort_cols:
             df_year = df_year.sort_values(sort_cols).reset_index(drop=True)
+        log.info(f"[YEAR {year}] Base após missing/coerce: {df_year.shape[0]} x {df_year.shape[1]}.")
 
-        log.info(f"[YEAR {year}] Base original apos missing/coerce: {df_year.shape[0]} linhas, {df_year.shape[1]} colunas.")
-
-        # Cache leve para reaproveitar dataframes intermediários somente quando necessário
-        df_A = None  # versão "sem radiacao" se precisarmos de A/B/C
-
-        # --------------------------
-        # F) full original
-        # --------------------------
+        df_A = None
+        # F
         if "F" in enabled_codes:
             path_F = self.get_scenario_path(SCENARIO_MAP["F"], year)
             if path_F.exists() and not self.overwrite_existing:
-                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['F']} ja existe.")
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['F']} já existe.")
             else:
                 self.save_scenario_year(df_year, SCENARIO_MAP["F"], year)
 
-        # Precisaremos da base sem radiação se A ou B ou C estiverem habilitados
         need_no_rad = any(c in enabled_codes for c in ("A", "B", "C"))
         if need_no_rad:
             df_A = df_year.copy()
             if self.radiacao_col in df_A.columns:
                 df_A = df_A.drop(columns=[self.radiacao_col])
-                log.info(f"[YEAR {year}] Base sem radiacao preparada para A/B/C.")
+                log.info(f"[YEAR {year}] Base sem radiação preparada (A/B/C).")
             else:
-                log.warning(f"[YEAR {year}] Coluna de radiacao '{self.radiacao_col}' nao encontrada (A/B/C).")
+                log.warning(f"[YEAR {year}] Coluna '{self.radiacao_col}' não encontrada (A/B/C).")
 
-        # --------------------------
-        # A) sem radiacao
-        # --------------------------
+        # A
         if "A" in enabled_codes:
             path_A = self.get_scenario_path(SCENARIO_MAP["A"], year)
             if path_A.exists() and not self.overwrite_existing:
-                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['A']} ja existe.")
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['A']} já existe.")
             else:
                 self.save_scenario_year(df_A, SCENARIO_MAP["A"], year)
 
-        # --------------------------
-        # B) sem radiacao + KNN
-        # --------------------------
+        # B
         if "B" in enabled_codes:
             path_B = self.get_scenario_path(SCENARIO_MAP["B"], year)
             if path_B.exists() and not self.overwrite_existing:
-                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['B']} ja existe.")
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['B']} já existe.")
             else:
                 df_B = df_A.copy()
                 feature_cols_no_rad = self.get_feature_columns(df_B)
                 df_B = self.apply_knn_imputation(df_B, feature_cols_no_rad, n_neighbors=n_neighbors)
                 self.save_scenario_year(df_B, SCENARIO_MAP["B"], year)
 
-        # --------------------------
-        # C) sem radiacao + drop rows
-        # --------------------------
+        # C
         if "C" in enabled_codes:
             path_C = self.get_scenario_path(SCENARIO_MAP["C"], year)
             if path_C.exists() and not self.overwrite_existing:
-                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['C']} ja existe.")
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['C']} já existe.")
             else:
                 df_C = df_A.copy()
                 feature_cols_no_rad = self.get_feature_columns(df_C)
                 df_C = self.drop_rows_with_missing_features(df_C, feature_cols_no_rad)
                 self.save_scenario_year(df_C, SCENARIO_MAP["C"], year)
 
-        # --------------------------
-        # D) com radiacao + drop rows
-        # --------------------------
+        # D
         if "D" in enabled_codes:
             path_D = self.get_scenario_path(SCENARIO_MAP["D"], year)
             if path_D.exists() and not self.overwrite_existing:
-                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['D']} ja existe.")
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['D']} já existe.")
             else:
                 df_D = df_year.copy()
                 feature_cols_full = self.get_feature_columns(df_D)
                 df_D = self.drop_rows_with_missing_features(df_D, feature_cols_full)
                 self.save_scenario_year(df_D, SCENARIO_MAP["D"], year)
 
-        # --------------------------
-        # E) com radiacao + KNN
-        # --------------------------
+        # E
         if "E" in enabled_codes:
             path_E = self.get_scenario_path(SCENARIO_MAP["E"], year)
             if path_E.exists() and not self.overwrite_existing:
-                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['E']} ja existe.")
+                log.info(f"[YEAR {year}][SKIP] {SCENARIO_MAP['E']} já existe.")
             else:
                 df_E = df_year.copy()
                 feature_cols_full = self.get_feature_columns(df_E)
                 df_E = self.apply_knn_imputation(df_E, feature_cols_full, n_neighbors=n_neighbors)
                 self.save_scenario_year(df_E, SCENARIO_MAP["E"], year)
 
-        log.info(f"[YEAR {year}] Processamento concluido para cenarios {enabled_codes}.")
+        log.info(f"[YEAR {year}] Concluído: cenários {enabled_codes}.")
 
     # ------------------------------
-    # Pipeline principal: processar varios anos
+    # Vários anos
     # ------------------------------
-    def run_for_years(
-        self,
-        years: List[int] | None = None,
-        n_neighbors: int = 5,
-    ) -> None:
-        """
-        Processa anos (todos ou subset) gerando as 6 bases ano a ano.
-        """
+    def run_for_years(self, years: Optional[List[int]] = None, n_neighbors: int = 5) -> None:
         year_files = self.discover_year_files()
-
         if years is not None:
             selected = {y: fp for y, fp in year_files.items() if y in years}
             if not selected:
                 raise ValueError(
-                    f"Nenhum dos anos especificados {years} foi encontrado entre "
-                    f"os arquivos detectados: {sorted(year_files.keys())}"
+                    f"Nenhum dos anos {years} foi encontrado. Detectados: {sorted(year_files.keys())}"
                 )
             year_files = dict(sorted(selected.items()))
-
-        log.info(
-            f"[RUN] Construindo cenarios de modelagem para {len(year_files)} anos."
-        )
-
+        log.info(f"[RUN] Construindo {len(year_files)} ano(s).")
         for year, fp in year_files.items():
-            log.info(f"[YEAR {year}] Lendo arquivo {fp.name}")
+            log.info(f"[YEAR {year}] Lendo {fp.name}")
             df_year = self.read_year_csv(fp, year=year)
-            self.build_and_save_scenarios_for_year(
-                df_year=df_year,
-                year=year,
-                n_neighbors=n_neighbors,
-            )
+            self.build_and_save_scenarios_for_year(df_year=df_year, year=year, n_neighbors=n_neighbors)
 
 
 # -----------------------------------------------------------------------------
@@ -631,8 +713,6 @@ def main() -> None:
             "Sem esta flag, arquivos existentes sao mantidos e o cenario/ano eh pulado."
         ),
     )
-
-    # ===== NOVO: seleção de cenários =====
     parser.add_argument(
         "--only-scenarios",
         nargs="+",
@@ -651,6 +731,35 @@ def main() -> None:
             "Ex.: --skip-scenarios E"
         ),
     )
+    parser.add_argument(
+        "--knn-chunk-rows",
+        type=int,
+        default=50_000,
+        help="Qtde de linhas por bloco no transform do KNNImputer (default: 50k)."
+    )
+    parser.add_argument(
+        "--log-heartbeat-sec",
+        type=int,
+        default=20,
+        help="Intervalo (s) para heartbeat de log durante KNN (default: 20s)."
+    )
+
+    parser.add_argument("--knn-fit-max-rows", type=int, default=80_000,
+        help="Máx. de linhas para FIT do KNNImputer; 0 usa todas (default: 80k).")
+    parser.add_argument("--no-knn-prefer-complete-fit", dest="knn_prefer_complete_fit",
+        action="store_false",
+        help="Não prioriza linhas com menos NaN no conjunto de FIT (por padrão prioriza).")
+    parser.set_defaults(knn_prefer_complete_fit=True)
+
+    parser.add_argument("--knn-fit-max-missing-frac", type=float, default=0.40,
+        help="Na priorização de linhas 'completas' no FIT, máximo de NaN por linha (fração). Default 0.40.")
+    parser.add_argument("--knn-weights", choices=["uniform","distance"], default="uniform",
+        help="Peso do KNNImputer (uniform|distance). Default: uniform.")
+
+    parser.add_argument("--knn-group-by-month", action="store_true",
+        help="Imputa por mês quando grupo >= --knn-min-group-rows; grupos menores caem no fallback anual.")
+    parser.add_argument("--knn-min-group-rows", type=int, default=40_000,
+        help="Tamanho mínimo para imputar por mês (default: 40k).")
 
     args = parser.parse_args()
 
@@ -673,6 +782,14 @@ def main() -> None:
         radiacao_col=args.radiacao_col,
         overwrite_existing=args.overwrite_existing,
         enabled_scenarios=enabled,
+        imputer_chunk_rows=args.knn_chunk_rows,
+        log_heartbeat_sec=args.log_heartbeat_sec,
+        imputer_fit_max_rows=args.knn_fit_max_rows,
+        imputer_prefer_complete_fit=args.knn_prefer_complete_fit,
+        imputer_fit_max_missing_frac=args.knn_fit_max_missing_frac,
+        imputer_weights=args.knn_weights,
+        imputer_group_by_month=args.knn_group_by_month,
+        imputer_min_group_rows=args.knn_min_group_rows,
     )
 
     log.info(
