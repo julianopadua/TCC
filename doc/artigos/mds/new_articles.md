@@ -153,3 +153,34 @@ Se você quiser, no próximo passo eu posso:
 [12]: https://scholar.google.com/citations?hl=en&user=DXfYkVIAAAAJ&utm_source=chatgpt.com "Changning Wei"
 [13]: https://arxiv.org/abs/2311.05168?utm_source=chatgpt.com "FireMatch: A Semi-Supervised Video Fire Detection Network Based on Consistency and Distribution Alignment"
 [14]: https://arxiv.org/html/2405.01607v4?utm_source=chatgpt.com "Wildfire Risk Prediction: A Survey of Recent Advances ..."
+
+--- 
+
+A narrativa fica coerente se você costura três ideias: i) cada bioma responde ao fogo de modo diferente por história ecológica e estrutura de combustíveis, ii) no Cerrado o regime climático cria uma janela previsível e curta de queima, o que ajuda modelagem, e iii) a importância prática é grande porque o Cerrado concentra muito da área queimada e das emissões no Brasil.
+
+1. Biomas diferentes, relações diferentes com o fogo
+   O ICMBio explica que há ecossistemas dependentes de fogo, sensíveis e independentes, e dá exemplos: Cerrado, Pampa e Pantanal compõem o grupo dependente; Amazônia e Mata Atlântica são sensíveis. Isso já enquadra a tua escolha numa lógica ecológica, não só técnica. 
+   O Pivello aprofunda: o Cerrado é sabana tropical ampla e biologicamente diversa, com camada herbácea contínua e muito inflamável quando seca; ignições por raios são comuns; por isso fogo recorrente atua há milênios como força evolutiva. Amazônia, ao contrário, é sensível e, historicamente, quase não queimava naturalmente; as queimadas recentes são, em grande parte, antrópicas e degradantes.   
+   O ICMBio também frisa que “cada ecossistema apresenta um padrão de regime do fogo distinto” porque a composição vegetal, o clima e as fontes de ignição variam, o que gera diferenças espaço-temporais na ocorrência de incêndios. Isso amarra a sua tese de que não faz sentido misturar biomas no mesmo modelo. 
+
+2. O Cerrado tem estiagem longa e uma janela climática muito clara para fogo
+   No Pivello: clima marcadamente sazonal, com estação seca estendida de maio até setembro-outubro; a biomassa herbácea seca e vira combustível fino, e os primeiros raios no começo das chuvas disparam focos. 
+   O estudo de padrões climáticos no Cerrado mostra que a maior parte da área queimada do ano se concentra em 3 meses, agosto a outubro. Além disso, há um encadeamento previsível: as condições quentes e secas no outono austral (março a maio) “precondicionam” o combustível e explicam mais o início da temporada, enquanto em outubro as condições concorrentes de temperatura e chuva dominam. Isso cria chance concreta de previsão antecipada, especialmente para agosto.   
+   O mesmo artigo reforça que junho-julho quase não chove, a transição para setembro-outubro marca as primeiras chuvas e o pico térmico, delineando claramente a sazonalidade do risco. Para modelagem, isso é ouro porque estreita a janela e fortalece o sinal climático. 
+
+3. Relevância prática: muita área queimada e emissões
+   O trabalho de 2025 é direto: o Cerrado é “o maior contribuinte para as áreas queimadas anuais do Brasil”, além de grande emissor de GEE por fogo. Políticas climáticas brasileiras dependem de reduzir emissões no Cerrado, o que justifica prioridade analítica. 
+   Há também evidência de persistência de fogo ao longo do tempo em todos os biomas, com o Cerrado exibindo comportamento persistente e alta adequação térmica atual e futura para ocorrência de fogo. Isso sustenta a ideia de um problema recorrente, logo adequado a modelos sazonais e de monitoramento contínuo.  
+   Casos extremos ilustram a gravidade: em 2010 parques do Cerrado queimaram de forma severa, com até 91% da área queimada no Emas, mostrando a pressão do regime atual. 
+
+O contraste com a Amazônia ajuda a explicar o recorte
+Amazônia tem retorno natural de fogo secular a milenar; o aumento recente do fogo se deve a ignições humanas e “regimes errados” que convertem ou degradam a floresta. Misturar Amazônia no mesmo modelo traz ruído, porque os mecanismos dominantes lá são diferentes dos do Cerrado.  
+
+Biodiversidade
+Nenhum dos textos usa literalmente o rótulo de “hotspot de biodiversidade” para o Cerrado, mas o Pivello descreve o bioma como sabana tropical vasta e biologicamente diversa. Se você quiser a referência formal ao conceito de hotspot, posso buscar em outras fontes para inserir depois. 
+
+Resumo para embasar a decisão “Cerrado-only”
+• Diferenciação ecológica: Cerrado é bioma dependente de fogo, com adaptações e combustíveis finos abundantes; Amazônia é sensível, com fogo sobretudo antrópico.   
+• Sinal climático forte e sazonal: seca longa e janela ASO concentrando quase toda a área queimada; precondições de outono oferecem poder preditivo.   
+• Impacto e recorrência: maior contribuinte da área queimada anual no Brasil, emissões relevantes, eventos severos recorrentes, e persistência estatística do fenômeno.   
+

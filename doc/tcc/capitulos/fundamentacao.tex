@@ -6,7 +6,7 @@
 Este capítulo apresenta a base conceitual que sustenta as escolhas metodológicas deste trabalho. A fundamentação está organizada em três eixos principais: (i) inteligência artificial e aprendizado de máquina aplicados à previsão de queimadas, (ii) extração e organização de dados em pipelines climáticos e de focos e (iii) tratamento de dados faltantes em séries temporais ambientais, com ênfase em variáveis meteorológicas do INMET e na construção de diferentes cenários de base de modelagem.
 
 \section{Inteligência Artificial e Aprendizado de Máquina}
-\label{subsec:ia-e-ml}
+\label{sec:ia-e-ml}
 
 A Inteligência Artificial (IA) é um vasto campo da ciência da computação focado na criação de sistemas que exibem comportamento inteligente. Define-se formalmente como "a ciência e engenharia de fazer máquinas inteligentes" \cite{mccarthy2007what}, ou, numa abordagem moderna dominante, como o estudo de agentes racionais — entidades que percebem seu ambiente e atuam sobre ele de forma a maximizar uma medida de desempenho \cite{russell2016artificial}.
 
@@ -19,6 +19,30 @@ Analogamente, este trabalho aplica o aprendizado supervisionado (a "generalizaç
 A pesquisa moderna também avança na direção da interpretabilidade com IA Explicável (XAI) \cite{cilli2022xai, shmuel2025lightning} e na modelagem da própria dinâmica de propagação do fogo \cite{zhang2024ensemble, andrianarivony2024review}. O consenso é que, dada a complexidade dos dados geoespaciais e climáticos \cite{illarionova2025geo, giuseppe2025global}, o aprendizado de máquina é a ferramenta mais adequada para extrair padrões preditivos \cite{sayad2019predictive, kotsiantis2007supervised}.
 
 Contudo, o sucesso destes modelos depende da qualidade dos dados de entrada \cite{sculley2014hidden}. A presença de dados faltantes em séries temporais climáticas é um desafio central \cite{alejosanchez2025review, afridayamoah2020imputation, navarro2023precipitation, ribeiro2021imputation}. Portanto, um pilar desta fundamentação é que a metodologia de imputação de dados não é apenas um pré-processamento, mas uma etapa crítica que afeta diretamente o desempenho do aprendizado \cite{chehal2023imputation}.
+
+\section{Por que restringir o escopo ao Cerrado?}
+\label{sec:porque-cerrado}
+
+\subsection{Limitação computacional e escopo de pesquisa}
+Modelar, de forma unificada, a ocorrência de focos em todos os biomas brasileiros implica acomodar múltiplos regimes de fogo, conjuntos de combustíveis com propriedades distintas e respostas climáticas heterogêneas. Essa heterogeneidade amplia o espaço de hipóteses do modelo, eleva o custo de busca de hiperparâmetros e aumenta a chance de sobreajuste. Dado o poder computacional disponível e o objetivo de assegurar validade interna, adota-se um recorte por bioma que concentra a capacidade computacional na escolha e validação de variáveis dentro de um único regime de fogo, reduzindo não estacionariedade e favorecendo testes de generalização espacial consistentes.
+
+\subsection{Heterogeneidade entre biomas e implicações para a consistência do modelo}
+\label{subsec:heterogeneidade-biomas}
+
+A literatura de ecologia do fogo demonstra que biomas brasileiros se distribuem em categorias com respostas intrinsecamente distintas ao fogo, como ecossistemas dependentes, sensíveis e independentes. Essa classificação emerge de diferenças de composição vegetal, clima e fontes de ignição que se traduzem em regimes contrastantes de frequência, sazonalidade, intensidade e severidade dos incêndios \cite{ramalho2024compreendendo}.
+
+No confronto direto entre Cerrado e Amazônia, por exemplo, o primeiro apresenta estação seca longa, abundância de combustível fino herbáceo que seca rapidamente e ignições naturais por raios no início das chuvas, ao passo que a Amazônia é sensível ao fogo e, historicamente, quase não queima na ausência de secas anômalas e distúrbios antrópicos. As implicações de manejo também divergem, o que evidencia que as “regras” do processo gerador de dados mudam com o bioma \cite{pivello2011use}.
+
+Em escala nacional, padrões climáticos relacionados ao fogo e métricas de risco revelam contrastes sistemáticos entre biomas: a persistência temporal do fogo é generalizada, mas a adequação térmica é elevada nos biomas dependentes e mais baixa nas florestas úmidas, implicando sensibilidades distintas às variáveis climáticas e, portanto, funções de resposta diferentes quando se modela a ocorrência \cite{viegas2022fireclimate}.
+
+Mesmo dentro de um único bioma, como o Cerrado, há controles climáticos com estrutura sazonal e ecorregional específicos: pré-condições no outono austral (março a maio) modulam a disponibilidade e condição do combustível no início da estação de fogo, enquanto condições concorrentes durante agosto a outubro explicam a variação no final da estação. Esses efeitos variam por mês e por ecorregião, reforçando que agregar regimes distintos em um único modelo dilui o sinal e compromete a transferibilidade \cite{silva2025climatic}.
+
+\subsection{Por que o Cerrado?}
+\label{subsec:porque-o-cerrado}
+
+O Cerrado combina longa estiagem, combustível fino abundante e resposta rápida às condições de temperatura, umidade e vento, com pico de queima concentrado em janela curta e previsível. É, ademais, o maior contribuinte para a área queimada anual do Brasil e da América do Sul, de modo que concentrar o escopo nesse bioma maximiza relevância prática e coerência ecológica do modelo \cite{silva2025climatic,pivello2011use}.
+
+Do ponto de vista epistemológico, esse recorte evita misturar mecanismos savânicos, nos quais o clima sazonal domina, com mecanismos florestais úmidos mais sensíveis à fragmentação e à ignição antrópica. Também alinha o desenho do estudo às recomendações da literatura de regimes de fogo por ecossistema, que ressalta a necessidade de estratégias analíticas e de manejo diferenciadas por bioma \cite{ramalho2024compreendendo,viegas2022fireclimate}.
 
 \section{Extração de dados e pipelines climáticos}
 \label{sec:pipelines}
