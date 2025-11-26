@@ -1,11 +1,8 @@
 % !TEX root = ../main.tex
 \begin{resumo}
-Este Trabalho de Conclusão de Curso avalia comparativamente algoritmos de aprendizado de máquina para \textit{prever a ocorrência diária de queimadas} a partir de variáveis climáticas obtidas do \textit{Banco de Dados Queimadas} (INPE) e das estações meteorológicas do INMET. Propomos um pipeline reprodutível de extração, limpeza, análise exploratória e processamento: integração INMET–INPE em grade diária, checagem de consistência, imputação de lacunas, e engenharia de atributos com agregados e defasagens (acumulados de precipitação em 7–30 dias, extremos de temperatura, umidade e vento). 
+Avalia-se, de forma comparativa, modelos de aprendizado de máquina para \textit{prever a ocorrência horária de focos de queimadas} no Cerrado a partir de variáveis climáticas de estações do INMET integradas aos focos do BDQueimadas do INPE. Define-se um pipeline reprodutível de extração, harmonização e junção espaço temporal, com auditoria de qualidade, padronização de sentinelas e tratamento de ausências em dois regimes: sem imputação e imputação por KNN em variáveis climaticamente relevantes.
 
-Comparamos modelos Random Forest, XGBoost, SVM (RBF) e MLP, tratando o desbalanceamento com \textit{class weights} e SMOTE–Tomek. A avaliação usa validação por blocos espaço–temporais e \textit{hold-out} temporal recente, reportando PR-AUC, F1, precisão–revocação e AUC-ROC, além de curvas de detecção precoce. Para interpretabilidade, aplicamos SHAP (árvores) e \textit{Integrated Gradients} (MLP), identificando a contribuição de variáveis climáticas na ignição. 
+O problema é formulado como classificação probabilística binária, com comparação entre regressão logística, Random Forest, XGBoost, SVM linear e Naive Bayes, produzindo escores calibráveis. O desbalanceamento é tratado com pesos de classe e ajuste de limiar. A avaliação utiliza validação por blocos espaço temporais e hold out cronológico, reportando PR AUC, recall, F1, curvas de precisão versus revocação, Brier score e calibração. Os resultados são discutidos em termos de sensibilidade e alarmes falsos, bem como do impacto da imputação KNN em relação ao cenário sem imputação, oferecendo diretrizes para fluxos de alerta baseados em dados INMET e INPE.
 
-Os resultados discutem compromissos entre desempenho e custo operacional (falsos alarmes versus acertos), bem como limitações decorrentes da resolução e da estrutura dos dados. O estudo fornece diretrizes práticas para uso de dados INMET e INPE em sistemas de alerta, com ênfase no Cerrado e possibilidade de extensão a outros biomas.
-\vspace{1em}
-
-\textbf{Palavras-chave}: queimadas; aprendizado de máquina; INMET; INPE; previsão; Cerrado; PR-AUC; SHAP.
+\textbf{Palavras-chave}: queimadas; Cerrado; previsão; clima; aprendizado de máquina; INMET; INPE.
 \end{resumo}

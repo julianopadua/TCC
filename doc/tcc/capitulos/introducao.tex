@@ -2,22 +2,21 @@
 
 \chapter{Introdução}
 
-As queimadas afetam ciclicamente a biodiversidade, a saúde pública e a economia. A literatura indica avanços significativos com o uso de aprendizado de máquina (ML) na previsão do fogo. Modelos Random Forest e SVM alcançaram acurácias superiores a 85\,\% em cenários do Paquistão~\cite{shahzad2024pakistan} e da China~\cite{pang2022china}, mesmo quando treinados apenas com dados climáticos diários e índices de vegetação. Em escala global, abordagens que incorporam combustível e fontes de ignição reduziram drasticamente falsos alarmes~\cite{giuseppe2025global}. Revisões recentes mostram que arquiteturas profundas, como CNNs e ConvLSTM, obtêm melhor desempenho na propagação do fogo, mas enfatizam a necessidade de dados de alta qualidade para treinamento~\cite{andrianarivony2024review}. No contexto brasileiro, um estudo conduzido na APA Triunfo do Xingu aplicou Random Forest e XGBoost para mapear suscetibilidade a incêndios, comprovando a relevância de variáveis climáticas e de pressão antrópica~\cite{freitas2025xingu}.
-
-\section{Motivação}
-
-No bioma Cerrado, entre 2001 e 2023, mais de 370\,mil focos de calor foram detectados apenas pelos sensores MODIS. A previsão robusta de queimadas diárias pode reduzir custos de combate, mitigar emissões de CO\textsubscript{2} e preservar serviços ecossistêmicos. Apesar de avanços internacionais, poucos trabalhos nacionais integram dados meteorológicos de alta resolução com modelos recentes de ML; o estudo de Freitas et~al.~\cite{freitas2025xingu} é uma das raras exceções. Esse contexto motiva a presente pesquisa, que busca sistematizar, avaliar e comparar técnicas de ML capazes de antecipar a ignição com antecedência suficiente para suporte à tomada de decisão.
+\section{Contexto e motivação}
+As queimadas no Cerrado configuram um fenômeno recorrente e estruturado no tempo e no espaço, com sazonalidade marcada na estação seca e associação a tipos de cobertura e vetores antrópicos \cite{nascimento2011analise}. A literatura recente indica que abordagens baseadas em dados são adequadas para capturar tais padrões multivariados e não lineares, incluindo modelos clássicos e arquiteturas modernas para previsão de ocorrência e propagação \cite{andrianarivony2024review,freitas2025xingu}. Para que estimativas sejam úteis em apoio à decisão, a construção de uma base integrada é requisito metodológico: integração entre focos do BDQueimadas e variáveis climáticas do INMET em escala horária, com controle explícito de qualidade, padronização de formatos e chaves espaço temporais. Em séries climáticas, dados faltantes são frequentes e afetam estatísticas e previsores; revisões e estudos aplicados recomendam tratar a imputação como escolha adicional de modelagem, justificando cenários comparativos com e sem preenchimento \cite{alejosanchez2025review,afridayamoah2020imputation}. Métodos simples e transparentes, como KNN, apresentam desempenho competitivo em lacunas leves e são apropriados como baseline de imputação em pipelines reprodutíveis \cite{chehal2023imputation}. Nesse quadro, comparar famílias de modelos sob protocolos de validação adequados torna se necessário, pois não há preferência a priori entre algoritmos sem hipóteses adicionais sobre a distribuição geradora \cite{wolpert1996lack}.
 
 \section{Objetivos}
+Objetivo geral: avaliar, de forma comparativa, modelos de aprendizado de máquina para previsão horária da ocorrência de focos de queimadas no Cerrado, a partir da integração INMET–BDQueimadas e de um pipeline reprodutível de dados.
 
-\subsection{Objetivo Geral}
-Comparar o desempenho e a interpretabilidade de diferentes algoritmos de aprendizado de máquina na previsão diária de focos de queimadas no Cerrado, utilizando variáveis climáticas provenientes do INMET integradas aos registros do BD Queimadas (INPE).
-
-\subsection{Objetivos Específicos}
+Objetivos específicos:
 \begin{itemize}
-    \item Construir um \textit{dataset} diário (2005--2025) combinando variáveis meteorológicas e focos de calor georreferenciados;
-    \item Treinar e avaliar modelos Random Forest~\cite{breiman2001randomForest}, XGBoost~\cite{chen2016xgboost}, SVM~\cite{cortes1995svm} e redes neurais multicamadas~\cite{rumelhart1986backprop};
-    \item Investigar a influência de grupos de variáveis (temperatura, umidade, precipitação, vento, índices de vegetação);
-    \item Aplicar técnicas de explicabilidade (SHAP) para identificar os fatores climáticos mais determinantes;
-    \item Propor diretrizes para implementação de um sistema de alerta operacional.
+    \item construir base horária integrada INMET–BDQueimadas com auditoria de qualidade, padronização de sentinelas e versionamento por cenários;
+    \item definir cenários de dados sem imputação e com imputação por KNN em variáveis climaticamente relevantes, permitindo análise de sensibilidade;
+    \item formular o problema como classificação probabilística binária e comparar regressão logística, Random Forest, XGBoost, SVM linear e Naive Bayes \cite{breiman2001randomForest,chen2016xgboost};
+    \item empregar validação por blocos espaço temporais e \textit{hold out} cronológico, reportando PR AUC, recall, F1, Brier score e calibração \cite{andrianarivony2024review};
+    \item analisar interpretabilidade em modelos de árvores por meio de SHAP, quantificando a contribuição de variáveis climáticas para o risco estimado;
+    \item discutir compromissos entre desempenho e custo operacional, oferecendo diretrizes para fluxos de alerta baseados em INMET e INPE.
 \end{itemize}
+
+\section{Organização}
+O texto organiza se como segue. O Capítulo 2 apresenta a fundamentação teórica em Inteligência Artificial e a adequação do problema de previsão de focos à classificação probabilística, com definição dos modelos comparados. O Capítulo 3 descreve o pipeline de dados, incluindo integração INMET–BDQueimadas, auditoria de qualidade e a estratégia de cenários com e sem imputação por KNN \cite{alejosanchez2025review,afridayamoah2020imputation,chehal2023imputation}. O Capítulo 4 detalha o desenho experimental de comparação, protocolos de validação e métricas, à luz da literatura comparativa e dos resultados No Free Lunch \cite{martinovic2025comparative,wolpert1996lack}. O Capítulo 5 apresenta resultados e análises de interpretabilidade, seguido por discussão e limitações no Capítulo 6. O Capítulo 7 traz conclusões e possibilidades de extensão para outros biomas e aprimoramentos do pipeline.

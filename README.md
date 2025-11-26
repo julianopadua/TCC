@@ -465,14 +465,6 @@ Esse passo é usado como insumo direto para decisões registradas em doc/followu
 
 ---
 
-
----
-
-## 2) Atualizar a seção 4.6 do README
-
-substitui a seção 4.6 atual por esta:
-
-```markdown
 ### 4.6 Bases para modelagem (modeling_build_datasets.py)
 
 Depois de consolidar e auditar `inmet_bdq_{ANO}_cerrado.csv`, o módulo `modeling_build_datasets.py` constrói múltiplas visões da base já pensadas para modelagem. Ele lê exclusivamente os CSVs em `data/dataset/` e grava saídas em parquet em `data/modeling/<cenário>/inmet_bdq_{ANO}_cerrado.parquet`.
@@ -596,11 +588,6 @@ python src/modeling_build_datasets.py --n-neighbors 7 --overwrite-existing
 # se o nome da coluna de radiação canonizada mudar
 python src/modeling_build_datasets.py --radiacao-col "RADIACAO GLOBAL (kJ/m2)"
 ```
-
-Em resumo, este módulo encapsula as principais decisões de:
-  - o que é considerado feature
-  - quais testes de missing vamos usar
-  - como produzir múltiplas bases coerentes para comparar estratégias de tratamento de dados faltantes na etapa de modelagem.
 
 ---
 
