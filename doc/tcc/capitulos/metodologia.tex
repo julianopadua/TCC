@@ -3,189 +3,39 @@
 \chapter{Metodologia}
 \label{cap:metodologia}
 
-Neste capítulo são descritos o fluxo de dados, os procedimentos de preparação das bases e a forma como os conjuntos finais foram utilizados na etapa de modelagem. A ênfase está no pipeline de \textit{Extract-Transform-Load} (ETL) desenvolvido especificamente para este trabalho, que integra focos de calor do BDQueimadas e variáveis climáticas do INMET, com foco no bioma Cerrado.
-
-\section{Obtenção e organização dos dados}
+\section{Obtenção dos dados}
 \label{sec:obtencao-dados}
 
-Os dados de focos de calor foram obtidos a partir do sistema BDQueimadas (INPE), na coleção anual Brasil\_sat\_ref, enquanto as variáveis climáticas foram extraídas das séries de estações automáticas do INMET. A obtenção não foi feita de forma manual pontual, mas estruturada em um pipeline de scripts Python, localizado na pasta \texttt{src/} do repositório.
+Para a composição do conjunto de dados utilizado nos experimentos, integraram-se bases de sensoriamento remoto e séries meteorológicas de superfície. Os dados de focos de calor provêm do sistema BDQueimadas, do Instituto Nacional de Pesquisas Espaciais (INPE), especificamente da coleção \textit{Brasil\_sat\_ref}. Esta fonte fornece variáveis fundamentais como o \textit{Fire Radiative Power} (FRP) e o Risco de Fogo, além de identificadores únicos e coordenadas geográficas obtidas via \textit{scraping} do \textit{dataserver} COIDS\footnote{\url{https://github.com/julianopadua/TCC}}. 
 
-De maneira resumida, são utilizadas duas frentes complementares do BDQueimadas:
+As variáveis climáticas foram extraídas das estações automáticas do Instituto Nacional de Meteorologia (INMET). A coleta foi automatizada por scripts de \textit{scraping} que padronizam séries horárias de temperatura, umidade, pressão atmosférica, radiação e vento. Para assegurar a reprodutibilidade, os dados brutos são armazenados em uma estrutura hierárquica em \texttt{data/raw/}, enquanto as versões tratadas e harmonizadas seguem para \texttt{data/processed/}.
 
-\begin{itemize}
-  \item \textbf{Exportações manuais} (\texttt{data/raw/BDQUEIMADAS/}): arquivos \texttt{exportador\_*{\_}ref{\_}YYYY.csv} baixados diretamente pelo portal, que contêm variáveis de risco e física do foco (como \texttt{RiscoFogo} e \texttt{FRP}), mas não incluem o identificador interno \texttt{foco\_id};
-  \item \textbf{Arquivos oficiais Brasil\_sat\_ref} (\texttt{data/raw/ID\_BDQUEIMADAS/}): arquivos \texttt{focos\_br\_ref\_YYYY.zip}, baixados automaticamente do \textit{dataserver} do COIDS pelo script \texttt{bdqueimadas\_scraper.py}, que, após extração, fornecem \texttt{foco\_id}, \texttt{id\_bdq} e coordenadas geográficas.
-\end{itemize}
+\section{Processamento e Integração (Pipeline de ETL)}
+\label{sec:pipeline-extracao}
 
-Os dados meteorológicos são obtidos pelo módulo \texttt{inmet\_scraper.py}, que coleta e organiza as séries do INMET em \texttt{data/processed/INMET/}, padronizando nomes de colunas e unidades para que diferentes anos e estações possam ser combinados com os focos de calor.
+O fluxo de \textit{Extract-Transform-Load} (ETL) foi projetado para correlacionar eventos discretos de fogo com registros climáticos contínuos. A integração ocorre mediante a criação de uma chave sintética que combina o selo temporal (arredondado para a hora cheia), o município e a unidade da federação, após normalização de caracteres e conversão para ASCII.
 
-A Figura~\ref{fig:pipeline-dataset} apresenta, em alto nível, o fluxo de dados construído neste trabalho, desde a ingestão das fontes brutas até a geração das bases anuais em formato \texttt{.parquet} utilizadas na modelagem.
+A Figura~\ref{fig:pipeline-dataset} ilustra o fluxo de dados, detalhando a transição entre a ingestão das fontes brutas e a geração das bases consolidadas em formato \texttt{.parquet}.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{imagens/dataset_pipeline.png}
-    \caption{Fluxo geral do pipeline de dados BDQueimadas + INMET.}
+    \caption{Fluxo geral do pipeline de dados integrando BDQueimadas e INMET.}
     \label{fig:pipeline-dataset}
 \end{figure}
 
-Os arquivos de dados são organizados na pasta \texttt{data/} de forma hierárquica:
+O módulo \path{build_dataset.py} realiza o alinhamento espaço-temporal para o bioma Cerrado, definindo a variável alvo $y \in \{0, 1\}$. Atribui-se o rótulo positivo (\texttt{HAS\_FOCO} = 1) aos registros onde houve ao menos uma detecção de queimada no intervalo e localização correspondentes; caso contrário, o registro é classificado como negativo.
 
-\begin{itemize}
-    \item \texttt{data/raw/}: dados brutos (downloads automáticos e exportações manuais);
-    \item \texttt{data/processed/}: saídas intermediárias após consolidação interna de cada fonte;
-    \item \texttt{data/external/}: consolidações que integram diferentes camadas do BDQueimadas (manual e processado);
-    \item \texttt{data/dataset/}: arquivos anuais \texttt{inmet\_bdq\_ANO\_cerrado.csv}, já integrando focos e variáveis climáticas;
-    \item \texttt{data/eda/}: resultados das auditorias de dados faltantes;
-    \item \texttt{data/modeling/}: bases finais de modelagem para cada cenário de tratamento de \textit{missing}.
-\end{itemize}
-
-Essa estrutura, configurada via \texttt{config.yaml} e acessada pelos utilitários de \texttt{utils.py}, permite reproduzir todo o fluxo apenas executando os scripts na ordem descrita nas próximas seções.
-
-\section{Pipeline de extração e consolidação}
-\label{sec:pipeline-extracao}
-
-O pipeline de ETL foi construído em blocos modulares, cada um responsável por uma etapa bem definida: ingestão do BDQueimadas, ingestão do INMET, integração das duas fontes e filtragem para o bioma Cerrado.
-
-\subsection{Consolidação do BDQueimadas}
-
-A consolidação dos focos de calor é feita pelo módulo \texttt{consolidated\_bdqueimadas.py}. O objetivo é combinar, para cada ano, as exportações manuais e os arquivos oficiais Brasil\_sat\_ref em uma única base consolidada.
-
-Para isso, o script lê:
-
-\begin{itemize}
-    \item o arquivo manual \texttt{exportador\_*{\_}ref{\_}YYYY.csv} em \texttt{data/raw/BDQUEIMADAS/};
-    \item o arquivo \texttt{focos\_br\_ref\_YYYY.csv} extraído em \texttt{data/processed/ID\_BDQUEIMADAS/focos\_br\_ref\_YYYY/}.
-\end{itemize}
-
-A junção é feita a partir de uma chave sintética \texttt{\_\_KEY}, composta por data e hora arredondadas à hora cheia, país, unidade da federação e município, após normalização de acentos e conversão para uma forma ASCII maiúscula. No lado manual, a data-hora é extraída da coluna \texttt{DataHora}; no lado processado, da coluna \texttt{data\_pas}.
-
-Com essa chave é realizado um \textit{left join} das exportações manuais com o conjunto processado, de modo que cada foco do arquivo manual receba, quando possível, os identificadores e coordenadas do arquivo oficial. O resultado agrega:
-
-\begin{itemize}
-    \item do manual: \texttt{RiscoFogo}, \texttt{FRP} e demais variáveis descritivas;
-    \item do processado: \texttt{FOCO\_ID}, \texttt{ID\_BDQ}, latitude e longitude.
-\end{itemize}
-
-Os produtos finais são arquivos \texttt{bdq\_targets\_*.csv}, gravados em \texttt{data/external/BDQUEIMADAS/}, que podem representar um único ano ou intervalos multi-anos, com filtragem opcional por bioma (por exemplo, Cerrado).
-
-\subsection{Consolidação do INMET e integração BDQueimadas + INMET}
-
-Os módulos \texttt{inmet\_scraper.py} e \texttt{inmet\_consolidated.py} são responsáveis por baixar e padronizar as séries do INMET. Conceitualmente, o fluxo segue os passos:
-
-\begin{enumerate}
-    \item seleção das estações automáticas relevantes para o bioma Cerrado e para o período de interesse;
-    \item download das séries horárias, utilizando a API ou interface web do INMET;
-    \item padronização de nomes de colunas, unidades e formatos de data/hora;
-    \item gravação de arquivos já consolidados em \texttt{data/processed/INMET/}.
-\end{enumerate}
-
-A integração entre focos e variáveis climáticas é feita pelo módulo \texttt{build\_dataset.py}, que consome simultaneamente as consolidações do BDQueimadas e do INMET. Esse script:
-
-\begin{itemize}
-    \item filtra os registros para o bioma Cerrado, utilizando a classificação presente nos próprios arquivos de focos;
-    \item alinha temporalmente os dados de estação e os focos, garantindo consistência na granularidade utilizada;
-    \item constrói, para cada ano, um arquivo \texttt{inmet\_bdq\_ANO\_cerrado.csv} em \texttt{data/dataset/}.
-\end{itemize}
-
-Nessa base integrada é criada a variável binária \texttt{HAS\_FOCO}, que indica se, naquele registro (combinação de local e instante de tempo), houve ao menos um foco de queimada registrado no BDQueimadas. Essa variável é a base para a tarefa de classificação tratada na etapa de modelagem.
-
-\section{Tratamento de dados faltantes e bases de modelagem}
+\section{Tratamento de dados ausentes e cenários}
 \label{sec:bases-modelagem}
 
-\subsection{Auditoria de dados faltantes e códigos sentinela}
+A qualidade da base integrada foi avaliada mediante auditoria de dados faltantes, identificando-se códigos sentinela (\texttt{-999} e \texttt{-9999}) e valores nulos. Para mensurar o impacto dessas ausências no desempenho preditivo, os experimentos foram estruturados em seis cenários distintos, variando entre a exclusão seletiva de variáveis (\textit{base\_A}), a remoção de instâncias incompletas (\textit{base\_C}, \textit{base\_D}) e a imputação por \textit{K-Nearest Neighbors} (KNN) (\textit{base\_B}, \textit{base\_E}).
 
-Antes da construção das bases de modelagem, foi necessário definir de forma clara o que seria considerado dado faltante. Para isso foi desenvolvido o módulo \texttt{dataset\_missing\_audit.py}, que aplica uma semântica unificada de \textit{missing} às colunas das bases integradas \texttt{inmet\_bdq\_ANO\_cerrado.csv}.
+A imputação via KNN foi adotada para preencher lacunas em variáveis meteorológicas aproveitando a correlação local, sendo aplicada sobre bases com e sem a variável de radiação global. Este procedimento visa mitigar o viés introduzido por falhas instrumentais nas estações automáticas, permitindo uma comparação robusta entre os modelos treinados em diferentes regimes de completude de dados.
 
-São tratados como valores faltantes:
+\section{Procedimentos experimentais}
+\label{sec:protocolo-experimentos}
 
-\begin{itemize}
-    \item valores \texttt{NaN} ou nulos;
-    \item códigos sentinela numéricos \texttt{-999} e \texttt{-9999};
-    \item as strings \texttt{"-999"} e \texttt{"-9999"} em colunas textuais;
-    \item strings vazias após aplicação de \textit{strip}.
-\end{itemize}
+A tarefa de predição é formulada como uma classificação binária em um cenário de alto desbalanceamento de classes. Para garantir uma avaliação justa e evitar o sobreajuste temporal (\textit{data leakage}), utilizou-se a técnica de \textit{time-series split}, onde o conjunto de teste é cronologicamente posterior ao de treinamento.
 
-Para cada ano, o script gera uma matriz booleana de faltantes e produz um resumo em \texttt{data/eda/dataset/ANO/}, contendo:
-
-\begin{itemize}
-    \item um arquivo \texttt{missing\_by\_column.csv} com contagem e proporção de faltantes por coluna, separando registros com e sem foco;
-    \item um \texttt{README\_missing.md} que descreve o número total de linhas, a proporção de linhas com foco e as colunas mais críticas em termos de ausência de dados.
-\end{itemize}
-
-Algumas colunas são explicitamente excluídas da análise de \textit{features}, como identificadores temporais e espaciais (\texttt{DATA (YYYY-MM-DD)}, \texttt{HORA (UTC)}, \texttt{CIDADE}, \texttt{cidade\_norm}, \texttt{ts\_hour}, \texttt{ANO}), a variável \texttt{HAS\_FOCO} e as colunas diretamente associadas ao foco (\texttt{RISCO\_FOGO}, \texttt{FRP}, \texttt{FOCO\_ID}).
-
-\subsection{Construção das bases de modelagem}
-
-A partir dos arquivos \texttt{inmet\_bdq\_ANO\_cerrado.csv}, o módulo \texttt{modeling\_build\_datasets.py} gera múltiplos cenários de base, já em formato \texttt{.parquet}, armazenados em \texttt{data/modeling/}. Antes de separar os cenários, são aplicadas duas padronizações:
-
-\begin{enumerate}
-    \item \textbf{Harmonização da radiação global}: quando a variável de radiação aparece com nomes ligeiramente diferentes em anos distintos (por exemplo, \texttt{RADIACAO GLOBAL (Kj/m²)} e \texttt{RADIACAO GLOBAL (KJ/m²)}), os valores são unificados em uma única coluna canônica, descartando duplicatas;
-    \item \textbf{Aplicação da semântica de \textit{missing}}: os códigos sentinela numéricos são convertidos em \texttt{NaN} nas colunas numéricas, e strings vazias são convertidas em \texttt{NaN} nas colunas textuais.
-\end{enumerate}
-
-Em seguida, são definidas as colunas de \textit{features} como todas aquelas que não pertencem aos conjuntos:
-
-\begin{itemize}
-    \item colunas alvo: \texttt{RISCO\_FOGO}, \texttt{FRP}, \texttt{FOCO\_ID};
-    \item coluna de rótulo: \texttt{HAS\_FOCO};
-    \item colunas de identificação temporal e espacial, como \texttt{ANO}, \texttt{DATA (YYYY-MM-DD)}, \texttt{HORA (UTC)}, \texttt{CIDADE}, \texttt{cidade\_norm}, \texttt{ts\_hour}.
-\end{itemize}
-
-Essas \textit{features} são convertidas para tipo numérico (\texttt{errors="coerce"}), de modo que valores inconsistentes passem a ser tratados como \textit{missing} e entrem na lógica já descrita.
-
-Com essa base harmonizada, o script gera, para cada ano, seis cenários distintos, variando a presença da radiação global e a estratégia de tratamento de dados faltantes:
-
-\begin{itemize}
-    \item \textbf{base\_F\_full\_original}: mantém a radiação; aplica apenas harmonização e conversão de sentinelas para \textit{missing}, sem remoção de linhas nem imputação;
-    \item \textbf{base\_A\_no\_rad}: remove a coluna de radiação (se existir), mantendo as demais variáveis e sem remoção de linhas;
-    \item \textbf{base\_B\_no\_rad\_knn}: parte de \texttt{base\_A} e aplica \textit{KNNImputer} nas colunas numéricas de \textit{features};
-    \item \textbf{base\_C\_no\_rad\_drop\_rows}: parte de \texttt{base\_A} e remove todas as linhas com qualquer \textit{missing} em \textit{features};
-    \item \textbf{base\_D\_with\_rad\_drop\_rows}: parte da base com radiação e remove todas as linhas com \textit{missing} em \textit{features};
-    \item \textbf{base\_E\_with\_rad\_knn}: parte da base com radiação e aplica \textit{KNNImputer} nas \textit{features} numéricas, incluindo a radiação.
-\end{itemize}
-
-Esses cenários permitem comparar, na etapa de modelagem, o impacto da presença da variável de radiação e de diferentes estratégias de tratamento de dados faltantes sobre o desempenho dos modelos preditivos.
-
-Ao final, toda a implementação do pipeline de ETL, scripts de auditoria e construção das bases de modelagem encontra-se disponível em repositório público de código\footnote{Substituir pelo endereço oficial do repositório, por exemplo: \url{https://github.com/seu-usuario/seu-repo-tcc}}.
-
-
-
-
-
-\section{Por que restringir o escopo ao Cerrado?}
-\label{sec:porque-cerrado}
-
-\subsection{Limitação computacional e escopo de pesquisa}
-Modelar, de forma unificada, a ocorrência de focos em todos os biomas brasileiros implica acomodar múltiplos regimes de fogo, conjuntos de combustíveis com propriedades distintas e respostas climáticas heterogêneas. Essa heterogeneidade amplia o espaço de hipóteses do modelo, eleva o custo de busca de hiperparâmetros e aumenta a chance de sobreajuste. Dado o poder computacional disponível e o objetivo de assegurar validade interna, adota-se um recorte por bioma que concentra a capacidade computacional na escolha e validação de variáveis dentro de um único regime de fogo, reduzindo não estacionariedade e favorecendo testes de generalização espacial consistentes.
-
-\subsection{Heterogeneidade entre biomas e implicações para a consistência do modelo}
-\label{subsec:heterogeneidade-biomas}
-
-A literatura de ecologia do fogo demonstra que biomas brasileiros se distribuem em categorias com respostas intrinsecamente distintas ao fogo, como ecossistemas dependentes, sensíveis e independentes. Essa classificação emerge de diferenças de composição vegetal, clima e fontes de ignição que se traduzem em regimes contrastantes de frequência, sazonalidade, intensidade e severidade dos incêndios \cite{ramalho2024compreendendo}.
-
-No confronto direto entre Cerrado e Amazônia, por exemplo, o primeiro apresenta estação seca longa, abundância de combustível fino herbáceo que seca rapidamente e ignições naturais por raios no início das chuvas, ao passo que a Amazônia é sensível ao fogo e, historicamente, quase não queima na ausência de secas anômalas e distúrbios antrópicos. As implicações de manejo também divergem, o que evidencia que as “regras” do processo gerador de dados mudam com o bioma \cite{pivello2011use}.
-
-Em escala nacional, padrões climáticos relacionados ao fogo e métricas de risco revelam contrastes sistemáticos entre biomas: a persistência temporal do fogo é generalizada, mas a adequação térmica é elevada nos biomas dependentes e mais baixa nas florestas úmidas, implicando sensibilidades distintas às variáveis climáticas e, portanto, funções de resposta diferentes quando se modela a ocorrência \cite{viegas2022fireclimate}.
-
-Mesmo dentro de um único bioma, como o Cerrado, há controles climáticos com estrutura sazonal e ecorregional específicos: pré-condições no outono austral (março a maio) modulam a disponibilidade e condição do combustível no início da estação de fogo, enquanto condições concorrentes durante agosto a outubro explicam a variação no final da estação. Esses efeitos variam por mês e por ecorregião, reforçando que agregar regimes distintos em um único modelo dilui o sinal e compromete a transferibilidade \cite{silva2025climatic}.
-
-
-\section{Pipeline de dados} \label{sec:pipelines}
-
-A previsão de focos de incêndio em escala regional requer integração consistente de fontes heterogêneas - focos detectados por satélite, séries meteorológicas e variáveis derivadas. No Cerrado, a sazonalidade e a estrutura espacial dos focos, associadas a cobertura vegetal e pressão antrópica, reforçam a necessidade de bases integradas e coerentes para que algoritmos de aprendizagem de máquina captem padrões multivariados reprodutíveis \cite{nascimento2011analise,andrianarivony2024review}.
-
-Um pipeline explícito de \textit{Extract–Transform–Load} sustenta reprodutibilidade, rastreabilidade e controle de qualidade. Arquiteturas modulares e parametrizadas reduzem a dívida técnica de fluxos ad hoc, estabelecem contratos claros de entrada/saída e preservam a proveniência das transformações, favorecendo manutenção e reexecução em novos períodos e recortes espaciais \cite{sculley2014hidden}. A integração entre focos e clima demanda harmonização de formatos e unidades, resolução de chaves espaço-temporais e normalização de códigos sentinela, produzindo um conjunto tabular padronizado, adequado à comparação justa entre modelos.
-
-Séries meteorológicas apresentam padrões sistemáticos de ausência por falhas de sensores, interrupções e mudanças operacionais; ignorar lacunas distorce estatísticas, compromete variáveis derivadas e afeta previsores treinados sob regularidade temporal \cite{alejosanchez2025review}. Imputação constitui um modelo adicional aplicado aos dados de entrada e pode alterar distribuições e extremos; a literatura em clima de alta resolução mostra que a escolha do método deve considerar mecanismo de ausência e estrutura temporal/espacial \cite{afridayamoah2020imputation}. Não há técnica universalmente superior: desempenho depende de variável, resolução e padrão de faltantes \cite{alejosanchez2025review}.
-
-Como diretriz prática e transparente, adota-se KNN para imputação numérica quando a taxa de faltantes e as correlações locais o justificam, mantendo cenários paralelos sem imputação para avaliar sensibilidade das conclusões. Estudos comparativos indicam que KNN apresenta desempenho competitivo sob ausências leves e aleatórias, com baixo custo e interpretabilidade, sendo adequado como baseline de imputação \cite{chehal2023imputation}. Em variáveis climaticamente centrais e frequentemente incompletas (por exemplo, radiação), a estratégia combina: (i) bases sem imputação ou com exclusão seletiva e (ii) bases com KNN, permitindo quantificar o impacto da imputação na comparação entre modelos.
-
-\section{Comparação de modelos} \label{sec:comparacao-modelos}
-
-A opção por comparação sistemática entre modelos decorre de um princípio teórico e de evidência empírica. Teoricamente, os resultados No Free Lunch demonstram que, sem suposições fortes sobre a distribuição geradora, não há preferência a priori entre algoritmos de aprendizado supervisionado; para quaisquer dois métodos, existem tantos alvos em que um supera o outro quanto o inverso \cite{wolpert1996lack}. Em problemas reais, escolhas devem ser sustentadas por avaliação empírica controlada, com protocolos que reduzam viés de partição e permitam estimativas estáveis de desempenho.
-
-Estudos comparativos recentes em dados tabulares mostram que ensembles de árvores por \emph{boosting} tendem a liderar em acurácia, precisão, F1 e ROC-AUC, enquanto abordagens baseadas em margem (SVM) destacam-se em \emph{recall} e modelos lineares (regressão logística) apresentam custo computacional inferior, preservando interpretabilidade \cite{martinovic2025comparative}. Essa heterogeneidade de pontos fortes por métrica justifica incluir famílias distintas (lineares, margem, gerativos, árvores e \emph{boosting}) e reportar múltiplos indicadores de desempenho.
-
-O protocolo de comparação deve alinhar-se às características do problema: desbalanceamento da classe positiva e necessidade de escores probabilísticos calibráveis. Métricas centradas na detecção de raros, como PR-AUC, \emph{recall} e F1, são prioritárias, complementadas por Brier score e curvas de calibração para avaliar a qualidade probabilística. A validação deve empregar partições espaço-temporais e repetições com testes estatísticos corrigidos para mitigar vitórias espúrias por sobreposição de dobras \cite{martinovic2025comparative}. Quando houver cenários alternativos de tratamento de dados (com e sem imputação), a comparação deve ser replicada em cada cenário, pois a imputação altera a distribuição das entradas e pode mudar o ranking relativo dos modelos.
-
-
+Os algoritmos avaliados — Regressão Logística, Naive Bayes, SVM, Random Forest e XGBoost — foram testados sob métricas sensíveis à detecção de eventos raros. Além da curva ROC, priorizaram-se a \textit{Precision-Recall AUC} e o \textit{F1-Score}. A calibração probabilística dos modelos foi mensurada pelo \textit{Brier Score}, assegurando que as estimativas de risco fornecidas pelo sistema sejam representativas da frequência observada de queimadas no Cerrado.

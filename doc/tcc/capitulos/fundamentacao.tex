@@ -13,24 +13,20 @@ Além disso, há evidência empírica de que o fogo no Cerrado não é aleatóri
 
 A literatura sustenta a resolução do problema com aprendizado de máquina para classificação probabilística, em que estima-se $p(\text{FOCO}=1 \mid \mathbf{x})$ e define-se o limiar de decisão conforme os custos operacionais. Pretende-se, portanto, a comparação de modelos supervisionados clássicos e ensembles de árvores, priorizando saídas calibráveis e interpretação alinhada ao domínio.
 
-\section{Trabalhos anteriores}
-\label{sec:trabalhos_anteriores}
+\section{Trabalhos relacionados}
+\label{sec:trabalhos_relacionados}
 
-Ao longo dos últimos anos, diferentes abordagens estatísticas e de aprendizado de máquina foram propostas para análise e previsão de incêndios, combinando dados de focos de calor, variáveis meteorológicas e informações de uso do solo. Parte dessa literatura é dedicada à caracterização do regime de fogo em biomas brasileiros, enquanto outra parte desenvolve algoritmos específicos para aumentar a acurácia de modelos preditivos ou revisa o estado da arte em nível internacional.
+A literatura recente aponta um crescimento expressivo do uso de técnicas de aprendizado de máquina e inteligência artificial na previsão de ocorrência e comportamento de incêndios florestais. Os trabalhos variam quanto ao tipo de tarefa (ocorrência versus severidade ou área queimada), à resolução espacial e temporal e ao conjunto de variáveis preditoras utilizadas, como meteorologia, topografia, combustível, fatores antrópicos e índices espectrais \cite{andrianarivony2024review}.
 
-Silva e White~\cite{silva2016deteccao} utilizaram a série de focos do Programa Queimadas entre 1999 e 2015 para quantificar a incidência de fogo nos diferentes biomas brasileiros. O estudo trabalha com agregações anuais e mensais, compara o número absoluto de focos com valores normalizados pela área de cada bioma e identifica diferenças marcantes na sazonalidade das queimadas, com destaque para o Cerrado e o Pantanal em termos relativos. A análise é essencialmente descritiva, baseada em estatística simples, sem construção de modelos preditivos supervisionados.
+Do ponto de vista ecológico e climatológico, estudos clássicos sobre o bioma Cerrado mostram que a distribuição espacial e temporal dos focos de calor não é aleatória. Existe uma forte sazonalidade associada ao regime de chuvas e à fenologia da vegetação, bem como influência de gradientes de uso do solo e de desmatamento \cite{nascimento2011analise}. Essa evidência de estruturas determinísticas e multimodais no padrão de fogo fundamenta o uso de modelos de aprendizado de máquina, que são capazes de explorar relações não lineares entre múltiplas variáveis explicativas.
 
-Jesus et al.~\cite{jesus2020analise} analisaram a incidência temporal, espacial e de tendência de fogo em biomas e unidades de conservação no período de 2003 a 2017, também com dados do satélite de referência AQUA\_M-T. A metodologia combina estimativa de densidade Kernel para identificação de hotspots com o teste de Mann-Kendall e o expoente de Hurst para avaliar tendências e memória de longo prazo nas séries anuais de focos. O estudo mostra concentrações persistentes de queimadas em transições de biomas, como a região Amazônia-Cerrado, e indica a presença de correlações de longo alcance nas séries, sem, contudo, empregar algoritmos de aprendizado de máquina.
+No contexto brasileiro, Silva e White \cite{silva2016deteccao} utilizaram a série de focos do Programa Queimadas entre 1999 e 2015 para quantificar a incidência de fogo nos diferentes biomas. O estudo trabalha com agregações anuais e mensais e identifica diferenças marcantes na sazonalidade, com destaque para o Cerrado e o Pantanal. Jesus et al. \cite{jesus2020analise} avançaram nessa análise ao investigar a incidência temporal e espacial em biomas e unidades de conservação entre 2003 e 2017. A metodologia combinou estimativa de densidade Kernel para identificação de hotspots com testes de tendência de Mann-Kendall, indicando concentrações persistentes em transições de biomas, como a região Amazônia-Cerrado.
 
-Alves et al.~\cite{alves2021estudo} integraram focos de calor na Caatinga, reanálises NCEP/NCAR e índices climáticos de grande escala para investigar a relação entre variáveis meteorológicas e atividade de fogo no período de 2002 a 2018. O trabalho utiliza anomalias de precipitação, umidade relativa, vento, radiação, evapotranspiração e umidade do solo, além de um índice de risco de incêndio construído a partir de umidade e vento, e recorre a estatística descritiva e correlações lineares para quantificar essas associações. A abordagem permite relacionar explicitamente determinadas combinações de condições atmosféricas a aumentos na frequência de focos, mas não avança para modelos supervisionados multivariados.
+Já Alves et al. \cite{alves2021estudo} integraram focos de calor, reanálises climáticas e índices de grande escala para investigar a relação entre variáveis meteorológicas e a atividade de fogo. Embora esses trabalhos forneçam uma base sólida de caracterização do regime de fogo, eles se concentram em estatística descritiva ou correlações lineares, sem o emprego de algoritmos de aprendizado de máquina supervisionados para predição.
 
-Freitas et al.~\cite{freitas2025xingu} aplicaram técnicas de aprendizado de máquina para estimar a suscetibilidade a incêndios na Área de Proteção Ambiental Triunfo do Xingu, na Amazônia. A variável alvo é a densidade de queimadas em grade, calculada a partir de focos do BDQueimadas validados por produto de área queimada, e os preditores incluem variáveis topográficas, precipitação, temperatura de superfície, índices de vegetação, uso e cobertura da terra e medidas de distância a rodovias e áreas habitadas. Modelos Random Forest e XGBoost são calibrados e comparados, com avaliação por métricas de regressão e análise de importância de variáveis, resultando em mapas de suscetibilidade com desempenho elevado e hierarquia clara de fatores mais influentes.
+A aplicação direta de ML para estimativa de suscetibilidade foi explorada por Freitas et al. \cite{freitas2025xingu} na Amazônia. O trabalho utilizou modelos Random Forest e XGBoost calibrados com variáveis topográficas, climáticas e de uso da terra, resultando em mapas de suscetibilidade com desempenho elevado. No âmbito algorítmico, Shu et al. \cite{shu2021towards} desenvolveram o método Double Weighted Naive Bayes with Compensation Coefficient (DWCNB) para predição de fogo. O diferencial dessa abordagem é a atribuição de pesos tanto aos atributos quanto aos seus valores, atenuando a suposição de independência condicional. O modelo utiliza um coeficiente de compensação ajustado por testes ortogonais para equilibrar as probabilidades a priori, alcançando ganhos de acurácia significativos em relação ao Naive Bayes convencional.
 
-Shu et al.~\cite{shu2021dwcnb} desenvolveram uma variante do classificador Naive Bayes, denominada Double Weighted Naive Bayes with Compensation Coefficient (DWCNB), voltada para predição de fogo em dados experimentais. O método atribui pesos tanto aos atributos quanto aos valores dos atributos, com o objetivo de atenuar a suposição de independência condicional e de importância igual entre variáveis, e introduz um coeficiente de compensação para ajustar as probabilidades a priori. O treinamento é realizado com dados do banco de incêndios do NIST, e a calibração do coeficiente emprega um esquema de testes ortogonais em múltiplos níveis; a comparação com versões convencionais de Naive Bayes resulta em ganhos de acurácia, mantendo baixo custo computacional.
-
-Andrianarivony e Akhloufi~\cite{andrianarivony2024review} apresentaram uma revisão de modelos de machine learning e deep learning para previsão da propagação de incêndios, com ênfase em tarefas de previsão de frente de fogo, área queimada e mapas de risco em grade. A síntese organiza a literatura em grupos de modelos, incluindo métodos de aprendizado de máquina sobre dados tabulares (árvores de decisão, ensembles de boosting, máquinas de vetores de suporte), redes convolucionais para mapeamento espacial de risco e arquiteturas espaço-temporais, como ConvLSTM e modelos baseados em atenção. A revisão também discute bases de dados, métricas de avaliação e limitações recorrentes, como dificuldades de generalização espacial e heterogeneidade de procedimentos de validação.
-
-Em conjunto, esses trabalhos descrevem desde análises descritivas do regime de fogo em biomas brasileiros até aplicações específicas de aprendizado de máquina e sínteses do estado da arte em previsão de incêndios. As abordagens variam quanto ao tipo de dado utilizado, à formulação do problema (incidência, suscetibilidade, alarmes experimentais, propagação) e à sofisticação dos modelos, o que influencia tanto a interpretação dos resultados quanto a comparação entre métodos em diferentes contextos.
+Globalmente, revisões como a de Andrianarivony e Akhloufi \cite{andrianarivony2024review} indicam que modelos baseados em árvores de decisão e ensembles (Random Forest, Gradient Boosting e XGBoost) são os mais recorrentes para tarefas de risco de fogo devido à capacidade de lidar com variáveis heterogêneas. Métodos de boosting constroem sequências de modelos fracos de maneira iterativa para corrigir erros anteriores \cite{friedman2001greedy}. Outros estudos em regiões mediterrâneas e na China reforçam a importância de integrar variáveis climáticas com técnicas de explicabilidade (XAI) e estratégias de validação que respeitem a estrutura espacial e temporal dos dados \cite{cilli2022xai, pang2022china, ahajjam2025wildfire}.
 
 \section{Modelos de classificação supervisionada}
 
@@ -176,29 +172,37 @@ menos direta quando kernels não lineares são adotados.
 
 \subsection{Árvores de decisão e Random Forest}
 
-Árvores de decisão são modelos baseados em partições recursivas do espaço de atributos:
-a partir de um nó raiz contendo todas as amostras, escolhe-se uma variável e um ponto de
-corte que dividem os dados em dois subconjuntos mais “puros” em relação às classes. Esse
-processo é repetido recursivamente em cada nó filho até a obtenção de nós terminais (folhas),
-que correspondem às previsões de classe. Medidas de impureza como o índice de Gini ou a
-entropia são comumente utilizadas para selecionar os melhores pontos de divisão
-\cite{russell2016artificial}.
+Árvores de decisão são modelos fundamentados em partições recursivas do espaço de atributos. O processo consiste em dividir o conjunto de dados em subconjuntos cada vez mais homogêneos em relação à variável alvo $y$. Para um nó $m$, representando um subconjunto dos dados $Q_m$ com $n_m$ observações, a proporção de instâncias da classe $k$ é definida como:
 
-Embora árvores individuais sejam modelos interpretáveis, elas tendem a apresentar alta
-variância: pequenas variações nos dados podem resultar em árvores bastante diferentes. Random
-Forest \cite{breiman2001randomForest} é um método de comitê (ensemble) que busca reduzir
-essa variância por meio de \emph{bagging} (bootstrap aggregating). O algoritmo constrói um
-conjunto de árvores de decisão, cada uma treinada em uma amostra bootstrap do conjunto de
-treino. Adicionalmente, em cada divisão interna, considera-se apenas um subconjunto aleatório
-de atributos candidatos, introduzindo diversidade adicional entre as árvores.
+\begin{equation}
+p_{mk} = \frac{1}{n_m} \sum_{\mathbf{x}^{(i)} \in Q_m} I(y^{(i)} = k),
+\end{equation}
 
-A predição final em classificação é obtida por votação majoritária entre as árvores.
-Essa combinação de árvores fracas, porém diversificadas, produz um classificador robusto, com
-boa capacidade preditiva mesmo em problemas de alta dimensionalidade e presença de relações
-não lineares complexas entre variáveis. Random Forest também fornece medidas de importância
-de atributos, estimadas, por exemplo, pela redução média de impureza ou por estratégias baseadas
-em permutações, úteis para compreender o papel relativo de diferentes variáveis ambientais na
-previsão de fogo.
+em que $I(\cdot)$ é a função indicadora. A escolha do melhor ponto de corte em cada nó baseia-se em medidas de impureza. A métrica mais utilizada em algoritmos de classificação é o índice de Gini ($G$), que quantifica a probabilidade de uma instância escolhida aleatoriamente ser rotulada incorretamente, sendo expresso por:
+
+\begin{equation}
+G(m) = \sum_{k=1}^K p_{mk} (1 - p_{mk}) = 1 - \sum_{k=1}^K p_{mk}^2.
+\end{equation}
+
+O algoritmo busca, para cada nó, a variável $j$ e o limiar $s$ que minimizam a impureza combinada dos nós filhos (esquerdo e direito), resolvendo o seguinte problema de otimização:
+
+\begin{equation}
+J(j, s) = \frac{n_{left}}{n_m} G(left) + \frac{n_{right}}{n_m} G(right).
+\end{equation}
+
+
+
+Embora árvores individuais sejam modelos interpretáveis, elas tendem a apresentar alta variância, pois pequenas variações nos dados de treinamento podem resultar em estruturas de decisão drasticamente diferentes. O Random Forest \cite{breiman2001randomForest} atenua essa limitação por meio de um método de comitê (\textit{ensemble}) baseado em \textit{bagging} (bootstrap aggregating). O algoritmo constrói $B$ árvores independentes, cada uma treinada em uma amostra bootstrap $Z^*$ obtida com reposição do conjunto original.
+
+O diferencial do Random Forest em relação ao \textit{bagging} convencional é a introdução do método de subespaços aleatórios: em cada divisão de cada árvore, o algoritmo seleciona apenas um subconjunto aleatório de $m \approx \sqrt{p}$ atributos para considerar como candidatos ao corte. Essa técnica reduz a correlação entre as árvores da floresta, garantindo que o erro médio do comitê seja menor que o erro médio de suas árvores individuais.
+
+A predição final para uma nova instância $\mathbf{x}$ é obtida por votação majoritária no caso de classificação:
+
+\begin{equation}
+\hat{y} = \text{moda} \{ \hat{C}_1(\mathbf{x}), \hat{C}_2(\mathbf{x}), \dots, \hat{C}_B(\mathbf{x}) \},
+\end{equation}
+
+em que $\hat{C}_b(\mathbf{x})$ é a classe prevista pela $b$-ésima árvore. Além da robustez preditiva, o modelo permite estimar a importância de cada atributo via \textit{Mean Decrease Gini}, que calcula a redução total na impureza dos nós trazida por uma variável específica ao longo de todas as árvores da floresta, fornecendo interpretação relevante para o domínio do problema \cite{russell2016artificial}.
 
 
 \subsection{Gradient Boosting e XGBoost}
@@ -259,51 +263,3 @@ No caso de séries ambientais, é importante evitar vazamento de informação (p
 amostras muito próximas no tempo ou no espaço aparecendo simultaneamente em treino e
 teste), pois isso tende a inflar artificialmente as métricas de avaliação
 \cite{nascimento2011analise,andrianarivony2024review}.
-
-
-\section{Trabalhos relacionados em previsão de incêndios}
-
-A literatura recente aponta um crescimento expressivo do uso de técnicas de aprendizado
-de máquina e inteligência artificial na previsão de ocorrência e comportamento de incêndios
-florestais. Os trabalhos variam quanto ao tipo de tarefa (ocorrência vs. severidade vs. área
-queimada), à resolução espacial e temporal e ao conjunto de variáveis preditoras utilizadas
-(meteorologia, topografia, combustível, fatores antrópicos, índices espectrais, entre outros).
-
-Do ponto de vista ecológico e climatológico, estudos clássicos sobre o bioma Cerrado
-mostram que a distribuição espacial e temporal dos focos de calor não é aleatória: há forte
-sazonalidade associada ao regime de chuvas e à fenologia da vegetação, bem como influência de
-gradientes de uso do solo e de desmatamento \cite{nascimento2011analise}. Essa evidência de
-estruturas determinísticas e multimodais no padrão de fogo fundamenta o uso de modelos de
-aprendizado de máquina, que são capazes de explorar relações não lineares entre múltiplas
-variáveis explicativas.
-
-Revisões sistemáticas recentes, como \citeonline{andrianarivony2024review}, sintetizam o
-estado da arte em previsão de propagação de incêndios, comparando abordagens baseadas em
-modelos físicos, métodos estatísticos clássicos e algoritmos de aprendizado de máquina e
-aprendizado profundo. Esses estudos indicam que modelos baseados em árvores de decisão e
-ensembles (Random Forest, Gradient Boosting, XGBoost) aparecem de forma recorrente entre
-as alternativas de melhor desempenho em tarefas de ocorrência e risco de fogo, em grande parte
-devido à sua capacidade de lidar com variáveis heterogêneas e interações complexas. Ao mesmo
-tempo, modelos mais simples, como Regressão Logística, permanecem relevantes quando se
-prioriza interpretabilidade e quando o objetivo é quantificar o efeito marginal de variáveis
-ambientais específicas sobre a probabilidade de incêndio.
-
-Diversos trabalhos aplicados a diferentes regiões do mundo exploram combinações de
-modelos supervisionados. Por exemplo, estudos em regiões mediterrâneas e países europeus
-mostram que Random Forest e métodos de boosting alcançam alta capacidade preditiva ao
-integrar variáveis climáticas, de uso e cobertura da terra, relevo e fatores socioeconômicos,
-por vezes em conjunto com técnicas de explicabilidade (XAI) para interpretar a contribuição
-de cada variável \cite{cilli2022xai}. Em outras regiões, como China e países do hemisfério sul,
-modelos de árvore e SVM também aparecem entre as abordagens de melhor custo-benefício,
-especialmente quando combinados com técnicas de amostragem para lidar com classes
-desbalanceadas e com estratégias de validação que respeitam a estrutura espacial e temporal
-dos dados \cite{pang2022china,ahajjam2025wildfire}.
-
-Em síntese, a literatura indica que não há um único algoritmo universalmente superior
-para previsão de fogo; o desempenho relativo depende do contexto, da disponibilidade e qualidade
-dos dados e da forma como o problema é formulado. Entretanto, o conjunto de modelos
-considerados neste trabalho (Regressão Logística, Naive Bayes, SVM, Random Forest e XGBoost)
-cobre um espectro representativo de abordagens lineares e não lineares, generativas e
-discriminativas, interpretáveis e de alto desempenho, alinhando-se às recomendações presentes
-em revisões recentes sobre o uso de aprendizado de máquina em incêndios florestais
-\cite{andrianarivony2024review}.

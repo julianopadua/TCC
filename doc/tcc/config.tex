@@ -3,13 +3,13 @@
 
 % --------------------------------------------------
 % Fonte principal: Helvetica (parecida com Arial)
-% (funciona com pdfLaTeX, não precisa trocar compilador)
 % --------------------------------------------------
-\usepackage[scaled=0.92]{helvet} % ajusta o tamanho pra ficar mais elegante
+\usepackage[scaled=0.92]{helvet}
 \renewcommand{\familydefault}{\sfdefault}
 
-% Matemática mais "padrão" (Times-like)
+% Matemática e Fontes
 \usepackage{newtxmath}
+\usepackage{textcase} % Essencial para conversão de maiúsculas com acento
 
 % Margens padrão da UFSCar
 \usepackage[top=3cm,bottom=2cm,left=3cm,right=2cm]{geometry}
@@ -21,7 +21,7 @@
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{setspace}
-\usepackage{fancyhdr}
+\usepackage{fancyhdr} % Para controle total dos cabeçalhos
 \usepackage{ragged2e}
 \usepackage{indentfirst}
 \usepackage[alf]{abntex2cite}
@@ -34,7 +34,7 @@
 \usepackage{tikz}
 \usepackage{listings}
 
-% Config básica pros códigos não ficarem gigantes e quebrarem linha
+% Config básica pros códigos
 \lstset{
   basicstyle=\ttfamily\footnotesize,
   breaklines=true,
@@ -51,7 +51,40 @@
   urlcolor=black
 }
 
-% Informações institucionais (para capa e folha de rosto)
+% --------------------------------------------------
+% CONFIGURAÇÃO DE CABEÇALHOS (ESTILO ARCENCIO)
+% --------------------------------------------------
+% Define o estilo 'fancy' para páginas textuais
+\pagestyle{fancy}
+\fancyhf{} % Limpa todas as configurações
+
+% Redefine a forma como o capítulo e a seção aparecem no cabeçalho
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+\renewcommand{\sectionmark}[1]{\markright{#1}}
+
+% Página Par (Even - Esquerda): Página à esquerda, Capítulo à direita
+\fancyhead[LE]{\thepage}
+\fancyhead[RE]{\textit{Capítulo \thechapter. \leftmark}}
+
+% Página Ímpar (Odd - Direita): Seção à esquerda, Página à direita
+\fancyhead[LO]{\textit{\thesection. \rightmark}}
+\fancyhead[RO]{\thepage}
+
+\renewcommand{\headrulewidth}{0.4pt} % Linha horizontal
+
+% Garante que páginas de início de capítulo fiquem sem cabeçalho (vazias)
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \renewcommand{\headrulewidth}{0pt}
+}
+\aliaspagestyle{chapter}{plain}
+
+% Ajuste de espaçamento de listas para ser mais compacto (como o exemplo)
+\setlist{nosep} 
+
+% --------------------------------------------------
+% INFORMAÇÕES INSTITUCIONAIS
+% --------------------------------------------------
 \titulo{Análise Comparativa do Desempenho de Modelos de Machine Learning na Previsão de Focos de Incêndio no Cerrado Utilizando Variáveis Climáticas}
 \autor{Juliano Eleno Silva Pádua}
 \local{São Carlos - SP}
@@ -65,16 +98,17 @@
 \orientador{Prof. Dr. Alexandre Levada}
 \tipotrabalho{Trabalho de Conclusão de Curso}
 
-% ===== Capa (modelo UFSCar) =====
+% ===== Capa (Corrigindo PáDUA) =====
 \renewcommand{\imprimircapa}{
   \begin{center}
-    {\ABNTEXchapterfont\large\MakeUppercase\imprimirinstituicao}
+    {\ABNTEXchapterfont\large\MakeTextUppercase{\imprimirinstituicao}}
     \vspace*{4cm}
 
     {\ABNTEXchapterfont\bfseries\LARGE\imprimirtitulo}
     \vspace*{5cm}
 
-    {\large\imprimirautor}
+    % Força a conversão correta de Juliano Eleno Silva Pádua para maiúsculas
+    {\large\MakeTextUppercase{\imprimirautor}}
     \vspace*{6cm}
 
     {\large\imprimirlocal}\\
@@ -82,21 +116,18 @@
   \end{center}
 }
 
-% ===== Folha de rosto (modelo UFSCar) =====
+% ===== Folha de rosto =====
 \makeatletter
 \renewcommand{\folhaderostocontent}{
   \begin{center}
-    % Autor no topo
-    {\large \imprimirautor}
+    {\large\MakeTextUppercase{\imprimirautor}}
 
     \vspace*{6cm}
-    % Título centralizado
     {\ABNTEXchapterfont\bfseries\Large \imprimirtitulo \par}
 
     \vspace*{3cm}
   \end{center}
 
-  % Bloco descritivo justificado à direita
   \noindent\hfill
   \begin{minipage}{0.52\textwidth}
     \justifying
@@ -107,10 +138,8 @@
     \noindent Orientação: \imprimirorientador
   \end{minipage}
 
-
   \vfill
 
-  % Cidade/UF e ano no rodapé
   \begin{center}
     {\large \imprimirlocal}\\[2pt]
     {\large \imprimirdata}
