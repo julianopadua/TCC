@@ -1,66 +1,56 @@
-Aqui está a reformulação do arquivo `.md`, focado estritamente na **fundamentação teórica** (o "porquê" e o "o quê") conforme solicitado. O texto elimina a explicação padrão de "Tarefa T" e foca na distinção estrutural entre modelagem física versus modelagem baseada em dados, que é o argumento central para o uso de IA no seu TCC.
-
-***
-
-# Machine Learning and Deep Learning for Wildfire Spread Prediction: A Review (Fire, 2024)
+# Andrianarivony2024-Review – Machine Learning and Deep Learning for Wildfire Spread Prediction: A Review (2024)
 
 ## Ficha técnica
 
-Autores: Henintsoa S. Andrianarivony e Moulay A. Akhloufi.
-Tipo: Revisão Sistemática da Literatura.
-Alvo: Estabelecer o estado da arte na transição de modelos físicos clássicos para abordagens baseadas em dados (Data-Driven).
-Escopo: Definição das fronteiras entre Machine Learning (ML) clássico e Deep Learning (DL); análise da adequação dessas arquiteturas à complexidade não linear da dinâmica do fogo; levantamento de variáveis multimodais (satélite, clima, topografia) que alimentam estes algoritmos.
+Autores: Henintsoa S. Andrianarivony; Moulay A. Akhloufi.
+Periódico: Fire (MDPI), 7(12):482. 
+
+Escopo: revisão sistemática de modelos de previsão de propagação de incêndios florestais (wildfire spread) baseados em técnicas de machine learning (ML) e deep learning (DL), com comparação a modelos clássicos físico/empíricos e discussão de métricas, bases de dados e desafios em aberto. 
 
 ---
 
-## Trechos centrais (literais, para citação direta)
+## Objeto da revisão e posição em relação aos modelos clássicos
 
-> [cite_start]"Classical wildfire spread models have relied on mathematical and empirical approaches, which have trouble capturing the complexity of fire dynamics and suffer from poor flexibility and static assumptions." [cite: 9]
+O artigo parte da constatação de que modelos clássicos de propagação, como FARSITE e Prometheus, baseados em equações físicas e regras empíricas (e muitas vezes implementados via autômatos celulares), exigem preparação de dados extensa, são computacionalmente custosos e têm dificuldade em representar a complexidade espaço temporal do fogo em tempo quase real. 
 
-> [cite_start]"In contrast, ML and DL approaches offer a data-driven alternative that can overcome the limitations of traditional models... These models can automatically learn complex spatial-temporal patterns from large datasets without explicit programming of all environmental interactions." [cite: 133, 138]
-
-> [cite_start]"ML models... use tabular data points to identify patterns and predict fire behavior. However, these models often struggle with the dynamic nature of wildfires. In contrast, DL approaches... excel at handling the spatiotemporal complexities of wildfire data." [cite: 11, 12, 13]
-
-> [cite_start]"Unlike traditional models that rely on established physical principles, ML and DL models require extensive datasets for training to ensure accurate predictions." [cite: 145]
-
-> [cite_start]"Deep learning methodologies have revolutionized wildfire spread modeling... by leveraging diverse neural network architectures... capable of handling high-dimensional datasets and extracting detailed spatial and temporal features." [cite: 224, 226]
+Nesse contexto, ML e DL são apresentados como alternativas data-driven capazes de incorporar múltiplas fontes de dados (meteorologia, topografia, combustível, uso do solo, imagens de satélite) e aprender padrões não lineares sem especificar explicitamente todas as interações físico-químicas. A revisão organiza o campo em famílias de modelos (ML tabular, CNN, ConvLSTM/CRN, transformers, RL, GNN) e discute em quais cenários cada família se mostra mais adequada. 
 
 ---
 
-## Leitura crítica e Fundamentação Teórica
+## Principais famílias de modelos e implicações teóricas
 
-1.  **Definição de IA/ML por contraste (Data-Driven vs. Physics-Based)**
-    O artigo fundamenta o que é Inteligência Artificial e Machine Learning neste contexto não por definições abstratas, mas pela sua função operacional em contraste com a modelagem clássica (como FARSITE ou Rothermel). Enquanto modelos físicos dependem de equações diferenciais pré-programadas e coeficientes estáticos, algoritmos de ML são definidos como sistemas que **inferem as regras de transição** de estado a partir da exposição massiva a dados históricos. Isso posiciona o ML no seu TCC não apenas como uma ferramenta, mas como uma mudança de paradigma epistemológico: saímos da dedução de leis físicas para a indução de padrões estatísticos.
+1. **Modelos de ML “clássico” (tabular)**
+   São discutidos algoritmos como Support Vector Machines/Regression, Gaussian Process Regression, árvores de decisão, ensembles tipo Random Forest/Gradient Boosting e redes rasas. Esses modelos operam tipicamente sobre dados tabulares (variáveis meteorológicas, índices de seca, variáveis de combustível, dados de campo) e têm como alvo taxa de propagação, área queimada ou indicadores de comportamento do fogo. A revisão ressalta que tais modelos funcionam bem com conjuntos de dados relativamente pequenos, são mais interpretáveis e exigem menor custo computacional, mas capturam de forma limitada a estrutura espacial explícita da frente de fogo. 
 
-2.  **A natureza do Machine Learning (ML) Clássico**
-    O texto define ML (SVM, Random Forest, Decision Trees) como a abordagem ideal para lidar com dados estruturados e tabulares. A fundamentação aqui reside na capacidade desses algoritmos de lidar com **não linearidades** entre variáveis meteorológicas (vento, umidade) e o comportamento do fogo, algo que regressões lineares simples falham em capturar. Para a previsão de focos no Cerrado, isso justifica o uso de dados pontuais (dados de estações meteorológicas e índices de vegetação) para classificação binária (fogo/não-fogo).
+2. **Redes convolucionais (CNN) para mapas de propagação**
+   CNNs (U-Net, FireCast, multi-kernel CNN, redes hierárquicas como WFNet) são usadas para prever máscaras de área queimada ou campos contínuos de suscetibilidade / probabilidade de queima em grade, a partir de imagens de satélite (NDVI, LST), dados topográficos (DEM, declividade) e variáveis meteorológicas. Em geral, esses modelos superam simuladores físicos em acurácia para tarefas específicas e conseguem operar em resoluções espaciais finas com custo computacional muito menor, o que sustenta teoricamente o uso de modelos de árvore e CNNs em contextos onde o objetivo é mapear risco/espaço, não apenas descrever a física do fogo. 
 
-3.  **A natureza do Deep Learning (DL) e a "Feature Extraction"**
-    O artigo avança a teoria ao explicar o DL como uma evolução necessária para dados não estruturados e de alta dimensão. A justificativa teórica para usar DL (como CNNs) é a capacidade de **extração automática de características** espaciais e temporais. Diferente do ML clássico, onde o pesquisador precisa criar as variáveis ("feature engineering"), arquiteturas profundas aprendem a "ler" a topografia e a textura da vegetação diretamente de imagens de satélite. Isso fundamenta a escolha de redes neurais quando o insumo principal são imagens orbitais (Landsat, Sentinel, MODIS).
+3. **Redes convolucionais recorrentes (ConvLSTM, CRN) e modelos de séries temporais**
+   ConvLSTM e arquiteturas híbridas CNN+LSTM são apresentadas como centrais para capturar simultaneamente a estrutura espacial (imagens/máscaras) e a dinâmica temporal (sequências diárias ou subdiárias de propagação). Esses modelos aprendem um processo autoregressivo de evolução do fogo (usar o estado previsto em (t) para prever (t+1)), obtendo bons resultados em janelas de horas a dias à frente. Do ponto de vista teórico, isso reforça a ideia de que incêndios devem ser tratados como processos espaço temporais com memória de curto e médio prazo, e não como eventos independentes. 
 
-4.  **Adequação ao Problema (O "Fit" com o Fogo)**
-    O problema do fogo é definido como **espacialmente complexo** e **temporalmente dinâmico**. O artigo argumenta que o ML/DL é a ferramenta ideal (o "fit") porque suas arquiteturas espelham a natureza do problema:
-    * O fogo se espalha no espaço: Redes Convolucionais (CNNs) são desenhadas para capturar correlações espaciais (vizinhança).
-    * O fogo evolui no tempo: Redes Recorrentes (RNN/LSTM) são desenhadas para entender sequências e memória histórica.
-    Essa correspondência estrutural entre a arquitetura do algoritmo e a física do fenômeno é o argumento central para a superioridade destes métodos sobre simulações estáticas.
-
-5.  **Multimodalidade e Integração de Dados**
-    A teoria por trás dos modelos apresentados sustenta a capacidade de fusão de dados (Multimodal Data Fusion). O fogo no Cerrado depende da interação simultânea de fatores climáticos (dinâmicos), topográficos (estáticos) e de vegetação (sazonais). O artigo demonstra que algoritmos de aprendizado de máquina são os únicos capazes de integrar essas fontes de dados heterogêneas (imagens de satélite + séries temporais de clima) em um único vetor de decisão coerente, sem a necessidade de simplificações físicas excessivas.
+4. **Transformers, RL e GNNs como fronteira do estado da arte**
+   A revisão destaca o uso inicial de transformers (Swin U-Net, MA-Net, AutoST-Net) para lidar com dependências de longo alcance em espaço e tempo, reforçando o papel de atenção para combinar múltiplas camadas de variáveis (fogo anterior, clima, vegetação, uso do solo). Modelos de reinforcement learning (MCTS, A3C) aparecem mais ligados a simulação e tomada de decisão (planejamento de combate), e GNNs são propostos para representar a paisagem como grafo irregular, explorando vizinhanças adaptativas e rotas explícitas de propagação. Teoricamente, essas abordagens consolidam a visão do fogo como processo dinâmico em rede, com interações locais e globais. 
 
 ---
 
-## Tabela síntese (conceitos → ação no seu TCC)
+## Métricas, bases de dados e papel das séries espaço temporais
 
-| Conceito Teórico | Aplicação na Fundamentação | Argumento para o TCC |
-| :--- | :--- | :--- |
-| **Paradigma Data-Driven** | Substituição de regras rígidas por aprendizado estatístico. | Justifica por que não usar apenas índices de perigo (como FMA) e sim modelos treináveis. |
-| **Não Linearidade** | Capacidade de mapear interações complexas (ex: vento + seca). | Justifica a escolha de Random Forest/XGBoost sobre regressões lineares simples. |
-| **Spatiotemporal Features** | O fogo é um processo de contágio no espaço e tempo. | Fundamenta o uso de variáveis defasadas (lags) e vizinhança espacial na entrada do modelo. |
-| **Feature Learning** | Capacidade do modelo de decidir o que é relevante. | Remove a necessidade de definir coeficientes manuais para cada tipo de vegetação do Cerrado. |
-| **Escalabilidade** | Custo computacional menor na inferência (pós-treino). | Argumento para viabilidade de um sistema de alerta em tempo real. |
+O artigo sistematiza métricas usadas para avaliação:
+
+* tarefas de regressão (MAE, RMSE, MAPE) para área queimada e taxa de propagação;
+* tarefas de classificação (accuracy, precision, recall, F1) para presença/ausência de fogo em grade;
+* métricas espaciais (IoU, Sorensen–Dice) para sobreposição entre máscara prevista e área queimada observada. 
+
+Do ponto de vista de dados, a revisão lista e caracteriza conjuntos amplamente usados, como Next Day Wildfire Spread, FEDS, WildfireSpreadTS, WildfireDB, Mesogeos, dados VIIRS/MODIS/Himawari, além de produtos de área queimada e bases nacionais (por exemplo, Canadian Fire Spread dataset). Todos combinam, em maior ou menor grau, (i) histórico de fogo (máscaras, perímetros, data de queima); (ii) variáveis meteorológicas; (iii) topografia; (iv) uso e cobertura da terra; e, em alguns casos, (v) proxies de pressão antrópica. Isso fundamenta teoricamente a necessidade de integrar múltiplas camadas ambientais e climáticas em qualquer modelo de ocorrência/propagação. 
 
 ---
 
-## Julgamento de relevância para o TCC
+## Desafios, lacunas e como a revisão fundamenta o TCC
 
-Este artigo é **fundamental** para o Capítulo 2 (Fundamentação Teórica). Ele não deve ser usado apenas para listar modelos, mas para **construir o argumento lógico** de que o fenômeno das queimadas possui características intrínsecas (complexidade, não linearidade, multimodalidade) que requerem a capacidade de generalização e extração de padrões que apenas a Inteligência Artificial (especificamente ML e DL) pode oferecer. Ele serve como a "ponte" teórica entre a climatologia do fogo e a ciência da computação.
+A síntese crítica do artigo destaca cinco eixos de limitação: (i) dificuldade de comparação entre modelos devido a datasets e métricas heterogêneos; (ii) baixa explicabilidade dos modelos mais complexos, com necessidade de XAI (Grad-CAM, SHAP) para ganhar confiança operacional; (iii) carência de modelos realmente leves e de tempo real para uso em campo; (iv) problemas de generalização espacial, com modelos treinados em uma região e desempenho reduzido em outras; e (v) limitações e viés de conjuntos de dados (regiões pouco amostradas, resolução desigual, dependência de dados simulados). 
+
+Para a fundamentação teórica do TCC, essa revisão cumpre três papéis principais:
+
+1. **Justifica o foco em ML/DL para incêndios**: demonstra que a comunidade internacional converge para ML/DL como alternativa mais flexível e acurada que modelos puramente físicos para previsão de comportamento do fogo, sobretudo em problemas que envolvem múltiplas variáveis climáticas e ambientais.
+2. **Delimita o espaço de modelos**: oferece um “mapa” das famílias de algoritmos relevantes (ML tabular, ensembles, CNN, ConvLSTM, transformers, GNN, RL) e de como eles dialogam com diferentes tipos de dado e formulações de alvo, permitindo justificar a escolha de modelos supervisionados específicos no contexto de ocorrência de focos.
+3. **Evidencia uma lacuna temática e geográfica**: apesar de revisar extensivamente trabalhos em América do Norte, Europa e Ásia, o artigo não traz aplicações focadas no Cerrado brasileiro nem no uso sistemático conjunto de BDQueimadas e dados meteorológicos nacionais para modelos supervisionados de ocorrência. Essa ausência reforça a relevância de um estudo direcionado ao Cerrado, com recorte metodológico próprio (modelos supervisionados para probabilidade de ocorrência) ancorado nas mesmas premissas teóricas que sustentam os modelos de propagação revisados.

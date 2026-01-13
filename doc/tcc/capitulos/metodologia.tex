@@ -147,3 +147,45 @@ Com essa base harmonizada, o script gera, para cada ano, seis cenários distinto
 Esses cenários permitem comparar, na etapa de modelagem, o impacto da presença da variável de radiação e de diferentes estratégias de tratamento de dados faltantes sobre o desempenho dos modelos preditivos.
 
 Ao final, toda a implementação do pipeline de ETL, scripts de auditoria e construção das bases de modelagem encontra-se disponível em repositório público de código\footnote{Substituir pelo endereço oficial do repositório, por exemplo: \url{https://github.com/seu-usuario/seu-repo-tcc}}.
+
+
+
+
+
+\section{Por que restringir o escopo ao Cerrado?}
+\label{sec:porque-cerrado}
+
+\subsection{Limitação computacional e escopo de pesquisa}
+Modelar, de forma unificada, a ocorrência de focos em todos os biomas brasileiros implica acomodar múltiplos regimes de fogo, conjuntos de combustíveis com propriedades distintas e respostas climáticas heterogêneas. Essa heterogeneidade amplia o espaço de hipóteses do modelo, eleva o custo de busca de hiperparâmetros e aumenta a chance de sobreajuste. Dado o poder computacional disponível e o objetivo de assegurar validade interna, adota-se um recorte por bioma que concentra a capacidade computacional na escolha e validação de variáveis dentro de um único regime de fogo, reduzindo não estacionariedade e favorecendo testes de generalização espacial consistentes.
+
+\subsection{Heterogeneidade entre biomas e implicações para a consistência do modelo}
+\label{subsec:heterogeneidade-biomas}
+
+A literatura de ecologia do fogo demonstra que biomas brasileiros se distribuem em categorias com respostas intrinsecamente distintas ao fogo, como ecossistemas dependentes, sensíveis e independentes. Essa classificação emerge de diferenças de composição vegetal, clima e fontes de ignição que se traduzem em regimes contrastantes de frequência, sazonalidade, intensidade e severidade dos incêndios \cite{ramalho2024compreendendo}.
+
+No confronto direto entre Cerrado e Amazônia, por exemplo, o primeiro apresenta estação seca longa, abundância de combustível fino herbáceo que seca rapidamente e ignições naturais por raios no início das chuvas, ao passo que a Amazônia é sensível ao fogo e, historicamente, quase não queima na ausência de secas anômalas e distúrbios antrópicos. As implicações de manejo também divergem, o que evidencia que as “regras” do processo gerador de dados mudam com o bioma \cite{pivello2011use}.
+
+Em escala nacional, padrões climáticos relacionados ao fogo e métricas de risco revelam contrastes sistemáticos entre biomas: a persistência temporal do fogo é generalizada, mas a adequação térmica é elevada nos biomas dependentes e mais baixa nas florestas úmidas, implicando sensibilidades distintas às variáveis climáticas e, portanto, funções de resposta diferentes quando se modela a ocorrência \cite{viegas2022fireclimate}.
+
+Mesmo dentro de um único bioma, como o Cerrado, há controles climáticos com estrutura sazonal e ecorregional específicos: pré-condições no outono austral (março a maio) modulam a disponibilidade e condição do combustível no início da estação de fogo, enquanto condições concorrentes durante agosto a outubro explicam a variação no final da estação. Esses efeitos variam por mês e por ecorregião, reforçando que agregar regimes distintos em um único modelo dilui o sinal e compromete a transferibilidade \cite{silva2025climatic}.
+
+
+\section{Pipeline de dados} \label{sec:pipelines}
+
+A previsão de focos de incêndio em escala regional requer integração consistente de fontes heterogêneas - focos detectados por satélite, séries meteorológicas e variáveis derivadas. No Cerrado, a sazonalidade e a estrutura espacial dos focos, associadas a cobertura vegetal e pressão antrópica, reforçam a necessidade de bases integradas e coerentes para que algoritmos de aprendizagem de máquina captem padrões multivariados reprodutíveis \cite{nascimento2011analise,andrianarivony2024review}.
+
+Um pipeline explícito de \textit{Extract–Transform–Load} sustenta reprodutibilidade, rastreabilidade e controle de qualidade. Arquiteturas modulares e parametrizadas reduzem a dívida técnica de fluxos ad hoc, estabelecem contratos claros de entrada/saída e preservam a proveniência das transformações, favorecendo manutenção e reexecução em novos períodos e recortes espaciais \cite{sculley2014hidden}. A integração entre focos e clima demanda harmonização de formatos e unidades, resolução de chaves espaço-temporais e normalização de códigos sentinela, produzindo um conjunto tabular padronizado, adequado à comparação justa entre modelos.
+
+Séries meteorológicas apresentam padrões sistemáticos de ausência por falhas de sensores, interrupções e mudanças operacionais; ignorar lacunas distorce estatísticas, compromete variáveis derivadas e afeta previsores treinados sob regularidade temporal \cite{alejosanchez2025review}. Imputação constitui um modelo adicional aplicado aos dados de entrada e pode alterar distribuições e extremos; a literatura em clima de alta resolução mostra que a escolha do método deve considerar mecanismo de ausência e estrutura temporal/espacial \cite{afridayamoah2020imputation}. Não há técnica universalmente superior: desempenho depende de variável, resolução e padrão de faltantes \cite{alejosanchez2025review}.
+
+Como diretriz prática e transparente, adota-se KNN para imputação numérica quando a taxa de faltantes e as correlações locais o justificam, mantendo cenários paralelos sem imputação para avaliar sensibilidade das conclusões. Estudos comparativos indicam que KNN apresenta desempenho competitivo sob ausências leves e aleatórias, com baixo custo e interpretabilidade, sendo adequado como baseline de imputação \cite{chehal2023imputation}. Em variáveis climaticamente centrais e frequentemente incompletas (por exemplo, radiação), a estratégia combina: (i) bases sem imputação ou com exclusão seletiva e (ii) bases com KNN, permitindo quantificar o impacto da imputação na comparação entre modelos.
+
+\section{Comparação de modelos} \label{sec:comparacao-modelos}
+
+A opção por comparação sistemática entre modelos decorre de um princípio teórico e de evidência empírica. Teoricamente, os resultados No Free Lunch demonstram que, sem suposições fortes sobre a distribuição geradora, não há preferência a priori entre algoritmos de aprendizado supervisionado; para quaisquer dois métodos, existem tantos alvos em que um supera o outro quanto o inverso \cite{wolpert1996lack}. Em problemas reais, escolhas devem ser sustentadas por avaliação empírica controlada, com protocolos que reduzam viés de partição e permitam estimativas estáveis de desempenho.
+
+Estudos comparativos recentes em dados tabulares mostram que ensembles de árvores por \emph{boosting} tendem a liderar em acurácia, precisão, F1 e ROC-AUC, enquanto abordagens baseadas em margem (SVM) destacam-se em \emph{recall} e modelos lineares (regressão logística) apresentam custo computacional inferior, preservando interpretabilidade \cite{martinovic2025comparative}. Essa heterogeneidade de pontos fortes por métrica justifica incluir famílias distintas (lineares, margem, gerativos, árvores e \emph{boosting}) e reportar múltiplos indicadores de desempenho.
+
+O protocolo de comparação deve alinhar-se às características do problema: desbalanceamento da classe positiva e necessidade de escores probabilísticos calibráveis. Métricas centradas na detecção de raros, como PR-AUC, \emph{recall} e F1, são prioritárias, complementadas por Brier score e curvas de calibração para avaliar a qualidade probabilística. A validação deve empregar partições espaço-temporais e repetições com testes estatísticos corrigidos para mitigar vitórias espúrias por sobreposição de dobras \cite{martinovic2025comparative}. Quando houver cenários alternativos de tratamento de dados (com e sem imputação), a comparação deve ser replicada em cada cenário, pois a imputação altera a distribuição das entradas e pode mudar o ranking relativo dos modelos.
+
+

@@ -3,8 +3,6 @@
 \chapter{Fundamentação teórica}
 \label{cap:fundamentacao}
 
-Este capítulo apresenta a base conceitual que sustenta as escolhas metodológicas deste trabalho. A fundamentação está organizada em três eixos principais: (i) inteligência artificial e aprendizado de máquina aplicados à previsão de queimadas, (ii) extração e organização de dados em pipelines climáticos e de focos e (iii) tratamento de dados faltantes em séries temporais ambientais, com ênfase em variáveis meteorológicas do INMET e na construção de diferentes cenários de base de modelagem.
-
 \section{Inteligência Artificial e o problema proposto} \label{sec:ia-e-ml}
 
 Inteligência Artificial (IA) é o campo que estuda agentes capazes de perceber o ambiente e executar ações orientadas a metas; dentro dele, o Aprendizado de Máquina (ML) trata de métodos que permitem a esses agentes melhorar o desempenho a partir de dados e experiência \cite{russell2021artificial}. Em termos práticos, em vez de codificar regras fixas, ML aprende funções de predição a partir de exemplos históricos, sendo especialmente útil quando não há um modelo analítico único que explique adequadamente o fenômeno \cite{andrianarivony2024review}.
@@ -14,58 +12,298 @@ A previsão de focos de incêndio no Cerrado a partir de variáveis climáticas 
 Além disso, há evidência empírica de que o fogo no Cerrado não é aleatório. Sua distribuição apresenta sazonalidade marcada, com concentração na estação seca, dependência do tipo de cobertura e associação com vetores de desmatamento, indicando padrões reprodutíveis que podem ser aprendidos por modelos \cite{nascimento2011analise}.
 
 A literatura sustenta a resolução do problema com aprendizado de máquina para classificação probabilística, em que estima-se $p(\text{FOCO}=1 \mid \mathbf{x})$ e define-se o limiar de decisão conforme os custos operacionais. Pretende-se, portanto, a comparação de modelos supervisionados clássicos e ensembles de árvores, priorizando saídas calibráveis e interpretação alinhada ao domínio.
-A regressão logística é um modelo discriminativo que estima a probabilidade pela função sigmoide
-$p(y{=}1 \mid \mathbf{x}) = \sigma(\mathbf{w}^\top \mathbf{x} + b)$, com $\sigma(z)=\tfrac{1}{1+e^{-z}}$.
-Os parâmetros são obtidos pela minimização da perda logística regularizada,
-$\min_{\mathbf{w},b}\ \sum_{i} \log\bigl(1+\exp(-y_i(\mathbf{w}^\top \mathbf{x}_i+b))\bigr) + \lambda \lVert \mathbf{w}\rVert_2^2$,
-o que fornece escores diretamente interpretáveis como risco estimado \cite{mitchell1997machine,russell2021artificial}.
 
-O Naive Bayes é um modelo gerativo que supõe independência condicional dos atributos dado a classe: $p(y \mid \mathbf{x}) \propto p(y)\prod_j p(x_j \mid y)$. Na variante Gaussiana, $x_j \mid y \sim \mathcal{N}(\mu_{jy},\sigma_{jy}^2)$, e a decisão decorre da comparação do log quociente de verossimilhanças somado ao log das prioris. Apesar da hipótese forte de independência, é um baseline robusto e computacionalmente leve \cite{mitchell1997machine,russell2021artificial}.
+\section{Trabalhos anteriores}
+\label{sec:trabalhos_anteriores}
 
-A SVM linear é um classificador de margem máxima que resolve o problema de otimização convexa
-$\min_{\mathbf{w},b,\boldsymbol{\xi}}\ \tfrac{1}{2}\lVert \mathbf{w}\rVert^2 + C\sum_i \xi_i\ \ \text{sujeito a}\ \ y_i(\mathbf{w}^\top \mathbf{x}_i+b) \ge 1-\xi_i,\ \xi_i \ge 0$.
-O modelo produz escores $s(\mathbf{x})=\mathbf{w}^\top \mathbf{x}+b$ que podem ser calibrados para probabilidade a posteriori \cite{russell2021artificial}.
+Ao longo dos últimos anos, diferentes abordagens estatísticas e de aprendizado de máquina foram propostas para análise e previsão de incêndios, combinando dados de focos de calor, variáveis meteorológicas e informações de uso do solo. Parte dessa literatura é dedicada à caracterização do regime de fogo em biomas brasileiros, enquanto outra parte desenvolve algoritmos específicos para aumentar a acurácia de modelos preditivos ou revisa o estado da arte em nível internacional.
 
-As árvores de decisão particionam o espaço por testes axis-aligned escolhidos para maximizar a redução de impureza. Com índice de Gini $G=1-\sum_c p_c^2$ ou entropia $H=-\sum_c p_c \log p_c$, o ganho no nó é $\Delta I = I(\text{pai}) - \sum_k \tfrac{n_k}{n} I(\text{filho}_k)$. A probabilidade na folha é a frequência empírica da classe positiva \cite{russell2021artificial}. O Random Forest agrega muitas árvores treinadas sobre amostras bootstrap e subconjuntos aleatórios de atributos, reduzindo variância e capturando interações não lineares; a predição é a média das probabilidades individuais \cite{breiman2001randomForest}. O ExtraTrees intensifica a aleatoriedade ao amostrar pontos de corte antes de avaliar o ganho, o que tende a diminuir correlação entre árvores e melhorar a generalização por agregação.
+Silva e White~\cite{silva2016deteccao} utilizaram a série de focos do Programa Queimadas entre 1999 e 2015 para quantificar a incidência de fogo nos diferentes biomas brasileiros. O estudo trabalha com agregações anuais e mensais, compara o número absoluto de focos com valores normalizados pela área de cada bioma e identifica diferenças marcantes na sazonalidade das queimadas, com destaque para o Cerrado e o Pantanal em termos relativos. A análise é essencialmente descritiva, baseada em estatística simples, sem construção de modelos preditivos supervisionados.
 
-Os métodos de boosting constroem um modelo aditivo $F_T(\mathbf{x})=\sum_{t=1}^{T}\eta\, h_t(\mathbf{x})$ em que cada árvore rasa $h_t$ é ajustada ao gradiente negativo da perda avaliada em $F_{t-1}$. O XGBoost estende essa ideia com uma aproximação de segunda ordem da perda e regularização dos pesos das folhas,
-$\mathcal{L} \approx \sum_i \bigl(g_i f(\mathbf{x}_i) + \tfrac{1}{2} h_i f(\mathbf{x}_i)^2\bigr) + \Omega(f)$, com $\Omega(f)=\gamma T + \tfrac{\lambda}{2}\sum_j w_j^2$,
-além de subamostragem e otimizações de engenharia \cite{chen2016xgboost}. Variações modernas como LightGBM utilizam histogramas e crescimento leaf-wise sob restrições de profundidade, e o CatBoost emprega técnicas ordenadas para tratar atributos categóricos e reduzir vazamento estatístico; ambas mantêm a ideia central de boosting com árvores e produzem escores probabilísticos adequados à calibração.
+Jesus et al.~\cite{jesus2020analise} analisaram a incidência temporal, espacial e de tendência de fogo em biomas e unidades de conservação no período de 2003 a 2017, também com dados do satélite de referência AQUA\_M-T. A metodologia combina estimativa de densidade Kernel para identificação de hotspots com o teste de Mann-Kendall e o expoente de Hurst para avaliar tendências e memória de longo prazo nas séries anuais de focos. O estudo mostra concentrações persistentes de queimadas em transições de biomas, como a região Amazônia-Cerrado, e indica a presença de correlações de longo alcance nas séries, sem, contudo, empregar algoritmos de aprendizado de máquina.
 
-\section{Por que restringir o escopo ao Cerrado?}
-\label{sec:porque-cerrado}
+Alves et al.~\cite{alves2021estudo} integraram focos de calor na Caatinga, reanálises NCEP/NCAR e índices climáticos de grande escala para investigar a relação entre variáveis meteorológicas e atividade de fogo no período de 2002 a 2018. O trabalho utiliza anomalias de precipitação, umidade relativa, vento, radiação, evapotranspiração e umidade do solo, além de um índice de risco de incêndio construído a partir de umidade e vento, e recorre a estatística descritiva e correlações lineares para quantificar essas associações. A abordagem permite relacionar explicitamente determinadas combinações de condições atmosféricas a aumentos na frequência de focos, mas não avança para modelos supervisionados multivariados.
 
-\subsection{Limitação computacional e escopo de pesquisa}
-Modelar, de forma unificada, a ocorrência de focos em todos os biomas brasileiros implica acomodar múltiplos regimes de fogo, conjuntos de combustíveis com propriedades distintas e respostas climáticas heterogêneas. Essa heterogeneidade amplia o espaço de hipóteses do modelo, eleva o custo de busca de hiperparâmetros e aumenta a chance de sobreajuste. Dado o poder computacional disponível e o objetivo de assegurar validade interna, adota-se um recorte por bioma que concentra a capacidade computacional na escolha e validação de variáveis dentro de um único regime de fogo, reduzindo não estacionariedade e favorecendo testes de generalização espacial consistentes.
+Freitas et al.~\cite{freitas2025xingu} aplicaram técnicas de aprendizado de máquina para estimar a suscetibilidade a incêndios na Área de Proteção Ambiental Triunfo do Xingu, na Amazônia. A variável alvo é a densidade de queimadas em grade, calculada a partir de focos do BDQueimadas validados por produto de área queimada, e os preditores incluem variáveis topográficas, precipitação, temperatura de superfície, índices de vegetação, uso e cobertura da terra e medidas de distância a rodovias e áreas habitadas. Modelos Random Forest e XGBoost são calibrados e comparados, com avaliação por métricas de regressão e análise de importância de variáveis, resultando em mapas de suscetibilidade com desempenho elevado e hierarquia clara de fatores mais influentes.
 
-\subsection{Heterogeneidade entre biomas e implicações para a consistência do modelo}
-\label{subsec:heterogeneidade-biomas}
+Shu et al.~\cite{shu2021dwcnb} desenvolveram uma variante do classificador Naive Bayes, denominada Double Weighted Naive Bayes with Compensation Coefficient (DWCNB), voltada para predição de fogo em dados experimentais. O método atribui pesos tanto aos atributos quanto aos valores dos atributos, com o objetivo de atenuar a suposição de independência condicional e de importância igual entre variáveis, e introduz um coeficiente de compensação para ajustar as probabilidades a priori. O treinamento é realizado com dados do banco de incêndios do NIST, e a calibração do coeficiente emprega um esquema de testes ortogonais em múltiplos níveis; a comparação com versões convencionais de Naive Bayes resulta em ganhos de acurácia, mantendo baixo custo computacional.
 
-A literatura de ecologia do fogo demonstra que biomas brasileiros se distribuem em categorias com respostas intrinsecamente distintas ao fogo, como ecossistemas dependentes, sensíveis e independentes. Essa classificação emerge de diferenças de composição vegetal, clima e fontes de ignição que se traduzem em regimes contrastantes de frequência, sazonalidade, intensidade e severidade dos incêndios \cite{ramalho2024compreendendo}.
+Andrianarivony e Akhloufi~\cite{andrianarivony2024review} apresentaram uma revisão de modelos de machine learning e deep learning para previsão da propagação de incêndios, com ênfase em tarefas de previsão de frente de fogo, área queimada e mapas de risco em grade. A síntese organiza a literatura em grupos de modelos, incluindo métodos de aprendizado de máquina sobre dados tabulares (árvores de decisão, ensembles de boosting, máquinas de vetores de suporte), redes convolucionais para mapeamento espacial de risco e arquiteturas espaço-temporais, como ConvLSTM e modelos baseados em atenção. A revisão também discute bases de dados, métricas de avaliação e limitações recorrentes, como dificuldades de generalização espacial e heterogeneidade de procedimentos de validação.
 
-No confronto direto entre Cerrado e Amazônia, por exemplo, o primeiro apresenta estação seca longa, abundância de combustível fino herbáceo que seca rapidamente e ignições naturais por raios no início das chuvas, ao passo que a Amazônia é sensível ao fogo e, historicamente, quase não queima na ausência de secas anômalas e distúrbios antrópicos. As implicações de manejo também divergem, o que evidencia que as “regras” do processo gerador de dados mudam com o bioma \cite{pivello2011use}.
+Em conjunto, esses trabalhos descrevem desde análises descritivas do regime de fogo em biomas brasileiros até aplicações específicas de aprendizado de máquina e sínteses do estado da arte em previsão de incêndios. As abordagens variam quanto ao tipo de dado utilizado, à formulação do problema (incidência, suscetibilidade, alarmes experimentais, propagação) e à sofisticação dos modelos, o que influencia tanto a interpretação dos resultados quanto a comparação entre métodos em diferentes contextos.
 
-Em escala nacional, padrões climáticos relacionados ao fogo e métricas de risco revelam contrastes sistemáticos entre biomas: a persistência temporal do fogo é generalizada, mas a adequação térmica é elevada nos biomas dependentes e mais baixa nas florestas úmidas, implicando sensibilidades distintas às variáveis climáticas e, portanto, funções de resposta diferentes quando se modela a ocorrência \cite{viegas2022fireclimate}.
+\section{Modelos de classificação supervisionada}
 
-Mesmo dentro de um único bioma, como o Cerrado, há controles climáticos com estrutura sazonal e ecorregional específicos: pré-condições no outono austral (março a maio) modulam a disponibilidade e condição do combustível no início da estação de fogo, enquanto condições concorrentes durante agosto a outubro explicam a variação no final da estação. Esses efeitos variam por mês e por ecorregião, reforçando que agregar regimes distintos em um único modelo dilui o sinal e compromete a transferibilidade \cite{silva2025climatic}.
+No contexto deste trabalho, o problema de previsão de ocorrência de fogo é formulado
+como uma tarefa de classificação supervisionada binária: para cada instância representada por
+um vetor de atributos $\mathbf{x} \in \mathbb{R}^p$, associado a condições ambientais e antrópicas,
+busca-se estimar a probabilidade de ocorrência de um evento de interesse $y \in \{0,1\}$, como,
+por exemplo, a presença de focos de calor em uma dada região e período. Em termos gerais, um
+modelo de aprendizado de máquina supervisionado tenta aproximar uma função
+$f_\theta : \mathbb{R}^p \rightarrow [0,1]$ parametrizada por $\theta$, de modo que $f_\theta(\mathbf{x})$
+represente uma estimativa de $P(Y=1 \mid \mathbf{x})$ \cite{mitchell1997machine,russell2016artificial}.
 
-
-\section{Pipeline de dados} \label{sec:pipelines}
-
-A previsão de focos de incêndio em escala regional requer integração consistente de fontes heterogêneas - focos detectados por satélite, séries meteorológicas e variáveis derivadas. No Cerrado, a sazonalidade e a estrutura espacial dos focos, associadas a cobertura vegetal e pressão antrópica, reforçam a necessidade de bases integradas e coerentes para que algoritmos de aprendizagem de máquina captem padrões multivariados reprodutíveis \cite{nascimento2011analise,andrianarivony2024review}.
-
-Um pipeline explícito de \textit{Extract–Transform–Load} sustenta reprodutibilidade, rastreabilidade e controle de qualidade. Arquiteturas modulares e parametrizadas reduzem a dívida técnica de fluxos ad hoc, estabelecem contratos claros de entrada/saída e preservam a proveniência das transformações, favorecendo manutenção e reexecução em novos períodos e recortes espaciais \cite{sculley2014hidden}. A integração entre focos e clima demanda harmonização de formatos e unidades, resolução de chaves espaço-temporais e normalização de códigos sentinela, produzindo um conjunto tabular padronizado, adequado à comparação justa entre modelos.
-
-Séries meteorológicas apresentam padrões sistemáticos de ausência por falhas de sensores, interrupções e mudanças operacionais; ignorar lacunas distorce estatísticas, compromete variáveis derivadas e afeta previsores treinados sob regularidade temporal \cite{alejosanchez2025review}. Imputação constitui um modelo adicional aplicado aos dados de entrada e pode alterar distribuições e extremos; a literatura em clima de alta resolução mostra que a escolha do método deve considerar mecanismo de ausência e estrutura temporal/espacial \cite{afridayamoah2020imputation}. Não há técnica universalmente superior: desempenho depende de variável, resolução e padrão de faltantes \cite{alejosanchez2025review}.
-
-Como diretriz prática e transparente, adota-se KNN para imputação numérica quando a taxa de faltantes e as correlações locais o justificam, mantendo cenários paralelos sem imputação para avaliar sensibilidade das conclusões. Estudos comparativos indicam que KNN apresenta desempenho competitivo sob ausências leves e aleatórias, com baixo custo e interpretabilidade, sendo adequado como baseline de imputação \cite{chehal2023imputation}. Em variáveis climaticamente centrais e frequentemente incompletas (por exemplo, radiação), a estratégia combina: (i) bases sem imputação ou com exclusão seletiva e (ii) bases com KNN, permitindo quantificar o impacto da imputação na comparação entre modelos.
-
-\section{Comparação de modelos} \label{sec:comparacao-modelos}
-
-A opção por comparação sistemática entre modelos decorre de um princípio teórico e de evidência empírica. Teoricamente, os resultados No Free Lunch demonstram que, sem suposições fortes sobre a distribuição geradora, não há preferência a priori entre algoritmos de aprendizado supervisionado; para quaisquer dois métodos, existem tantos alvos em que um supera o outro quanto o inverso \cite{wolpert1996lack}. Em problemas reais, escolhas devem ser sustentadas por avaliação empírica controlada, com protocolos que reduzam viés de partição e permitam estimativas estáveis de desempenho.
-
-Estudos comparativos recentes em dados tabulares mostram que ensembles de árvores por \emph{boosting} tendem a liderar em acurácia, precisão, F1 e ROC-AUC, enquanto abordagens baseadas em margem (SVM) destacam-se em \emph{recall} e modelos lineares (regressão logística) apresentam custo computacional inferior, preservando interpretabilidade \cite{martinovic2025comparative}. Essa heterogeneidade de pontos fortes por métrica justifica incluir famílias distintas (lineares, margem, gerativos, árvores e \emph{boosting}) e reportar múltiplos indicadores de desempenho.
-
-O protocolo de comparação deve alinhar-se às características do problema: desbalanceamento da classe positiva e necessidade de escores probabilísticos calibráveis. Métricas centradas na detecção de raros, como PR-AUC, \emph{recall} e F1, são prioritárias, complementadas por Brier score e curvas de calibração para avaliar a qualidade probabilística. A validação deve empregar partições espaço-temporais e repetições com testes estatísticos corrigidos para mitigar vitórias espúrias por sobreposição de dobras \cite{martinovic2025comparative}. Quando houver cenários alternativos de tratamento de dados (com e sem imputação), a comparação deve ser replicada em cada cenário, pois a imputação altera a distribuição das entradas e pode mudar o ranking relativo dos modelos.
+Diversos algoritmos podem ser empregados para construir essa aproximação a partir de
+um conjunto de treinamento rotulado. Neste trabalho são considerados modelos clássicos de
+classificação largamente utilizados em aplicações reais: Regressão Logística, Naive Bayes,
+Máquinas de Vetores de Suporte (SVM), Random Forest e XGBoost. Esta seção apresenta os
+fundamentos teóricos de cada um desses métodos, com ênfase em seus princípios de funcionamento,
+hipóteses subjacentes e implicações para tarefas de previsão em dados ambientais.
 
 
+\subsection{Regressão Logística}
+
+A Regressão Logística é um modelo discriminativo que estima diretamente a probabilidade
+condicional de uma classe binária a partir de uma combinação linear dos preditores. Seja
+$\mathbf{x} = (x_1,\ldots,x_p)$ o vetor de atributos e $y \in \{0,1\}$ a variável resposta. O modelo
+assume que o logit da probabilidade de $Y=1$ é uma função linear de $\mathbf{x}$:
+
+\begin{equation}
+\label{eq:logistic_model}
+\text{logit}\bigl(P(Y=1 \mid \mathbf{x})\bigr)
+= \log \left( \frac{P(Y=1 \mid \mathbf{x})}{1 - P(Y=1 \mid \mathbf{x})} \right)
+= \beta_0 + \sum_{j=1}^p \beta_j x_j.
+\end{equation}
+
+Aplicando-se a função logística, obtém-se a probabilidade modelada:
+
+\begin{equation}
+P(Y=1 \mid \mathbf{x}) = \sigma(\beta_0 + \mathbf{x}^\top \boldsymbol{\beta}) 
+= \frac{1}{1 + e^{-(\beta_0 + \mathbf{x}^\top \boldsymbol{\beta})}}.
+\end{equation}
+
+Os parâmetros $\beta_0, \boldsymbol{\beta}$ são estimados geralmente por máxima verossimilhança,
+equivalente à minimização da perda logarítmica (entropia cruzada). Para um conjunto de dados
+$\{(\mathbf{x}^{(i)}, y^{(i)})\}_{i=1}^n$, a função de custo $\mathcal{L}$ é dada por:
+
+\begin{equation}
+\mathcal{L}(\beta_0, \boldsymbol{\beta})
+= - \sum_{i=1}^n \Bigl[ y^{(i)} \log \hat{p}^{(i)} 
++ (1 - y^{(i)}) \log(1 - \hat{p}^{(i)}) \Bigr],
+\end{equation}
+
+em que $\hat{p}^{(i)} = P(Y=1 \mid \mathbf{x}^{(i)})$.
+A minimização é usualmente realizada por métodos numéricos iterativos, como gradiente
+descendente, Newton-Raphson ou variantes quasi-Newton.
+
+A Regressão Logística apresenta duas vantagens importantes em aplicações científicas:
+(i) fornece probabilidades calibradas de ocorrência do evento, o que permite avaliar incertezas
+e definir limiares de decisão dependentes de custo; e (ii) permite interpretação direta dos
+coeficientes em termos de razão de chances (odds ratio): $e^{\beta_j}$ representa o fator de
+multiplicação na razão de chances associado a um incremento unitário em $x_j$, mantendo-se
+os demais atributos constantes. Em problemas ambientais, essa interpretabilidade é útil para
+quantificar o efeito relativo de variáveis climáticas ou de uso do solo sobre a probabilidade de
+fogo.
+
+Para evitar sobreajuste, é comum empregar regularização L2 (ridge) ou L1 (lasso), que
+introduzem penalizações sobre a magnitude dos coeficientes, favorecendo modelos mais simples
+e, no caso da regularização L1, promovendo seleção automática de variáveis.
+
+
+\subsection{Classificadores Naive Bayes}
+
+Modelos Naive Bayes são classificadores probabilísticos baseados no Teorema de Bayes.
+Dado um conjunto de atributos $\mathbf{x}$ e uma variável de classe $Y$, tem-se:
+
+\begin{equation}
+P(Y = c \mid \mathbf{x}) = \frac{P(\mathbf{x} \mid Y=c) P(Y=c)}{P(\mathbf{x})},
+\end{equation}
+
+em que $P(\mathbf{x})$ é o mesmo para todas as classes e pode ser tratado como constante
+no processo de classificação. A ideia central é modelar a distribuição dos atributos condicionada
+à classe, $P(\mathbf{x} \mid Y=c)$, e a distribuição a priori $P(Y=c)$.
+
+O adjetivo \emph{naive} decorre da hipótese de independência condicional entre os atributos
+dado o valor da classe:
+
+\begin{equation}
+P(\mathbf{x} \mid Y=c) = \prod_{j=1}^p P(x_j \mid Y=c).
+\end{equation}
+
+Essa suposição é frequentemente irrealista em dados reais, especialmente em domínios
+ambientais em que variáveis meteorológicas e de vegetação são fortemente correlacionadas.
+Ainda assim, o modelo apresenta bom desempenho em diversas aplicações, sobretudo quando
+o número de atributos é grande em relação ao tamanho da amostra e quando as dependências
+entre variáveis não são extremamente críticas para a discriminação entre as classes.
+
+Na prática, diferentes variantes são utilizadas conforme a natureza dos atributos:
+Naive Bayes gaussiano (atributos contínuos modelados como gaussianos condicionados à
+classe), multinomial (contagens) ou bernoulli (atributos binários). A classificação consiste em
+escolher a classe que maximiza a probabilidade a posteriori $P(Y=c \mid \mathbf{x})$. Devido à
+sua formulação fechada, o treinamento é computacionalmente muito eficiente, o que o torna um
+bom modelo de referência (baseline) em experimentos comparativos.
+
+
+\subsection{Máquinas de Vetores de Suporte (SVM)}
+
+Máquinas de Vetores de Suporte são modelos discriminativos que buscam encontrar um
+hiperplano de separação entre classes com margem máxima \cite{cortes1995svm}. No caso
+linearmente separável, considera-se um hiperplano definido por $(\mathbf{w}, b)$ tal que:
+
+\begin{equation}
+\mathbf{w}^\top \mathbf{x} + b = 0,
+\end{equation}
+
+e impõe-se que, para cada amostra rotulada $(\mathbf{x}^{(i)}, y^{(i)})$, com
+$y^{(i)} \in \{-1, +1\}$:
+
+\begin{equation}
+y^{(i)} \bigl(\mathbf{w}^\top \mathbf{x}^{(i)} + b\bigr) \geq 1.
+\end{equation}
+
+A SVM procura o hiperplano que maximiza a margem, isto é, a distância entre as fronteiras
+de decisão e os pontos mais próximos (vetores de suporte). Isso equivale a resolver o problema
+de otimização:
+
+\begin{equation}
+\min_{\mathbf{w}, b} \frac{1}{2} \lVert \mathbf{w} \rVert^2
+\quad \text{sujeito a} \quad
+y^{(i)} \bigl(\mathbf{w}^\top \mathbf{x}^{(i)} + b\bigr) \geq 1,\ \forall i.
+\end{equation}
+
+Em situações não separáveis, introduzem-se variáveis de folga $\xi_i$ e um parâmetro de
+penalização $C>0$ que controla o equilíbrio entre largura da margem e erros de classificação.
+A formulação dual do problema permite incorporar funções de kernel $K(\mathbf{x},\mathbf{x}')$,
+o que viabiliza fronteiras de decisão não lineares sem necessidade de explicitar a transformação
+para espaços de alta dimensão (``truque do kernel'').
+
+SVMs são particularmente úteis quando há fronteira de decisão complexa em um espaço
+de atributos moderadamente dimensionado e quando se deseja maximizar a margem entre
+classes, o que tende a melhorar a capacidade de generalização. Em contrapartida, o custo
+computacional pode se tornar elevado em bases muito grandes, e a interpretação dos modelos é
+menos direta quando kernels não lineares são adotados.
+
+
+\subsection{Árvores de decisão e Random Forest}
+
+Árvores de decisão são modelos baseados em partições recursivas do espaço de atributos:
+a partir de um nó raiz contendo todas as amostras, escolhe-se uma variável e um ponto de
+corte que dividem os dados em dois subconjuntos mais “puros” em relação às classes. Esse
+processo é repetido recursivamente em cada nó filho até a obtenção de nós terminais (folhas),
+que correspondem às previsões de classe. Medidas de impureza como o índice de Gini ou a
+entropia são comumente utilizadas para selecionar os melhores pontos de divisão
+\cite{russell2016artificial}.
+
+Embora árvores individuais sejam modelos interpretáveis, elas tendem a apresentar alta
+variância: pequenas variações nos dados podem resultar em árvores bastante diferentes. Random
+Forest \cite{breiman2001randomForest} é um método de comitê (ensemble) que busca reduzir
+essa variância por meio de \emph{bagging} (bootstrap aggregating). O algoritmo constrói um
+conjunto de árvores de decisão, cada uma treinada em uma amostra bootstrap do conjunto de
+treino. Adicionalmente, em cada divisão interna, considera-se apenas um subconjunto aleatório
+de atributos candidatos, introduzindo diversidade adicional entre as árvores.
+
+A predição final em classificação é obtida por votação majoritária entre as árvores.
+Essa combinação de árvores fracas, porém diversificadas, produz um classificador robusto, com
+boa capacidade preditiva mesmo em problemas de alta dimensionalidade e presença de relações
+não lineares complexas entre variáveis. Random Forest também fornece medidas de importância
+de atributos, estimadas, por exemplo, pela redução média de impureza ou por estratégias baseadas
+em permutações, úteis para compreender o papel relativo de diferentes variáveis ambientais na
+previsão de fogo.
+
+
+\subsection{Gradient Boosting e XGBoost}
+
+Ao passo que o bagging reduz a variância ao combinar modelos treinados de forma
+independente, métodos de boosting constroem sequências de modelos fracos de maneira
+iterativa, cada novo modelo focando em corrigir os erros cometidos pelos anteriores
+\cite{friedman2001greedy}. No Gradient Boosting, em particular, formula-se a tarefa de
+aprendizado como um problema de minimização de uma função de perda diferenciável
+$\mathcal{L}(y, F(\mathbf{x}))$. Parte-se de um modelo inicial $F_0$ e, a cada iteração $m$, ajusta-se
+um novo modelo fraco $h_m$ aos resíduos negativos do gradiente da perda em relação às
+previsões correntes, atualizando:
+
+\begin{equation}
+F_m(\mathbf{x}) = F_{m-1}(\mathbf{x}) + \nu \cdot h_m(\mathbf{x}),
+\end{equation}
+
+em que $\nu \in (0,1]$ é a taxa de aprendizado. Quando os modelos fracos $h_m$ são árvores
+de decisão de pequena profundidade, obtém-se um ensemble capaz de capturar interações
+complexas entre atributos.
+
+O XGBoost (\emph{Extreme Gradient Boosting}) \cite{chen2016xgboost} é uma implementação
+otimizada de gradient boosting com árvores, amplamente utilizada em aplicações práticas pela
+combinação de alto desempenho preditivo e eficiência computacional. Entre suas principais
+características estão: (i) regularização explícita da complexidade das árvores na função objetivo,
+controlando profundidade e número de folhas; (ii) uso de aproximações de segunda ordem
+(gradiente e hessiano) para acelerar o processo de otimização; (iii) suporte nativo a paralelismo,
+amostragem de instâncias e de atributos; e (iv) tratamento eficiente de valores ausentes.
+
+Em tarefas de previsão de incêndios, XGBoost e métodos similares de gradient boosting
+têm se mostrado particularmente competitivos, pois conseguem explorar relações não lineares
+entre variáveis meteorológicas, de combustíveis e de uso do solo, ao mesmo tempo em que lidam
+bem com atributos heterogêneos e correlações complexas \cite{andrianarivony2024review}.
+
+
+\section{Avaliação de modelos de classificação}
+
+A avaliação rigorosa de modelos de classificação é parte essencial da fundamentação
+metodológica, mas alguns conceitos básicos são discutidos aqui por estarem intimamente
+relacionados à interpretação dos resultados de modelos supervisionados. Em problemas
+binários, um modelo produz, para cada instância, uma classe predita e, em muitos casos, uma
+probabilidade estimada. Comparando-se as predições com os rótulos reais, obtém-se a matriz
+de confusão, com contagens de verdadeiros positivos (VP), falsos positivos (FP), verdadeiros
+negativos (VN) e falsos negativos (FN).
+
+A partir dessas quantidades derivam-se métricas como acurácia, precisão, revocação
+(sensibilidade), especificidade e $F_1$-score. Para problemas em que a classe positiva é rara,
+como a ocorrência de fogo em resolução espacial e temporal fina, métricas baseadas apenas na
+acurácia podem ser enganosas: um classificador trivial que prevê sempre a classe negativa pode
+apresentar alta acurácia, mas utilidade prática nula. Nesses cenários, medidas sensíveis ao
+desbalanceamento, como a área sob a curva ROC (AUC) ou a área sob a curva de precisão-revocação,
+são mais informativas \cite{fawcett2006roc}.
+
+Outro aspecto fundamental é o esquema de validação. Técnicas como validação cruzada
+$k$-fold ou separação explícita de conjuntos de treino e teste, respeitando dependências
+espaciais e temporais, são necessárias para obter estimativas não enviesadas de desempenho.
+No caso de séries ambientais, é importante evitar vazamento de informação (por exemplo,
+amostras muito próximas no tempo ou no espaço aparecendo simultaneamente em treino e
+teste), pois isso tende a inflar artificialmente as métricas de avaliação
+\cite{nascimento2011analise,andrianarivony2024review}.
+
+
+\section{Trabalhos relacionados em previsão de incêndios}
+
+A literatura recente aponta um crescimento expressivo do uso de técnicas de aprendizado
+de máquina e inteligência artificial na previsão de ocorrência e comportamento de incêndios
+florestais. Os trabalhos variam quanto ao tipo de tarefa (ocorrência vs. severidade vs. área
+queimada), à resolução espacial e temporal e ao conjunto de variáveis preditoras utilizadas
+(meteorologia, topografia, combustível, fatores antrópicos, índices espectrais, entre outros).
+
+Do ponto de vista ecológico e climatológico, estudos clássicos sobre o bioma Cerrado
+mostram que a distribuição espacial e temporal dos focos de calor não é aleatória: há forte
+sazonalidade associada ao regime de chuvas e à fenologia da vegetação, bem como influência de
+gradientes de uso do solo e de desmatamento \cite{nascimento2011analise}. Essa evidência de
+estruturas determinísticas e multimodais no padrão de fogo fundamenta o uso de modelos de
+aprendizado de máquina, que são capazes de explorar relações não lineares entre múltiplas
+variáveis explicativas.
+
+Revisões sistemáticas recentes, como \citeonline{andrianarivony2024review}, sintetizam o
+estado da arte em previsão de propagação de incêndios, comparando abordagens baseadas em
+modelos físicos, métodos estatísticos clássicos e algoritmos de aprendizado de máquina e
+aprendizado profundo. Esses estudos indicam que modelos baseados em árvores de decisão e
+ensembles (Random Forest, Gradient Boosting, XGBoost) aparecem de forma recorrente entre
+as alternativas de melhor desempenho em tarefas de ocorrência e risco de fogo, em grande parte
+devido à sua capacidade de lidar com variáveis heterogêneas e interações complexas. Ao mesmo
+tempo, modelos mais simples, como Regressão Logística, permanecem relevantes quando se
+prioriza interpretabilidade e quando o objetivo é quantificar o efeito marginal de variáveis
+ambientais específicas sobre a probabilidade de incêndio.
+
+Diversos trabalhos aplicados a diferentes regiões do mundo exploram combinações de
+modelos supervisionados. Por exemplo, estudos em regiões mediterrâneas e países europeus
+mostram que Random Forest e métodos de boosting alcançam alta capacidade preditiva ao
+integrar variáveis climáticas, de uso e cobertura da terra, relevo e fatores socioeconômicos,
+por vezes em conjunto com técnicas de explicabilidade (XAI) para interpretar a contribuição
+de cada variável \cite{cilli2022xai}. Em outras regiões, como China e países do hemisfério sul,
+modelos de árvore e SVM também aparecem entre as abordagens de melhor custo-benefício,
+especialmente quando combinados com técnicas de amostragem para lidar com classes
+desbalanceadas e com estratégias de validação que respeitam a estrutura espacial e temporal
+dos dados \cite{pang2022china,ahajjam2025wildfire}.
+
+Em síntese, a literatura indica que não há um único algoritmo universalmente superior
+para previsão de fogo; o desempenho relativo depende do contexto, da disponibilidade e qualidade
+dos dados e da forma como o problema é formulado. Entretanto, o conjunto de modelos
+considerados neste trabalho (Regressão Logística, Naive Bayes, SVM, Random Forest e XGBoost)
+cobre um espectro representativo de abordagens lineares e não lineares, generativas e
+discriminativas, interpretáveis e de alto desempenho, alinhando-se às recomendações presentes
+em revisões recentes sobre o uso de aprendizado de máquina em incêndios florestais
+\cite{andrianarivony2024review}.
