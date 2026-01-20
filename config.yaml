@@ -19,6 +19,7 @@ paths:
     external: "./data/consolidated"
     dictionarys: "./data/dictionarys"
     dataset: "./data/dataset"
+    modeling: "./data/modeling"
   providers:
     bdqueimadas:
       raw: "./data/raw/BDQUEIMADAS"
@@ -31,10 +32,19 @@ filenames:
   patterns:
     bdqueimadas_export: "exportador_{export_date}_ref_{ref_year}.csv"
     inmet_csv: "inmet_{year}.csv"
+    modeling_parquet: "inmet_bdq_{year}_cerrado.parquet"
 
 io:
   create_missing_dirs: true   # utils.py cria os diretórios se não existirem
   encoding: "utf-8"
+
+modeling_scenarios:
+  base_A: "base_A_no_rad"
+  base_B: "base_B_no_rad_knn"
+  base_C: "base_C_no_rad_drop_rows"
+  base_D: "base_D_with_rad_drop_rows"
+  base_E: "base_E_with_rad_knn"
+  base_F: "base_F_full_original"
 
 logging:
   level: "INFO"
