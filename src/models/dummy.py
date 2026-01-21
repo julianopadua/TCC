@@ -5,8 +5,6 @@
 
 import pandas as pd
 from sklearn.dummy import DummyClassifier
-from sklearn.pipeline import Pipeline
-
 from src.ml import BaseModelTrainer
 
 class DummyTrainer(BaseModelTrainer):
@@ -30,14 +28,24 @@ class DummyTrainer(BaseModelTrainer):
         super().__init__(scenario_name, f"DummyClassifier_{strategy}", random_state)
         self.strategy = strategy
 
-    def train(self, X_train: pd.DataFrame, y_train: pd.Series, **kwargs):
+    def train(self, X_train: pd.DataFrame, y_train: pd.Series, optimize: bool = False, **kwargs):
+        """
+        Treina o Dummy Classifier.
+        
+        Args:
+            optimize (bool): Ignorado para Dummies (mantido para compatibilidade com a interface).
+        """
         self.log.info(f"Treinando Dummy Classifier (Estratégia: {self.strategy})...")
         
-        # Dummy não precisa de StandardScaler, mas mantemos no Pipeline por padronização
+        if optimize:
+            self.log.info("ℹ Nota: Otimização (GridSearch) ignorada para modelos Dummy.")
+        
+        # Instancia o modelo
         self.model = DummyClassifier(
             strategy=self.strategy,
             random_state=self.random_state
         )
         
+        # Treina (Fit)
         self.model.fit(X_train, y_train)
         self.log.info("Treinamento concluído (instantâneo).")

@@ -23,19 +23,23 @@ class ScenarioAuditor:
     """
     def __init__(self, log):
         self.log = log
-        # Variáveis críticas citadas no TCC
         self.target_col = "HAS_FOCO"
+        
+        # LISTA COMPLETA conforme metadados do INMET e texto do TCC
         self.climatic_cols = [
             'PRECIPITAÇÃO TOTAL, HORÁRIO (mm)',
             'RADIACAO GLOBAL (KJ/m²)',
             'TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)',
-            'UMIDADE RELATIVA DO AR, HORARIA (%)'
+            'UMIDADE RELATIVA DO AR, HORARIA (%)',
+            'PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)',
+            'VENTO, VELOCIDADE HORARIA (m/s)',
+            'VENTO, DIREÇÃO HORARIA (gr) (° (gr))',
+            'VENTO, RAJADA MAXIMA (m/s)'
         ]
 
     def audit_scenario(self, scenario_path: Path) -> Dict[str, Any]:
         """Processa todos os arquivos .parquet de um cenário."""
         
-        # Encontrar arquivos que batem com o padrão (inmet_bdq_YYYY_cerrado.parquet)
         files = sorted(list(scenario_path.glob("*.parquet")))
         
         if not files:
@@ -52,14 +56,26 @@ class ScenarioAuditor:
         yearly_breakdown = {}
 
         for file_path in files:
-            # Extrair ano do nome do arquivo (ex: inmet_bdq_2003_cerrado.parquet)
             match = re.search(r"(\d{4})", file_path.name)
             year = int(match.group(1)) if match else "Unknown"
             
             self.log.debug(f"Processando {file_path.name}...")
             
             try:
-                df = pd.read_parquet(file_path)
+                # Otimização: ler apenas as colunas necessárias para auditar
+                cols_to_read = self.climatic_cols + [self.target_col]
+                # Verifica quais colunas realmente existem no arquivo antes de ler
+                try:
+                    import pyarrow.parquet as pq
+                    schema = pq.read_schema(file_path)
+                    available = schema.names
+                    valid_cols = [c for c in cols_to_read if c in available]
+                except ImportError:
+                    # Fallback se pyarrow não estiver direto (mas pandas usa ele)
+                    valid_cols = None # Pandas vai ler tudo ou tentar filtrar
+
+                df = pd.read_parquet(file_path, columns=valid_cols)
+                
             except Exception as e:
                 self.log.error(f"Erro lendo {file_path.name}: {e}")
                 continue
@@ -73,32 +89,32 @@ class ScenarioAuditor:
             if self.target_col in df.columns:
                 vc = df[self.target_col].value_counts().to_dict()
                 t_counts = {k: int(v) for k, v in vc.items()}
-                
-                # Acumula no global
                 for k, v in t_counts.items():
                     global_stats["target_counts"][k] += v
             else:
                 t_counts = {}
 
-            # Qualidade das Colunas (Nulos e Sentinelas)
+            # Qualidade das Colunas
             cols_stats = {}
             for col in self.climatic_cols:
                 if col in df.columns:
                     nulls = int(df[col].isna().sum())
                     
-                    # Sentinelas (-999, -9999) - Apenas se numérico
                     sentinels = 0
                     if pd.api.types.is_numeric_dtype(df[col]):
+                        # INMET usa -999 ou -9999
                         sentinels = int(((df[col] <= -999)).sum())
 
-                    # Salva para o ano
                     cols_stats[col] = {"nulls": nulls, "sentinels": sentinels}
                     
-                    # Acumula no global
                     global_stats["missing_counts"][col]["nulls"] += nulls
                     global_stats["missing_counts"][col]["sentinels"] += sentinels
+                else:
+                    # Se a coluna não existe no arquivo (ex: radiação na base sem radiação)
+                    # Marcamos como "Ausente Estrutural" (não conta como erro de dado, mas como feature inexistente)
+                    cols_stats[col] = {"nulls": n_rows, "sentinels": 0} # Considera tudo nulo pra estatística
+                    global_stats["missing_counts"][col]["nulls"] += n_rows
 
-            # Registra snapshot do ano
             yearly_breakdown[year] = {
                 "rows": n_rows,
                 "target_balance": t_counts,
@@ -114,9 +130,6 @@ class ScenarioAuditor:
 
 
 class MarkdownReporter:
-    """
-    Gera o relatório .md formatado para a pasta doc/databases.
-    """
     def __init__(self, output_root: Path):
         self.output_dir = utils.ensure_dir(output_root)
 
@@ -127,22 +140,15 @@ class MarkdownReporter:
         filename = self.output_dir / f"{scenario_name}.md"
         g = data["global"]
         y_data = data["yearly"]
-        
         total_rows = g["total_rows"]
         
         with open(filename, "w", encoding="utf-8") as f:
-            # Cabeçalho
             f.write(f"# Auditoria Consolidada: {scenario_name}\n\n")
             f.write(f"**Arquivos Processados:** {min(g['years_covered'])} a {max(g['years_covered'])}\n")
-            f.write(f"**Total de Registros (Agregado):** {total_rows:,}\n\n")
+            f.write(f"**Total de Registros:** {total_rows:,}\n\n")
 
-            # 1. Distribuição Global do Target
-            f.write("## 1. Distribuição Global da Variável Alvo (HAS_FOCO)\n")
-            f.write("A tabela abaixo soma as ocorrências de todos os anos processados.\n\n")
-            f.write("| Classe | Contagem Absoluta | Proporção (%) |\n")
-            f.write("| :--- | :---: | :---: |\n")
-            
-            # Ordenar chaves (0, 1)
+            f.write("## 1. Distribuição do Target (HAS_FOCO)\n")
+            f.write("| Classe | Contagem | Proporção |\n| :--- | :---: | :---: |\n")
             target_counts = g["target_counts"]
             for cls in sorted(target_counts.keys()):
                 count = target_counts[cls]
@@ -150,10 +156,8 @@ class MarkdownReporter:
                 label = "**Fogo (1)**" if cls == 1 else "Sem Fogo (0)"
                 f.write(f"| {label} | {count:,} | {pct:.4f}% |\n")
 
-            # 2. Qualidade Global dos Dados
             f.write("\n## 2. Qualidade Global (Variáveis Climáticas)\n")
-            f.write("Acumulado de nulos e códigos sentinela (-999, -9999).\n\n")
-            f.write("| Variável | Nulos (NaN) | Sentinelas (<= -999) | Total 'Ausente' | % da Base |\n")
+            f.write("| Variável | Nulos (NaN) | Sentinelas (<= -999) | Total Ausente | % da Base |\n")
             f.write("| :--- | :---: | :---: | :---: | :---: |\n")
 
             for col, stats in g["missing_counts"].items():
@@ -163,23 +167,15 @@ class MarkdownReporter:
                 pct_bad = (total_bad / total_rows * 100) if total_rows > 0 else 0
                 f.write(f"| `{col}` | {n:,} | {s:,} | {total_bad:,} | {pct_bad:.2f}% |\n")
 
-            # 3. Análise Temporal (Ano a Ano) - CRUCIAL
-            f.write("\n## 3. Detalhamento Temporal (Ano a Ano)\n")
-            f.write("Permite identificar anos com falhas massivas de coleta ou quebras de padrão.\n\n")
-            f.write("| Ano | Linhas | Focos (#) | Focos (%) | Temp. (Nulos+Sent.) | Rad. (Nulos+Sent.) |\n")
-            f.write("| :--- | :---: | :---: | :---: | :---: | :---: |\n")
+            f.write("\n## 3. Detalhamento Temporal (Falhas Críticas)\n")
+            f.write("| Ano | Linhas | Focos | Temp (Falhas) | Rad (Falhas) | Pressão (Falhas) | Vento (Falhas) |\n")
+            f.write("| :--- | :---: | :---: | :---: | :---: | :---: | :---: |\n")
 
-            sorted_years = sorted(y_data.keys())
-            for yr in sorted_years:
+            for yr in sorted(y_data.keys()):
                 ys = y_data[yr]
                 rows = ys["rows"]
-                
-                # Target info
                 focos = ys["target_balance"].get(1, 0)
-                focos_pct = (focos / rows * 100) if rows > 0 else 0
                 
-                # Variaveis chave para tabela resumo (Temp e Radiação)
-                # Helper interno para pegar total de falhas de uma coluna
                 def get_bad(cname):
                     if cname in ys["columns_quality"]:
                         return ys["columns_quality"][cname]["nulls"] + ys["columns_quality"][cname]["sentinels"]
@@ -187,14 +183,12 @@ class MarkdownReporter:
 
                 bad_temp = get_bad('TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)')
                 bad_rad = get_bad('RADIACAO GLOBAL (KJ/m²)')
+                bad_press = get_bad('PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)')
+                bad_wind = get_bad('VENTO, VELOCIDADE HORARIA (m/s)')
                 
-                # Formatação condicional simples (Bold se > 0 falhas)
-                str_temp = f"**{bad_temp:,}**" if bad_temp > 0 else f"{bad_temp}"
-                str_rad = f"**{bad_rad:,}**" if bad_rad > 0 else f"{bad_rad}"
+                f.write(f"| {yr} | {rows:,} | {focos:,} | {bad_temp:,} | {bad_rad:,} | {bad_press:,} | {bad_wind:,} |\n")
 
-                f.write(f"| {yr} | {rows:,} | {focos:,} | {focos_pct:.4f}% | {str_temp} | {str_rad} |\n")
-
-        print(f"✅ Relatório gerado: {filename}")
+        print(f"! Relatório gerado: {filename}")
 
 
 class Orchestrator:
@@ -207,27 +201,18 @@ class Orchestrator:
     def run(self):
         modeling_root = utils.get_path("paths", "data", "modeling")
         scenarios = self.cfg.get("modeling_scenarios", {})
-
-        self.log.info("Iniciando auditoria completa de todas as bases...")
+        self.log.info("Iniciando auditoria completa...")
 
         for scenario_key, folder_name in scenarios.items():
             scenario_path = modeling_root / folder_name
-            
             if not scenario_path.exists():
                 self.log.warning(f"Pasta não encontrada: {scenario_path}. Pulando.")
                 continue
-
-            self.log.info(f"Auditando cenário: {scenario_key} ({folder_name})")
             
-            # 1. Computa estatísticas
+            self.log.info(f"Auditando: {scenario_key}")
             stats = self.auditor.audit_scenario(scenario_path)
-            
-            # 2. Gera relatório
             if stats:
                 self.reporter.generate_report(f"{folder_name}", stats)
-            else:
-                self.log.warning(f"Nenhum parquet válido encontrado em {folder_name}")
 
 if __name__ == "__main__":
-    app = Orchestrator()
-    app.run()
+    Orchestrator().run()
