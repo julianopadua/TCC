@@ -153,10 +153,6 @@ class TemporalSplitter:
 # 4. OTIMIZADOR DE MODELOS (GRID SEARCH + SMOTE)
 # -----------------------------------------------------------------------------
 class ModelOptimizer:
-    """
-    Orquestra a otimização de hiperparâmetros.
-    Aplica SMOTE apenas dentro dos folds de treino para evitar data leakage.
-    """
     def __init__(self, base_estimator: BaseEstimator, param_grid: Dict, log, random_state: int = 42):
         self.base_estimator = base_estimator
         self.param_grid = param_grid
@@ -167,37 +163,39 @@ class ModelOptimizer:
             raise ImportError("Instale 'imbalanced-learn' para usar otimização.")
 
     def optimize(self, X_train: pd.DataFrame, y_train: pd.Series, cv_splits: int = 3, use_smote: bool = True):
-        """
-        Executa GridSearchCV com TimeSeriesSplit.
-        """
         MemoryMonitor.log_usage(self.log, "Início GridSearch")
 
         steps = []
         if use_smote:
-            steps.append(('smote', SMOTE(random_state=self.random_state)))
+            # --- CORREÇÃO CRÍTICA DO SMOTE ---
+            # strategy=0.1: Aumenta a classe minoritária até ela ser 10% da majoritária.
+            # (Em vez de 100% como é o padrão, o que explodiria a memória).
+            steps.append(('smote', SMOTE(sampling_strategy=0.1, random_state=self.random_state)))
         
         steps.append(('scaler', StandardScaler()))
         steps.append(('model', self.base_estimator))
 
         pipeline = ImbPipeline(steps)
-
-        # Ajusta prefixo dos parâmetros (ex: 'C' -> 'model__C')
         grid_params = {f'model__{k}': v for k, v in self.param_grid.items()}
-
-        # CV Temporal (respeita o tempo dentro do treino)
         cv = TimeSeriesSplit(n_splits=cv_splits)
 
         self.log.info(f"Iniciando busca em {cv_splits} folds temporais...")
-        self.log.info(f"Espaço de busca: {grid_params}")
+        
+        # --- TRAVA DE SEGURANÇA DE MEMÓRIA ---
+        # Se o dataset for muito grande (> 1 milhão de linhas), DESLIGA o paralelismo.
+        # Caso contrário, o joblib cria cópias do dataset e estoura a RAM.
+        n_jobs_safe = 1 if len(X_train) > 1_000_000 else -1
+        
+        if n_jobs_safe == 1:
+            self.log.warning(f"Dataset gigante ({len(X_train)} linhas). Forçando n_jobs=1 para evitar estouro de memória.")
 
-        # Otimiza para PR-AUC (foco em classe rara)
         grid_search = GridSearchCV(
             estimator=pipeline,
             param_grid=grid_params,
             cv=cv,
             scoring='average_precision', 
-            n_jobs=-1,  # Usa todos os cores
-            verbose=1
+            n_jobs=n_jobs_safe,  # <--- AQUI A MUDANÇA
+            verbose=2            # Aumentei para ver o progresso
         )
 
         grid_search.fit(X_train, y_train)

@@ -99,7 +99,7 @@ class TrainingOrchestrator:
         return True
 
     def load_full_scenario(self) -> pd.DataFrame:
-        """Carrega dados detectando automaticamente colunas disponiveis."""
+        """Carrega dados detectando automaticamente colunas disponiveis e otimizando memoria."""
         base_path = Path(self.cfg['paths']['data']['modeling']) / self.scenario_folder
         self.log.info(f"Carregando dados do cenario: {self.scenario_folder}...")
         
@@ -110,6 +110,7 @@ class TrainingOrchestrator:
         # --- DETECCAO AUTOMATICA DE COLUNAS ---
         try:
             import pyarrow.parquet as pq
+            # Le apenas o schema do primeiro arquivo para validar colunas
             schema = pq.read_schema(all_files[0])
             available_cols = schema.names
             
@@ -131,6 +132,15 @@ class TrainingOrchestrator:
         for fp in all_files:
             try:
                 df_year = pd.read_parquet(fp, columns=cols_to_load)
+                
+                # --- OTIMIZACAO DE MEMORIA (CRITICO PARA MODO TURBO) ---
+                # Converte float64 (8 bytes) para float32 (4 bytes)
+                # Reduz o consumo de RAM pela metade, evitando crash no SMOTE
+                floats = df_year.select_dtypes(include=['float64']).columns
+                if len(floats) > 0:
+                    df_year[floats] = df_year[floats].astype('float32')
+                # -------------------------------------------------------
+
                 dfs.append(df_year)
             except Exception as e:
                 self.log.warning(f"Erro ao ler {fp.name}: {e}")
