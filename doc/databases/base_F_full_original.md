@@ -3,6 +3,23 @@
 **Arquivos Processados:** 2003 a 2024
 **Total de Registros:** 45,434,876
 
+## 0. Amostra e Estrutura dos Dados
+> **Arquivo de Referência:** `inmet_bdq_2003_cerrado.parquet`
+
+**Total de Colunas:** 21
+
+**Lista de Colunas:**
+`DATA (YYYY-MM-DD), HORA (UTC), PRECIPITAÇÃO TOTAL, HORÁRIO (mm), PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB), RADIACAO GLOBAL (KJ/m²), TEMPERATURA DO AR - BULBO SECO, HORARIA (°C), TEMPERATURA DO PONTO DE ORVALHO (°C), UMIDADE RELATIVA DO AR, HORARIA (%), VENTO, DIREÇÃO HORARIA (gr) (° (gr)), VENTO, RAJADA MAXIMA (m/s), VENTO, VELOCIDADE HORARIA (m/s), ANO, CIDADE, LATITUDE, LONGITUDE, cidade_norm, ts_hour, RISCO_FOGO, FRP, FOCO_ID, HAS_FOCO`
+
+**Preview (5 primeiras linhas):**
+| DATA (YYYY-MM-DD)   | HORA (UTC)   | PRECIPITAÇÃO TOTAL, HORÁRIO (mm)   | PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)   | RADIACAO GLOBAL (KJ/m²)   | TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)   | TEMPERATURA DO PONTO DE ORVALHO (°C)   | UMIDADE RELATIVA DO AR, HORARIA (%)   | VENTO, DIREÇÃO HORARIA (gr) (° (gr))   | VENTO, RAJADA MAXIMA (m/s)   | VENTO, VELOCIDADE HORARIA (m/s)   | ANO   | CIDADE   | LATITUDE   | LONGITUDE   | cidade_norm   | ts_hour             | RISCO_FOGO   | FRP   | FOCO_ID   | HAS_FOCO   |
+|:--------------------|:-------------|:-----------------------------------|:--------------------------------------------------------|:--------------------------|:-----------------------------------------------|:---------------------------------------|:--------------------------------------|:---------------------------------------|:-----------------------------|:----------------------------------|:------|:---------|:-----------|:------------|:--------------|:--------------------|:-------------|:------|:----------|:-----------|
+| 2003-01-01          | 01:00        | 0                                  | 897.3                                                   | nan                       | 21.2                                           | 19.5                                   | 90                                    | 142                                    | 4.2                          | 0.8                               | 2003  | ARAXA    | -19.6056   | -46.9494    | araxa         | 2003-01-01 01:00:00 | nan          | <NA>  | <NA>      | 0          |
+| 2003-01-01          | 01:00        | 0                                  | 897.3                                                   | nan                       | 21.2                                           | 19.5                                   | 90                                    | 142                                    | 4.2                          | 0.8                               | 2003  | ARAXA    | -19.6056   | -46.9494    | araxa         | 2003-01-01 01:00:00 | nan          | <NA>  | <NA>      | 0          |
+| 2003-01-01          | 01:00        | 0                                  | 941.1                                                   | nan                       | 26                                             | 18.7                                   | 64                                    | 5                                      | 1.8                          | 0.4                               | 2003  | BAURU    | -22.3581   | -49.0289    | bauru         | 2003-01-01 01:00:00 | nan          | <NA>  | <NA>      | 0          |
+| 2003-01-01          | 01:00        | 0                                  | 941.1                                                   | nan                       | 26                                             | 18.7                                   | 64                                    | 5                                      | 1.8                          | 0.4                               | 2003  | BAURU    | -22.3581   | -49.0289    | bauru         | 2003-01-01 01:00:00 | nan          | <NA>  | <NA>      | 0          |
+| 2003-01-01          | 01:00        | 0                                  | 887.3                                                   | nan                       | 19.9                                           | 18.5                                   | 92                                    | 302                                    | 2.2                          | 1.3                               | 2003  | BRASILIA | -15.7894   | -47.9258    | brasilia      | 2003-01-01 01:00:00 | nan          | <NA>  | <NA>      | 0          |
+
 ## 1. Distribuição do Target (HAS_FOCO)
 | Classe | Contagem | Proporção |
 | :--- | :---: | :---: |

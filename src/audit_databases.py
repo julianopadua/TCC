@@ -6,6 +6,7 @@
 import pandas as pd
 import numpy as np
 import re
+import sys
 from pathlib import Path
 from typing import Dict, Any, List
 from collections import defaultdict
@@ -54,25 +55,41 @@ class ScenarioAuditor:
         }
         
         yearly_breakdown = {}
+        sample_data = None # Variável para guardar a amostra do primeiro arquivo
 
-        for file_path in files:
+        for i, file_path in enumerate(files):
             match = re.search(r"(\d{4})", file_path.name)
             year = int(match.group(1)) if match else "Unknown"
             
             self.log.debug(f"Processando {file_path.name}...")
             
             try:
-                # Otimização: ler apenas as colunas necessárias para auditar
+                # --- NOVO: Captura de Amostra (Apenas no primeiro arquivo) ---
+                if i == 0:
+                    try:
+                        # Lê apenas 5 linhas, mas TODAS as colunas disponíveis
+                        df_sample = pd.read_parquet(file_path).head(5)
+                        sample_data = {
+                            "filename": file_path.name,
+                            "columns": list(df_sample.columns),
+                            # Converte para markdown string para facilitar o report
+                            "table_md": df_sample.to_markdown(index=False, numalign="left", stralign="left")
+                        }
+                    except Exception as e:
+                        self.log.warning(f"Não foi possível gerar amostra de {file_path.name}: {e}")
+
+                # --- Leitura Otimizada para Estatísticas ---
+                # Lê apenas as colunas necessárias para auditar a qualidade
                 cols_to_read = self.climatic_cols + [self.target_col]
-                # Verifica quais colunas realmente existem no arquivo antes de ler
+                
+                # Verifica schema antes de ler
                 try:
                     import pyarrow.parquet as pq
                     schema = pq.read_schema(file_path)
                     available = schema.names
                     valid_cols = [c for c in cols_to_read if c in available]
                 except ImportError:
-                    # Fallback se pyarrow não estiver direto (mas pandas usa ele)
-                    valid_cols = None # Pandas vai ler tudo ou tentar filtrar
+                    valid_cols = None 
 
                 df = pd.read_parquet(file_path, columns=valid_cols)
                 
@@ -99,20 +116,15 @@ class ScenarioAuditor:
             for col in self.climatic_cols:
                 if col in df.columns:
                     nulls = int(df[col].isna().sum())
-                    
                     sentinels = 0
                     if pd.api.types.is_numeric_dtype(df[col]):
-                        # INMET usa -999 ou -9999
                         sentinels = int(((df[col] <= -999)).sum())
 
                     cols_stats[col] = {"nulls": nulls, "sentinels": sentinels}
-                    
                     global_stats["missing_counts"][col]["nulls"] += nulls
                     global_stats["missing_counts"][col]["sentinels"] += sentinels
                 else:
-                    # Se a coluna não existe no arquivo (ex: radiação na base sem radiação)
-                    # Marcamos como "Ausente Estrutural" (não conta como erro de dado, mas como feature inexistente)
-                    cols_stats[col] = {"nulls": n_rows, "sentinels": 0} # Considera tudo nulo pra estatística
+                    cols_stats[col] = {"nulls": n_rows, "sentinels": 0}
                     global_stats["missing_counts"][col]["nulls"] += n_rows
 
             yearly_breakdown[year] = {
@@ -125,7 +137,8 @@ class ScenarioAuditor:
         
         return {
             "global": global_stats,
-            "yearly": yearly_breakdown
+            "yearly": yearly_breakdown,
+            "sample": sample_data  # Retorna a amostra capturada
         }
 
 
@@ -133,19 +146,35 @@ class MarkdownReporter:
     def __init__(self, output_root: Path):
         self.output_dir = utils.ensure_dir(output_root)
 
+    def get_output_path(self, scenario_name: str) -> Path:
+        return self.output_dir / f"{scenario_name}.md"
+
     def generate_report(self, scenario_name: str, data: Dict[str, Any]):
         if not data:
             return
 
-        filename = self.output_dir / f"{scenario_name}.md"
+        filename = self.get_output_path(scenario_name)
         g = data["global"]
         y_data = data["yearly"]
+        sample = data.get("sample") # Pega a amostra
         total_rows = g["total_rows"]
         
         with open(filename, "w", encoding="utf-8") as f:
             f.write(f"# Auditoria Consolidada: {scenario_name}\n\n")
             f.write(f"**Arquivos Processados:** {min(g['years_covered'])} a {max(g['years_covered'])}\n")
             f.write(f"**Total de Registros:** {total_rows:,}\n\n")
+
+            # --- NOVO: Seção de Amostra ---
+            if sample:
+                f.write("## 0. Amostra e Estrutura dos Dados\n")
+                f.write(f"> **Arquivo de Referência:** `{sample['filename']}`\n\n")
+                f.write(f"**Total de Colunas:** {len(sample['columns'])}\n\n")
+                f.write("**Lista de Colunas:**\n")
+                f.write(f"`{', '.join(sample['columns'])}`\n\n")
+                f.write("**Preview (5 primeiras linhas):**\n")
+                f.write(sample['table_md']) # Insere a tabela gerada pelo pandas
+                f.write("\n\n")
+            # ------------------------------
 
             f.write("## 1. Distribuição do Target (HAS_FOCO)\n")
             f.write("| Classe | Contagem | Proporção |\n| :--- | :---: | :---: |\n")
@@ -209,6 +238,26 @@ class Orchestrator:
                 self.log.warning(f"Pasta não encontrada: {scenario_path}. Pulando.")
                 continue
             
+            # --- NOVO: Trava de Segurança (CLI) ---
+            output_file = self.reporter.get_output_path(folder_name)
+            if output_file.exists():
+                print(f"\n{'-'*60}")
+                print(f"[ALERTA] O relatório para '{folder_name}' já existe.")
+                print(f"Caminho: {output_file}")
+                
+                while True:
+                    resp = input(">> Deseja sobrescrever e reprocessar? [y/N]: ").strip().lower()
+                    if resp in ['n', 'no', '']:
+                        self.log.info(f"Usuário pulou auditoria de: {folder_name}")
+                        skip = True
+                        break
+                    elif resp in ['y', 'yes']:
+                        skip = False
+                        break
+                
+                if skip: continue
+            # -------------------------------------
+
             self.log.info(f"Auditando: {scenario_key}")
             stats = self.auditor.audit_scenario(scenario_path)
             if stats:

@@ -27,12 +27,15 @@ paths:
     inmet:
       raw: "./data/raw/INMET"
       processed: "./data/processed/INMET"
+    risco_fogo:
+      raw: "./data/raw/RISCO_FOGO"
 
 filenames:
   patterns:
     bdqueimadas_export: "exportador_{export_date}_ref_{ref_year}.csv"
     inmet_csv: "inmet_{year}.csv"
     modeling_parquet: "inmet_bdq_{year}_cerrado.parquet"
+    risco_fogo_nc: "INPE_FireRiskModel_2.2_FireRisk_{date}.nc"
 
 io:
   create_missing_dirs: true   # utils.py cria os diretórios se não existirem
