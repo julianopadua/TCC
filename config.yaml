@@ -27,15 +27,12 @@ paths:
     inmet:
       raw: "./data/raw/INMET"
       processed: "./data/processed/INMET"
-    risco_fogo:
-      raw: "./data/raw/RISCO_FOGO"
 
 filenames:
   patterns:
     bdqueimadas_export: "exportador_{export_date}_ref_{ref_year}.csv"
     inmet_csv: "inmet_{year}.csv"
     modeling_parquet: "inmet_bdq_{year}_cerrado.parquet"
-    risco_fogo_nc: "INPE_FireRiskModel_2.2_FireRisk_{date}.nc"
 
 io:
   create_missing_dirs: true   # utils.py cria os diretórios se não existirem
@@ -48,7 +45,12 @@ modeling_scenarios:
   base_D: "base_D_with_rad_drop_rows"
   base_E: "base_E_with_rad_knn"
   base_F: "base_F_full_original"
-
+  base_A_calculated: "base_A_no_rad_calculated"
+  base_B_calculated: "base_B_no_rad_knn_calculated"
+  base_C_calculated: "base_C_no_rad_drop_rows_calculated"
+  base_D_calculated: "base_D_with_rad_drop_rows_calculated"
+  base_E_calculated: "base_E_with_rad_knn_calculated"
+  base_F_calculated: "base_F_full_original_calculated"
 logging:
   level: "INFO"
   file: "./logs/app.log"
