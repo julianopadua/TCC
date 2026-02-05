@@ -10,3 +10,4 @@
 *.jsonl.gz.part.1
 doc/tcc/output/*
 doc/templates/*
+*.nc
