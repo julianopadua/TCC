@@ -15,7 +15,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -129,8 +129,54 @@ def _select_one(opts: Dict[int, Any], title: str, default_key: Optional[int] = N
         print("Opcao invalida. Tente novamente.")
 
 
+def _downsample_keep_all_pos(
+    df: pd.DataFrame,
+    target: str,
+    max_rows_remaining: Optional[int],
+    neg_pos_ratio: int,
+    min_neg_keep: int,
+    seed: int,
+) -> pd.DataFrame:
+    """
+    Mantem 100% dos positivos.
+    Mantem negativos por amostragem, limitado por:
+      - max_rows_remaining (orcamento do split)
+      - neg_pos_ratio (no maximo X negativos por positivo)
+      - min_neg_keep (garante um minimo de negativos mesmo se pos=0)
+    """
+    if df is None or df.empty:
+        return df
+
+    pos = df[df[target] == 1]
+    neg = df[df[target] == 0]
+
+    n_pos = int(len(pos))
+
+    # limite por razao
+    neg_cap_by_ratio = max(int(min_neg_keep), int(n_pos) * int(neg_pos_ratio))
+
+    # limite por orcamento do split
+    if max_rows_remaining is None:
+        neg_cap_by_budget = len(neg)
+    else:
+        budget_for_neg = max(0, int(max_rows_remaining) - n_pos)
+        neg_cap_by_budget = int(budget_for_neg)
+
+    n_neg_keep = int(min(len(neg), neg_cap_by_ratio, neg_cap_by_budget))
+
+    if n_neg_keep < len(neg):
+        neg = neg.sample(n=n_neg_keep, random_state=int(seed))
+
+    # Se o orcamento ficar menor que o numero de positivos (caso extremo), amostra positivos
+    if max_rows_remaining is not None and n_pos > int(max_rows_remaining):
+        pos = pos.sample(n=int(max_rows_remaining), random_state=int(seed))
+
+    out = pd.concat([pos, neg], ignore_index=True)
+    return out
+
+
 # ----------------------------
-# Variacao (4 opcoes como voce quer)
+# Variacao (4 opcoes)
 # ----------------------------
 @dataclass(frozen=True)
 class VariationOption:
@@ -148,16 +194,28 @@ def _variation_menu_legacy(model_key: str) -> List[VariationOption]:
       4) GridSearch + Weight (sem SMOTE)
     Observacao:
       - use_scale == Weight (class_weight / scale_pos_weight)
+      - Para XGBoost em bases grandes, default de GridSearch mais leve:
+        cv_splits=2 e grid_mode="fast"
     """
-    base_common = {
+    base_common: Dict[str, Any] = {
         "cv_splits": 3,
         "scoring": "average_precision",
         "smote_sampling_strategy": 0.1,
         "smote_k_neighbors": 5,
         "thr": 0.5,
     }
+
     if model_key == "logistic":
         base_common["feature_scaling"] = True
+
+    # Para XGBoost, GridSearch mais leve por padrao (evita dias por base)
+    xgb_grid_common = dict(base_common)
+    if model_key == "xgboost":
+        xgb_grid_common["cv_splits"] = 2
+        xgb_grid_common["grid_mode"] = "fast"   # usado pelo XGBoostTrainer
+        xgb_grid_common["model_n_jobs"] = None  # auto (threads no fit), GridSearch fica serial
+
+    grid_common = xgb_grid_common if model_key == "xgboost" else base_common
 
     return [
         VariationOption(
@@ -168,17 +226,17 @@ def _variation_menu_legacy(model_key: str) -> List[VariationOption]:
         VariationOption(
             2,
             "GridSearch + SMOTE + Weight",
-            {**base_common, "optimize": True, "use_smote": True, "use_scale": True},
+            {**grid_common, "optimize": True, "use_smote": True, "use_scale": True},
         ),
         VariationOption(
             3,
             "GridSearch + SMOTE (sem Weight)",
-            {**base_common, "optimize": True, "use_smote": True, "use_scale": False},
+            {**grid_common, "optimize": True, "use_smote": True, "use_scale": False},
         ),
         VariationOption(
             4,
             "GridSearch + Weight (sem SMOTE)",
-            {**base_common, "optimize": True, "use_smote": False, "use_scale": True},
+            {**grid_common, "optimize": True, "use_smote": False, "use_scale": True},
         ),
     ]
 
@@ -235,23 +293,7 @@ class TrainingOrchestrator:
 
         self.random_seed = int(self.cfg.get("project", {}).get("random_seed", 42))
 
-        self.features = [
-            "PRECIPITACAO TOTAL, HORARIO (mm)",
-            "RADIACAO GLOBAL (KJ/m²)",
-            "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)",
-            "UMIDADE RELATIVA DO AR, HORARIA (%)",
-            "VENTO, VELOCIDADE HORARIA (m/s)",
-            "PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)",
-            "VENTO, RAJADA MAXIMA (m/s)",
-            "precip_ewma",
-            "dias_sem_chuva",
-            "risco_temp_max",
-            "risco_umid_critica",
-            "risco_umid_alerta",
-            "fator_propagacao",
-        ]
         # Observacao: seus parquets usam acentos nos nomes INMET. Aqui mantemos exatamente como voce tinha antes.
-        # Se voce quiser, posso adicionar uma normalizacao posterior. Por enquanto, nao mexo nisso.
         self.features = [
             "PRECIPITACAO TOTAL, HORARIO (mm)".replace("PRECIPITACAO", "PRECIPITAÇÃO").replace("HORARIO", "HORÁRIO"),
             "RADIACAO GLOBAL (KJ/m²)",
@@ -292,16 +334,29 @@ class TrainingOrchestrator:
             self.log.warning(f"[LOAD] sem pyarrow/schema otimizado (vai ler colunas padrao): {e}")
         return cols
 
-    def load_split_batched(self, test_size_years: int = 2, gap_years: int = 0) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
+    def load_split_batched(
+        self,
+        test_size_years: int = 2,
+        gap_years: int = 0,
+        # NOVO: limites e controle de amostragem (para evitar estouro de RAM)
+        max_train_rows: Optional[int] = None,
+        max_test_rows: Optional[int] = None,
+        neg_pos_ratio: int = 200,
+        min_neg_keep_per_chunk: int = 50_000,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
         """
         Carrega em batches por parquet (normalmente um parquet por ano).
         Evita criar um df gigante "full" antes do split, reduzindo pico de memoria.
+
+        Se max_train_rows/max_test_rows forem definidos:
+          - mantem 100% dos positivos
+          - amostra negativos respeitando orcamento e neg_pos_ratio
         """
         files = self._discover_files()
         cols = self._select_columns(files[0])
 
-        # Deriva anos pelos nomes dos arquivos (muito mais barato do que ler ANO de tudo)
-        years = []
+        # Deriva anos pelos nomes dos arquivos (mais barato do que ler ANO de tudo)
+        years: List[int] = []
         file_years: List[Tuple[Path, Optional[int]]] = []
         for f in files:
             y = _year_from_filename(f)
@@ -318,7 +373,6 @@ class TrainingOrchestrator:
             self.log.info(f"[SPLIT-PRE] years={years[0]}..{years[-1]} | cut={cut} | train_max_year={train_max_year}")
         else:
             # Fallback: se nao conseguir pelo filename, carrega tudo e usa TemporalSplitter
-            # (Nao ideal para memoria, mas evita quebrar completamente.)
             self.log.warning("[SPLIT-PRE] nao foi possivel inferir ano por filename. Usando fallback (carregar e splitar).")
             df_full = self._load_concat(files, cols)
             valid = [f for f in self.features if f in df_full.columns]
@@ -341,7 +395,10 @@ class TrainingOrchestrator:
         test_parts: List[pd.DataFrame] = []
         read_ok = 0
         read_fail = 0
-        total_rows = 0
+        total_rows_seen = 0
+
+        kept_train = 0
+        kept_test = 0
 
         # Features validas a partir do primeiro arquivo que lemos com sucesso
         valid_features: Optional[List[str]] = None
@@ -351,7 +408,6 @@ class TrainingOrchestrator:
                 df = pd.read_parquet(f, columns=cols)
                 read_ok += 1
 
-                # Determina valid_features uma unica vez (apos primeira leitura)
                 if valid_features is None:
                     valid_features = [ft for ft in self.features if ft in df.columns]
 
@@ -365,25 +421,55 @@ class TrainingOrchestrator:
                 _coerce_binary_target(df, self.target)
                 _downcast_floats(df)
 
-                total_rows += int(len(df))
+                total_rows_seen += int(len(df))
 
-                # Decide train/test pelo ano do filename (se existir); se nao existir, decide pelo proprio ANO (minimo custo)
+                # Decide split pelo ano do filename (se existir); se nao existir, usa o ANO do chunk (max)
                 if y_from_name is not None:
-                    if y_from_name <= train_max_year:
-                        train_parts.append(df)
-                    else:
-                        test_parts.append(df)
+                    is_train = bool(y_from_name <= train_max_year)
                 else:
-                    # Se o filename nao tinha ano, decide pelo ANO do chunk (usa max do chunk como proxy)
                     y_max = int(df[self.year_col].max()) if len(df) else -999999
-                    if y_max <= train_max_year:
-                        train_parts.append(df)
-                    else:
-                        test_parts.append(df)
+                    is_train = bool(y_max <= train_max_year)
+
+                # NOVO: downsample sob orcamento (se habilitado)
+                if is_train and max_train_rows is not None:
+                    remaining = max(0, int(max_train_rows) - int(kept_train))
+                    if remaining <= 0:
+                        continue
+                    df = _downsample_keep_all_pos(
+                        df=df,
+                        target=self.target,
+                        max_rows_remaining=remaining,
+                        neg_pos_ratio=neg_pos_ratio,
+                        min_neg_keep=min_neg_keep_per_chunk,
+                        seed=self.random_seed + int(y_from_name or 0),
+                    )
+
+                if (not is_train) and max_test_rows is not None:
+                    remaining = max(0, int(max_test_rows) - int(kept_test))
+                    if remaining <= 0:
+                        continue
+                    df = _downsample_keep_all_pos(
+                        df=df,
+                        target=self.target,
+                        max_rows_remaining=remaining,
+                        neg_pos_ratio=neg_pos_ratio,
+                        min_neg_keep=min_neg_keep_per_chunk,
+                        seed=self.random_seed + 10_000 + int(y_from_name or 0),
+                    )
+
+                # Guarda
+                if is_train:
+                    train_parts.append(df)
+                    kept_train += int(len(df))
+                else:
+                    test_parts.append(df)
+                    kept_test += int(len(df))
 
                 # Log leve por batch (nao spam)
                 if read_ok % 5 == 0:
-                    self.log.info(f"[LOAD] batches_ok={read_ok}/{len(files)} | rows_so_far={total_rows}")
+                    self.log.info(
+                        f"[LOAD] batches_ok={read_ok}/{len(files)} | rows_seen={total_rows_seen} | kept_train={kept_train} kept_test={kept_test}"
+                    )
                     MemoryMonitor.log_usage(self.log, "durante load batched")
 
             except Exception as e:
@@ -394,11 +480,18 @@ class TrainingOrchestrator:
             raise RuntimeError("[LOAD] nenhum parquet foi carregado com sucesso.")
 
         if not train_parts or not test_parts:
-            # Isso pode acontecer se a base tiver poucos anos ou nomes estranhos
             self.log.warning("[SPLIT] train_parts ou test_parts vazio. Verifique test_size_years e nomes dos arquivos.")
-            # Ainda assim tenta concatenar o que tiver
-        train_df = pd.concat(train_parts, ignore_index=True) if train_parts else pd.DataFrame(columns=(valid_features + [self.target, self.year_col]))
-        test_df = pd.concat(test_parts, ignore_index=True) if test_parts else pd.DataFrame(columns=(valid_features + [self.target, self.year_col]))
+
+        train_df = (
+            pd.concat(train_parts, ignore_index=True)
+            if train_parts
+            else pd.DataFrame(columns=(valid_features + [self.target, self.year_col]))
+        )
+        test_df = (
+            pd.concat(test_parts, ignore_index=True)
+            if test_parts
+            else pd.DataFrame(columns=(valid_features + [self.target, self.year_col]))
+        )
 
         # Ordena
         if len(train_df):
@@ -406,8 +499,9 @@ class TrainingOrchestrator:
         if len(test_df):
             test_df = test_df.sort_values(self.year_col).reset_index(drop=True)
 
+        downsample_on = bool(max_train_rows is not None or max_test_rows is not None)
         self.log.info(
-            f"[LOAD] ok={read_ok} fail={read_fail} | train_rows={len(train_df)} test_rows={len(test_df)} | features={len(valid_features)}"
+            f"[LOAD] ok={read_ok} fail={read_fail} | train_rows={len(train_df)} test_rows={len(test_df)} | features={len(valid_features)} | downsample={'ON' if downsample_on else 'OFF'}"
         )
         MemoryMonitor.log_usage(self.log, "apos load batched/concat")
 
@@ -431,8 +525,18 @@ class TrainingOrchestrator:
 
     def run(self, plan: List[Dict[str, Any]], auto: bool) -> bool:
         # Carrega e splita em batches (principal melhoria de memoria)
+        # NOVO: ativa limites automaticamente quando a base for "*calculated*"
+        is_calculated = "calculated" in (self.scenario_folder or "").lower()
+
         try:
-            train_df, test_df, valid = self.load_split_batched(test_size_years=2, gap_years=0)
+            train_df, test_df, valid = self.load_split_batched(
+                test_size_years=2,
+                gap_years=0,
+                max_train_rows=(8_000_000 if is_calculated else None),
+                max_test_rows=(2_000_000 if is_calculated else None),
+                neg_pos_ratio=200,
+                min_neg_keep_per_chunk=50_000,
+            )
         except Exception as e:
             self.log.error(f"[CRITICAL] load_split_batched: {e}")
             return auto
@@ -448,9 +552,10 @@ class TrainingOrchestrator:
         y_te = test_df[self.target].astype("int8")
 
         self.log.info(
-            f"[SPLIT] train={len(train_df)} (pos_rate={_pos_rate(y_tr):.4%}) | "
-            f"test={len(test_df)} (pos_rate={_pos_rate(y_te):.4%}) | features={len(valid)}"
+            f"[SPLIT] train={len(X_tr)} (pos_rate={_pos_rate(y_tr):.4%}) | "
+            f"test={len(X_te)} (pos_rate={_pos_rate(y_te):.4%}) | features={len(valid)}"
         )
+
         # Libera dataframes completos (mantem apenas X/y)
         del train_df, test_df
         gc.collect()
@@ -542,6 +647,7 @@ def _build_plan(selected_models: List[str]) -> List[Dict[str, Any]]:
     for m in selected_models:
         if m.startswith("dummy_"):
             plan.append({"type": m, "settings": {}})
+
     # Logistic/XGBoost: submenu multi-variacao
     for m in selected_models:
         if m not in ("logistic", "xgboost"):
