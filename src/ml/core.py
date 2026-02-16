@@ -1,13 +1,17 @@
 # src/ml/core.py
 # =============================================================================
-# NÚCLEO DE MACHINE LEARNING — PROJETO TCC (REFATORADO)
+# NUCLEO DE MACHINE LEARNING - PROJETO TCC (REFATORADO)
 # =============================================================================
 
 from __future__ import annotations
 
-import json
 import os
+
+os.environ.setdefault("MPLBACKEND", "Agg")
+
+import json
 import time
+import warnings
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -53,7 +57,7 @@ except Exception:
     SMOTE = None
     ImbPipeline = None
 
-# Utils (obrigatório no seu projeto)
+# Utils (obrigatorio no seu projeto)
 try:
     import src.utils as utils  # type: ignore
 except Exception:
@@ -92,11 +96,6 @@ class TCCMetrics:
 
     @staticmethod
     def calculate(y_true, y_pred, y_proba) -> Dict[str, Any]:
-        """
-        Metricas binarias robustas.
-        - confusion_matrix com labels fixos garante sempre 2x2
-        - ROC-AUC/PR-AUC protegidos quando y_true tem 1 classe no teste
-        """
         if y_true is None or len(y_true) == 0:
             return {}
 
@@ -110,15 +109,9 @@ class TCCMetrics:
         acc = (tp + tn) / denom if denom > 0 else 0.0
         spec = tn / (tn + fp) if (tn + fp) > 0 else 0.0
 
-        roc_auc = TCCMetrics._safe_metric(
-            roc_auc_score, default=None, y_true=y_true, y_score=y_proba
-        )
-        pr_auc = TCCMetrics._safe_metric(
-            average_precision_score, default=None, y_true=y_true, y_score=y_proba
-        )
-        brier = TCCMetrics._safe_metric(
-            brier_score_loss, default=None, y_true=y_true, y_prob=y_proba
-        )
+        roc_auc = TCCMetrics._safe_metric(roc_auc_score, default=None, y_true=y_true, y_score=y_proba)
+        pr_auc = TCCMetrics._safe_metric(average_precision_score, default=None, y_true=y_true, y_score=y_proba)
+        brier = TCCMetrics._safe_metric(brier_score_loss, default=None, y_true=y_true, y_prob=y_proba)
 
         return {
             "accuracy": float(acc),
@@ -165,19 +158,16 @@ class TemporalSplitter:
 
 
 # -----------------------------------------------------------------------------
-# 4. OPTIMIZER (GRIDSEARCH) - ajustes de robustez e metadados
+# 4. OPTIMIZER (GRIDSEARCH)
 # -----------------------------------------------------------------------------
 class ModelOptimizer:
     """
     GridSearchCV com TimeSeriesSplit.
-    - SMOTE opcional (exige imbalanced-learn apenas quando ativado)
-    - Scaler opcional (util p/ modelos lineares; desnecessario em arvores)
-    - Ajustes para reduzir risco de estouro de memoria:
-        * default n_jobs=1 (paralelismo costuma explodir RAM em CV)
-        * pre_dispatch controlado
-        * return_train_score=False (menos armazenamento)
-        * error_score='raise' para falhar cedo e logar melhor
-    - Exponibiliza metadados do ultimo GridSearch em self.last_search_meta
+    Melhorias nesta versao:
+      - Log explicito do equivalente a: "Fitting K folds for each of N candidates, totalling K*N fits"
+      - Diagnostico de folds sem positivo (problema real em eventos raros + TimeSeriesSplit)
+      - Captura e log dos warnings relevantes (No positive class... / ConvergenceWarning)
+      - Modo conservador de CPU/RAM por default
     """
 
     def __init__(self, estimator: BaseEstimator, grid: Dict[str, Any], log, seed: int = 42):
@@ -199,18 +189,28 @@ class ModelOptimizer:
 
     @staticmethod
     def _normalize_y(y) -> np.ndarray:
-        """
-        Evita y gigante como int64 sem necessidade.
-        Importante para reduzir RAM quando sklearn faz copias internas.
-        """
         arr = np.asarray(y)
-        if arr.dtype != np.int8 and arr.dtype != np.int32 and arr.dtype != np.int64:
-            arr = arr.astype(np.int8)
-        else:
-            # se vier int64, rebaixa
-            if arr.dtype == np.int64:
-                arr = arr.astype(np.int8)
+        if arr.dtype == np.int64:
+            return arr.astype(np.int8)
+        if arr.dtype not in (np.int8, np.int32):
+            return arr.astype(np.int8)
         return arr
+
+    @staticmethod
+    def _fold_pos_counts(tscv: TimeSeriesSplit, y: np.ndarray) -> Tuple[int, list]:
+        """
+        Retorna (num_folds_com_zero_pos, lista_de_dicts_por_fold).
+        """
+        details = []
+        zero_pos = 0
+        for i, (_, te_idx) in enumerate(tscv.split(np.zeros(len(y))), start=1):
+            y_te = y[te_idx]
+            pos = int(np.sum(y_te == 1))
+            neg = int(np.sum(y_te == 0))
+            if pos == 0:
+                zero_pos += 1
+            details.append({"fold": i, "test_size": int(len(te_idx)), "pos": pos, "neg": neg})
+        return zero_pos, details
 
     def optimize(
         self,
@@ -221,19 +221,17 @@ class ModelOptimizer:
         use_scaler: bool = True,
         scoring: str = "average_precision",
         n_jobs: Optional[int] = None,
-        verbose: int = 1,
+        verbose: int = 0,
         smote_sampling_strategy: float = 0.1,
         smote_k_neighbors: int = 5,
         pre_dispatch: str = "1*n_jobs",
         refit: bool = True,
         **_kwargs,
     ):
-        # Compatibilidade com chamadas antigas: smote=True/False
         if "smote" in _kwargs and "use_smote" not in _kwargs:
             use_smote = bool(_kwargs["smote"])
 
         steps = []
-
         if use_smote:
             if SMOTE is None or ImbPipeline is None:
                 raise ImportError("SMOTE solicitado, mas imbalanced-learn nao esta instalado.")
@@ -252,24 +250,52 @@ class ModelOptimizer:
             steps.append(("scaler", StandardScaler()))
 
         steps.append(("model", self.est))
-
         pipe = (ImbPipeline if use_smote else SkPipeline)(steps)
 
         params = {f"model__{k}": v for k, v in self.grid.items()}
-        tscv = TimeSeriesSplit(n_splits=int(cv_splits))
 
-        # Importante: default conservador. Paralelismo de CV em dataset grande é receita pra RAM estourar.
         if n_jobs is None:
             n_jobs = 1
 
+        y_norm = self._normalize_y(y)
+
+        # Checagem de folds (TimeSeriesSplit)
+        # Se existir fold sem positivo, loga e tenta reduzir cv_splits de forma automatica.
+        effective_cv = int(cv_splits)
+        while True:
+            if effective_cv < 2:
+                break
+            tscv = TimeSeriesSplit(n_splits=effective_cv)
+            zero_pos, fold_details = self._fold_pos_counts(tscv, y_norm)
+            if zero_pos == 0:
+                break
+            self.log.warning(
+                f"[GridSearch][WARN] TimeSeriesSplit com cv_splits={effective_cv} gerou {zero_pos} fold(s) sem positivos no y_true do teste. "
+                f"Isto degrada o scoring={scoring}. Folds: {fold_details}"
+            )
+            effective_cv -= 1
+
+        if effective_cv < 2:
+            raise RuntimeError(
+                f"[GridSearch][ERRO] Nao foi possivel montar CV temporal com folds contendo positivos. "
+                f"cv_splits original={cv_splits}. Sugestao: usar menos splits, ajustar janela temporal, ou usar SMOTE/estrategia por ano."
+            )
+
+        tscv = TimeSeriesSplit(n_splits=effective_cv)
+
         cand = self._grid_candidates(self.grid)
+        total_fits = int(effective_cv) * int(cand)
+
+        # Log "equivalente" ao stdout do sklearn
         self.log.info(
-            f"[GridSearch] scoring={scoring} | cv_splits={cv_splits} | candidates≈{cand} | "
+            f"[GridSearch] Fitting {effective_cv} folds for each of {cand} candidates, totalling {total_fits} fits"
+        )
+
+        self.log.info(
+            f"[GridSearch] scoring={scoring} | cv_splits={effective_cv} | candidates≈{cand} | "
             f"use_smote={use_smote} | use_scaler={use_scaler} | n_jobs={n_jobs} | pre_dispatch={pre_dispatch}"
         )
         MemoryMonitor.log_usage(self.log, "antes do GridSearch")
-
-        y_norm = self._normalize_y(y)
 
         search = GridSearchCV(
             estimator=pipe,
@@ -284,13 +310,36 @@ class ModelOptimizer:
             error_score="raise",
         )
 
+        # Captura e log dos warnings relevantes (sem "silenciar" tudo)
+        warn_counts: Dict[str, int] = {"no_positive_class": 0, "convergence": 0, "other": 0}
+
         t0 = time.time()
-        search.fit(X, y_norm)
+        with warnings.catch_warnings(record=True) as wlist:
+            warnings.simplefilter("always")
+            search.fit(X, y_norm)
+
+            for w in wlist:
+                msg = str(w.message)
+                cat = getattr(w, "category", None)
+                cname = cat.__name__ if cat is not None else "Warning"
+
+                if "No positive class found in y_true" in msg:
+                    warn_counts["no_positive_class"] += 1
+                    self.log.warning(f"[GridSearch][WARN] {cname}: {msg}")
+                elif "did not converge" in msg or "max_iter was reached" in msg:
+                    warn_counts["convergence"] += 1
+                    self.log.warning(f"[GridSearch][WARN] {cname}: {msg}")
+                else:
+                    warn_counts["other"] += 1
+                    # Mantem no debug/INFO para nao poluir demais
+                    self.log.info(f"[GridSearch][WARN-OTHER] {cname}: {msg}")
+
         dt = time.time() - t0
 
         self.last_search_meta = {
             "scoring": scoring,
-            "cv_splits": int(cv_splits),
+            "cv_splits_requested": int(cv_splits),
+            "cv_splits_effective": int(effective_cv),
             "candidates_approx": int(cand),
             "use_smote": bool(use_smote),
             "use_scaler": bool(use_scaler),
@@ -300,10 +349,11 @@ class ModelOptimizer:
             "elapsed_s": float(dt),
             "best_score": None if getattr(search, "best_score_", None) is None else float(search.best_score_),
             "best_params": getattr(search, "best_params_", None),
+            "warnings": warn_counts,
         }
 
         self.log.info(
-            f"[GridSearch] concluido em {dt:.1f}s | best_score={search.best_score_:.6f} | best_params={search.best_params_}"
+            f"[GridSearch] concluido em {dt:.1f}s | best_score={search.best_score_:.6f} | best_params={search.best_params_} | warnings={warn_counts}"
         )
         MemoryMonitor.log_usage(self.log, "apos GridSearch")
 
@@ -311,7 +361,7 @@ class ModelOptimizer:
 
 
 # -----------------------------------------------------------------------------
-# 5. TRAINER BASE - variacoes profissionais + hierarquia de pastas consistente
+# 5. TRAINER BASE
 # -----------------------------------------------------------------------------
 class BaseModelTrainer(ABC):
     """
@@ -367,11 +417,7 @@ class BaseModelTrainer(ABC):
         if not tags:
             self.variation_desc = "Base (sem SMOTE, sem GridSearch, sem balanceamento por peso)"
         else:
-            mapping = {
-                "gridsearch": "GridSearchCV",
-                "smote": "SMOTE",
-                "weight": "balanceamento por peso",
-            }
+            mapping = {"gridsearch": "GridSearchCV", "smote": "SMOTE", "weight": "balanceamento por peso"}
             self.variation_desc = " + ".join(mapping[t] for t in tags)
 
         self._update_path()
@@ -425,7 +471,6 @@ class BaseModelTrainer(ABC):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         model_path = self.output_dir / f"model_{ts}.joblib"
-        # compress pequeno para nao inflar disco; se quiser, pode subir para 3/5 depois
         joblib.dump(self.model, model_path, compress=1)
 
         payload = {

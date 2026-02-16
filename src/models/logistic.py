@@ -1,6 +1,6 @@
 # src/models/logistic.py
 # =============================================================================
-# MODELO: REGRESSÃO LOGÍSTICA (SMOTE / PESOS / GRIDSEARCH) — NOMENCLATURA PROFISSIONAL
+# MODELO: REGRESSAO LOGISTICA (SMOTE / PESOS / GRIDSEARCH)
 # =============================================================================
 
 import time
@@ -25,7 +25,7 @@ except Exception:
 
 class LogisticTrainer(BaseModelTrainer):
     """
-    Regressão Logística com variações consistentes:
+    Regressao Logistica com variacoes consistentes:
       - base
       - weight (class_weight='balanced')
       - smote
@@ -47,11 +47,13 @@ class LogisticTrainer(BaseModelTrainer):
         self.C = float(C)
         self.max_iter = int(max_iter)
 
-        # Grid mais "acadêmico" e controlado (sem explosão combinatória)
+        # Grid mais conservador para bases gigantes:
+        # - remove max_iter do grid (na pratica, isso explode tempo e raramente vale o custo)
+        # - por default, testa somente l2 (l1 com saga em 8M tende a travar/convergir mal)
+        # Se quiser l1 depois, rode um "grid_l1" pequeno em subset.
         self.param_grid = {
-            "C": [0.01, 0.1, 1.0, 10.0, 100.0],
-            "penalty": ["l2", "l1"],
-            "max_iter": [1000, 2000],
+            "C": [0.01, 0.1, 1.0, 10.0],
+            "penalty": ["l2"],
         }
 
     def train(
@@ -85,21 +87,29 @@ class LogisticTrainer(BaseModelTrainer):
 
         class_weight = "balanced" if use_scale else None
 
+        # IMPORTANTE:
+        # - Em GridSearch, n_jobs=-1 dentro do modelo costuma elevar muito CPU/temperatura
+        #   e gerar instabilidade. Por isso, no optimize=True, vamos forcar n_jobs=1.
+        # - Fora do grid (fast), voce pode usar mais threads se quiser.
+        model_n_jobs = 1 if optimize else -1
+
         base_model = LogisticRegression(
             C=self.C,
-            penalty="l2",              # Grid pode trocar para l1 também
+            penalty="l2",
             class_weight=class_weight,
-            solver="saga",             # suporta l1/l2, bom em datasets maiores
+            solver="saga",
             max_iter=self.max_iter,
             random_state=self.random_state,
-            n_jobs=-1,
+            n_jobs=model_n_jobs,
         )
 
         t0 = time.time()
 
         if optimize:
-            # GridSearch: SMOTE e scaler são decididos por parâmetros do optimizer
+            # GridSearch controlado e robusto (log de warnings + checagem de folds)
             optimizer = ModelOptimizer(base_model, self.param_grid, self.log, seed=self.random_state)
+
+            # Otimizacao pode decidir reduzir cv_splits se houver fold sem positivo.
             self.model = optimizer.optimize(
                 X_train,
                 y_train,
@@ -109,13 +119,15 @@ class LogisticTrainer(BaseModelTrainer):
                 scoring=scoring,
                 smote_sampling_strategy=smote_sampling_strategy,
                 smote_k_neighbors=smote_k_neighbors,
+                # Mantem serial e previsivel na Logistica
+                n_jobs=1,
+                verbose=0,  # a gente vai logar o equivalente de "Fitting ... fits" no logger
             )
         else:
-            # Fast: pipeline (com ou sem SMOTE) funcionando de verdade
             steps = []
             if use_smote:
                 if SMOTE is None or ImbPipeline is None:
-                    raise ImportError("SMOTE solicitado, mas imbalanced-learn não está instalado.")
+                    raise ImportError("SMOTE solicitado, mas imbalanced-learn nao esta instalado.")
                 steps.append(
                     (
                         "smote",
@@ -136,22 +148,21 @@ class LogisticTrainer(BaseModelTrainer):
             self.model = pipe
             self.model.fit(X_train, y_train)
 
-            self.log.info("[TRAIN] Treinamento direto concluído (fast).")
+            self.log.info("[TRAIN] Treinamento direto concluido (fast).")
 
         dt = time.time() - t0
-        MemoryMonitor.log_usage(self.log, f"após treino ({dt:.1f}s)")
+        MemoryMonitor.log_usage(self.log, f"apos treino ({dt:.1f}s)")
 
         self._log_coefficients(getattr(X_train, "columns", None))
 
     def _log_coefficients(self, feature_names: Optional[pd.Index]):
-        """Extrai e loga top coeficientes (em módulo)."""
+        """Extrai e loga top coeficientes (em modulo)."""
         if feature_names is None:
             return
 
         try:
             model_obj = self.model
 
-            # Se vier de pipeline
             if hasattr(model_obj, "named_steps") and "model" in model_obj.named_steps:
                 clf = model_obj.named_steps["model"]
             else:
@@ -163,4 +174,4 @@ class LogisticTrainer(BaseModelTrainer):
                 top = sorted(coef_dict.items(), key=lambda x: abs(x[1]), reverse=True)[:10]
                 self.log.info(f"[COEF] Top 10 coeficientes (|coef|): {top}")
         except Exception as e:
-            self.log.warning(f"[COEF] Não foi possível extrair coeficientes: {e}")
+            self.log.warning(f"[COEF] Nao foi possivel extrair coeficientes: {e}")

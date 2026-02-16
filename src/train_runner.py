@@ -212,7 +212,7 @@ def _variation_menu_legacy(model_key: str) -> List[VariationOption]:
     xgb_grid_common = dict(base_common)
     if model_key == "xgboost":
         xgb_grid_common["cv_splits"] = 2
-        xgb_grid_common["grid_mode"] = "fast"   # usado pelo XGBoostTrainer
+        xgb_grid_common["grid_mode"] = "fast"  # usado pelo XGBoostTrainer
         xgb_grid_common["model_n_jobs"] = None  # auto (threads no fit), GridSearch fica serial
 
     grid_common = xgb_grid_common if model_key == "xgboost" else base_common
@@ -338,7 +338,6 @@ class TrainingOrchestrator:
         self,
         test_size_years: int = 2,
         gap_years: int = 0,
-        # NOVO: limites e controle de amostragem (para evitar estouro de RAM)
         max_train_rows: Optional[int] = None,
         max_test_rows: Optional[int] = None,
         neg_pos_ratio: int = 200,
@@ -355,7 +354,6 @@ class TrainingOrchestrator:
         files = self._discover_files()
         cols = self._select_columns(files[0])
 
-        # Deriva anos pelos nomes dos arquivos (mais barato do que ler ANO de tudo)
         years: List[int] = []
         file_years: List[Tuple[Path, Optional[int]]] = []
         for f in files:
@@ -372,7 +370,6 @@ class TrainingOrchestrator:
             train_max_year = int(cut - gap_years - 1)
             self.log.info(f"[SPLIT-PRE] years={years[0]}..{years[-1]} | cut={cut} | train_max_year={train_max_year}")
         else:
-            # Fallback: se nao conseguir pelo filename, carrega tudo e usa TemporalSplitter
             self.log.warning("[SPLIT-PRE] nao foi possivel inferir ano por filename. Usando fallback (carregar e splitar).")
             df_full = self._load_concat(files, cols)
             valid = [f for f in self.features if f in df_full.columns]
@@ -390,7 +387,6 @@ class TrainingOrchestrator:
             gc.collect()
             return train_df, test_df, valid
 
-        # Carrega batches: manda cada parquet direto para train_parts ou test_parts
         train_parts: List[pd.DataFrame] = []
         test_parts: List[pd.DataFrame] = []
         read_ok = 0
@@ -400,7 +396,6 @@ class TrainingOrchestrator:
         kept_train = 0
         kept_test = 0
 
-        # Features validas a partir do primeiro arquivo que lemos com sucesso
         valid_features: Optional[List[str]] = None
 
         for f, y_from_name in file_years:
@@ -411,10 +406,8 @@ class TrainingOrchestrator:
                 if valid_features is None:
                     valid_features = [ft for ft in self.features if ft in df.columns]
 
-                # Limpeza por chunk
                 df.dropna(subset=(valid_features or []) + [self.target, self.year_col], inplace=True)
 
-                # Tipos
                 df[self.year_col] = pd.to_numeric(df[self.year_col], errors="coerce")
                 df.dropna(subset=[self.year_col], inplace=True)
                 df[self.year_col] = df[self.year_col].astype("int32")
@@ -423,14 +416,12 @@ class TrainingOrchestrator:
 
                 total_rows_seen += int(len(df))
 
-                # Decide split pelo ano do filename (se existir); se nao existir, usa o ANO do chunk (max)
                 if y_from_name is not None:
                     is_train = bool(y_from_name <= train_max_year)
                 else:
                     y_max = int(df[self.year_col].max()) if len(df) else -999999
                     is_train = bool(y_max <= train_max_year)
 
-                # NOVO: downsample sob orcamento (se habilitado)
                 if is_train and max_train_rows is not None:
                     remaining = max(0, int(max_train_rows) - int(kept_train))
                     if remaining <= 0:
@@ -457,7 +448,6 @@ class TrainingOrchestrator:
                         seed=self.random_seed + 10_000 + int(y_from_name or 0),
                     )
 
-                # Guarda
                 if is_train:
                     train_parts.append(df)
                     kept_train += int(len(df))
@@ -465,7 +455,6 @@ class TrainingOrchestrator:
                     test_parts.append(df)
                     kept_test += int(len(df))
 
-                # Log leve por batch (nao spam)
                 if read_ok % 5 == 0:
                     self.log.info(
                         f"[LOAD] batches_ok={read_ok}/{len(files)} | rows_seen={total_rows_seen} | kept_train={kept_train} kept_test={kept_test}"
@@ -493,7 +482,6 @@ class TrainingOrchestrator:
             else pd.DataFrame(columns=(valid_features + [self.target, self.year_col]))
         )
 
-        # Ordena
         if len(train_df):
             train_df = train_df.sort_values(self.year_col).reset_index(drop=True)
         if len(test_df):
@@ -505,7 +493,6 @@ class TrainingOrchestrator:
         )
         MemoryMonitor.log_usage(self.log, "apos load batched/concat")
 
-        # Libera listas intermediarias (pico de memoria)
         del train_parts, test_parts
         gc.collect()
         MemoryMonitor.log_usage(self.log, "apos gc pos-load")
@@ -523,9 +510,18 @@ class TrainingOrchestrator:
         gc.collect()
         return out
 
-    def run(self, plan: List[Dict[str, Any]], auto: bool) -> bool:
-        # Carrega e splita em batches (principal melhoria de memoria)
-        # NOVO: ativa limites automaticamente quando a base for "*calculated*"
+    def run(
+        self,
+        plan: List[Dict[str, Any]],
+        overwrite_all: bool,
+        skip_all: bool,
+    ) -> Tuple[bool, bool]:
+        """
+        overwrite_all:
+          - True: nunca pergunta, sempre sobrescreve se existir.
+        skip_all:
+          - True: nunca pergunta, nunca sobrescreve, sempre pula se existir.
+        """
         is_calculated = "calculated" in (self.scenario_folder or "").lower()
 
         try:
@@ -539,11 +535,11 @@ class TrainingOrchestrator:
             )
         except Exception as e:
             self.log.error(f"[CRITICAL] load_split_batched: {e}")
-            return auto
+            return overwrite_all, skip_all
 
         if len(train_df) == 0 or len(test_df) == 0:
             self.log.error("[DATA] train/test vazio. Nao da para treinar.")
-            return auto
+            return overwrite_all, skip_all
 
         X_tr = train_df[valid]
         y_tr = train_df[self.target].astype("int8")
@@ -556,7 +552,6 @@ class TrainingOrchestrator:
             f"test={len(X_te)} (pos_rate={_pos_rate(y_te):.4%}) | features={len(valid)}"
         )
 
-        # Libera dataframes completos (mantem apenas X/y)
         del train_df, test_df
         gc.collect()
         MemoryMonitor.log_usage(self.log, "apos preparar X/y")
@@ -577,23 +572,39 @@ class TrainingOrchestrator:
                 self.log.warning(f"[SKIP] modelo desconhecido: {m}")
                 continue
 
-            # Define variação (subpasta) antes da checagem de overwrite
             if m in ("logistic", "xgboost"):
                 run_name, tags, desc = _variation_meta_from_settings(st)
                 trainer.set_custom_folder_name(run_name)
                 trainer.variation_tags = tags
                 trainer.variation_desc = desc
 
-            print(f"\n    >> [MODELO] {trainer.model_type}/{trainer.run_name} - {getattr(trainer, 'variation_desc', '')} @ {self.scenario_key}")
+            print(
+                f"\n    >> [MODELO] {trainer.model_type}/{trainer.run_name} - {getattr(trainer, 'variation_desc', '')} @ {self.scenario_key}"
+            )
 
             try:
-                # Checagem de overwrite
-                if not auto and trainer.output_dir.exists() and any(trainer.output_dir.iterdir()):
+                exists = trainer.output_dir.exists() and any(trainer.output_dir.iterdir())
+
+                if exists and skip_all:
+                    print(f"       [SKIP] Ja existe: .../{trainer.model_type}/{trainer.run_name}/{self.scenario_folder} (skip_all ativo)")
+                    continue
+
+                if exists and overwrite_all:
+                    print(f"       [OVERWRITE_ALL] Ja existe: .../{trainer.model_type}/{trainer.run_name}/{self.scenario_folder} (overwrite_all ativo)")
+                elif exists:
                     print(f"       [AVISO] Ja existe: .../{trainer.model_type}/{trainer.run_name}/{self.scenario_folder}")
-                    r = input("       >> Sobrescrever? [y/N/all]: ").strip().lower()
-                    if r == "all":
-                        auto = True
-                    elif r not in ["y", "yes"]:
+                    r = input("       >> Overwrite? [y/N/all/none_all]: ").strip().lower()
+
+                    if r in ("all", "y_all", "yes_all"):
+                        overwrite_all = True
+                        print("       [OK] overwrite_all ativado: proximas execucoes existentes serao sobrescritas.")
+                    elif r in ("none_all", "no_all", "skip_all"):
+                        skip_all = True
+                        print("       [OK] skip_all ativado: proximas execucoes existentes serao puladas.")
+                        continue
+                    elif r in ("y", "yes"):
+                        pass
+                    else:
                         continue
 
                 trainer.train(X_tr, y_tr, **st)
@@ -629,7 +640,7 @@ class TrainingOrchestrator:
         del X_tr, y_tr, X_te, y_te
         gc.collect()
         MemoryMonitor.log_usage(self.log, "fim do batch")
-        return auto
+        return overwrite_all, skip_all
 
 
 # ----------------------------
@@ -643,12 +654,10 @@ def _build_plan(selected_models: List[str]) -> List[Dict[str, Any]]:
     """
     plan: List[Dict[str, Any]] = []
 
-    # Dummies entram direto (sem submenu)
     for m in selected_models:
         if m.startswith("dummy_"):
             plan.append({"type": m, "settings": {}})
 
-    # Logistic/XGBoost: submenu multi-variacao
     for m in selected_models:
         if m not in ("logistic", "xgboost"):
             continue
@@ -695,19 +704,20 @@ def main():
         "Modelos",
     )
 
-    # Monta plano com multi-variacoes
     plan = _build_plan(models)
 
     print(f"\n{'=' * 40}")
     print(f"BATCH START: {len(bases)} Bases x {len(plan)} Runs")
     print(f"{'=' * 40}")
 
-    auto = False
+    overwrite_all = False
+    skip_all = False
+
     for i, b in enumerate(bases):
         print(f"\n>>> [BASE {i + 1}/{len(bases)}] {b}")
         try:
             orc = TrainingOrchestrator(b)
-            auto = orc.run(plan, auto)
+            overwrite_all, skip_all = orc.run(plan, overwrite_all=overwrite_all, skip_all=skip_all)
         except Exception as e:
             print(e)
         gc.collect()
