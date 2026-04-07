@@ -1,0 +1,384 @@
+% !TEX root = ../main.tex
+
+\chapter{Metodologia}
+\label{cap:metodologia}
+
+\section{Formulação do problema e visão geral da metodologia}
+\label{sec:metodologia-visao-geral}
+
+A metodologia adotada tem como objetivo construir, enriquecer e organizar um conjunto de dados horário que permita a predição de focos de queimada no bioma Cerrado a partir de variáveis climáticas medidas por estações automáticas do Instituto Nacional de Meteorologia (INMET). As principais entradas são os arquivos anuais de focos de calor do sistema BDQueimadas, mantido pelo Instituto Nacional de Pesquisas Espaciais (INPE), e as séries históricas horárias das estações automáticas do INMET. As saídas são bases integradas do tipo \texttt{inmet\_bdq\_\{ANO\}\_cerrado.csv} e suas variações em formato \texttt{.parquet}, estruturadas para suportar experimentos de classificação binária e o uso operacional de modelos que recebem apenas dados meteorológicos em tempo quase real.
+
+O problema de interesse consiste em estimar, para cada combinação \textit{município} x \textit{hora}, a ocorrência de pelo menos um foco de queimada nesse conjunto espaço-tempo, tomando como preditores um conjunto de variáveis climáticas observadas na mesma escala temporal. A variável alvo é definida como binária, $y \in \{0, 1\}$, em que $y = 1$ indica a existência de foco de calor no intervalo horário e município correspondentes e $y = 0$ indica ausência de detecção. Os dados de focos de calor são utilizados exclusivamente na fase de construção do conjunto rotulado, enquanto a fase de predição supõe disponibilidade apenas das variáveis do INMET. A distribuição de classes é fortemente desbalanceada, com número de instâncias sem foco muito superior ao de instâncias com foco.
+
+A metodologia organiza-se em quatro macroetapas: (i) obtenção e padronização das bases BDQueimadas e INMET, (ii) processamento e integração espaço temporal com definição da variável alvo, (iii) auditoria de dados ausentes, construção de cenários de modelagem e engenharia de atributos físico inspirada e (iv) treinamento e comparação de algoritmos de classificação supervisionada. As três primeiras etapas são inteiramente automatizadas por scripts em Python disponíveis em repositório público\footnote{Disponível em \url{https://github.com/julianopadua/TCC}.} e produzem todos os conjuntos de dados utilizados nos experimentos de aprendizagem de máquina, inclusive versões enriquecidas com variáveis derivadas como chuva ponderada, dias consecutivos sem precipitação, limiares críticos de temperatura e umidade e fatores de propagação do fogo.
+
+O estudo considera cinco algoritmos de classificação supervisionada largamente empregados em problemas de risco: Regressão Logística, Naive Bayes, Máquina de Vetores de Suporte (SVM), Random Forest e XGBoost. A comparação entre esses modelos é orientada por três hipóteses de trabalho: (i) modelos de ensemble baseados em árvores, como Random Forest e XGBoost, tendem a capturar melhor interações não lineares entre variáveis meteorológicas e a resposta binária, (ii) a inclusão da variável de radiação global e de atributos físico inspirados tem potencial para aumentar o poder preditivo quando o tratamento de dados ausentes é adequado e (iii) estratégias de imputação que preservam instâncias com foco de queimada, como o \textit{K-Nearest Neighbors} (KNN), tendem a produzir ganhos relevantes em métricas sensíveis a eventos raros quando comparadas à simples exclusão de linhas incompletas.
+
+A abordagem está sujeita a algumas restrições estruturais. A integração é realizada em escala municipal, dependente de um dicionário que associa municípios a biomas, e limita-se à interseção temporal entre as fontes BDQueimadas e INMET a partir de 2003. A resolução horária implica que dinâmicas intra-hora de ignição e extinção de focos não são representadas explicitamente na base, o que impõe um limite natural à granularidade temporal das predições.
+
+\section{Obtenção e padronização das bases BDQueimadas e INMET}
+\label{sec:obtencao-dados}
+
+A composição do conjunto de dados parte da integração de duas fontes principais: (i) o sistema BDQueimadas, do INPE, que fornece registros de focos de calor derivados de sensores orbitais e (ii) as séries históricas das estações automáticas do INMET, que disponibilizam variáveis meteorológicas horárias.
+
+Os dados de focos de calor provêm da coleção \texttt{Brasil\_sat\_ref} do BDQueimadas, acessada por meio do servidor \textit{dataserver} COIDS. O módulo \path{src/bdqueimadas_scraper.py} automatiza o download dos arquivos anuais comprimidos \texttt{focos\_br\_ref\_YYYY.zip}, filtrando apenas os nomes compatíveis com o padrão esperado. A Listagem~\ref{lst:bdq-discover} ilustra o procedimento de descoberta e filtragem desses arquivos no servidor remoto.
+
+\begin{lstlisting}[language=Python, caption={Descoberta e filtragem de arquivos anuais no BDQueimadas}, label={lst:bdq-discover}]
+def discover_bdq_zip_links(base_url: str = BDQ_BASE_URL) -> List[str]:
+    session = get_requests_session()
+    links = list_zip_links_from_page(base_url, session=session)
+    out = []
+    for h in links:
+        abs_url = urljoin(base_url, h)
+        name = os.path.basename(abs_url.split("?")[0]).lower()
+        if name.endswith(".zip") and name.startswith("focos_br_ref_"):
+            out.append(abs_url)
+    out = sorted(set(out))
+    log.info(f"{len(out)} .zip detectados em {base_url}")
+    return out
+\end{lstlisting}
+
+Os arquivos listados são armazenados em \path{data/raw/ID_BDQUEIMADAS/} e extraídos para \path{data/processed/ID_BDQUEIMADAS/}, preservando subdiretórios por ano. Paralelamente, utiliza-se a exportação manual \texttt{exportador\_\ldots\_ref\_YYYY.csv}, obtida via interface do BDQueimadas, que contém variáveis adicionais como o Risco de Fogo, o \textit{Fire Radiative Power} (FRP) e o bioma associado a cada foco. Esses arquivos são armazenados em \texttt{data/raw/BDQUEIMADAS/} e utilizados na etapa de consolidação descrita na Seção~\ref{sec:pipeline-extracao}.
+
+Como resultado da consolidação e do filtro espacial para o Cerrado, obteve-se o arquivo \texttt{bdq\_targets\_2003\_2025\_cerrado.csv}, com 1.349.101 linhas, 8 colunas e tamanho em disco de 135,53~MB. Esse consolidado reúne, em nível de registro de foco, a marca temporal do evento, identificadores do BDQueimadas, informações administrativas de localização e atributos auxiliares associados ao foco, como risco de fogo e potência radiativa. A Tabela~\ref{tab:bdq-colunas} resume a estrutura desse arquivo.
+\begin{longtable}{p{3.4cm}p{2.2cm}p{8.0cm}}
+\caption{Estrutura do consolidado BDQueimadas utilizado na etapa de integração.}
+\label{tab:bdq-colunas}\\
+\hline
+\textbf{Coluna} & \textbf{Tipo de dado} & \textbf{Descrição} \\
+\hline
+\endfirsthead
+
+\hline
+\textbf{Coluna} & \textbf{Tipo de dado} & \textbf{Descrição} \\
+\hline
+\endhead
+
+\hline
+\endfoot
+
+\texttt{DATAHORA} & data-hora & Marca temporal associada ao registro do foco de calor. \\
+\texttt{ID\_BDQ} & inteiro & Identificador interno do registro no consolidado do BDQueimadas. \\
+\texttt{FOCO\_ID} & texto & Identificador individual do foco de calor. \\
+\texttt{PAIS} & texto & País ao qual o registro do foco está associado. \\
+\texttt{ESTADO} & texto & Unidade da federação do registro do foco. \\
+\texttt{MUNICIPIO} & texto & Município associado ao foco de calor. \\
+\texttt{RISCO\_FOGO} & real & Valor de risco de fogo disponibilizado na exportação enriquecida do BDQueimadas. \\
+\texttt{FRP} & real & \textit{Fire Radiative Power}, medida associada à intensidade radiativa do foco. \\
+\end{longtable}
+
+As variáveis climáticas foram obtidas a partir das estações automáticas do INMET, por meio de rotinas de \textit{scraping} que acessam o portal de dados históricos. O módulo \path{inmet_scraper.py} descobre os arquivos \texttt{.zip} disponíveis, faz o download para um diretório bruto configurado e extrai os conteúdos para \texttt{data/providers/INMET/raw/csv/}. Em seguida, o procedimento \texttt{process\_inmet\_year} consolida, para cada ano, todos os arquivos das estações em um único arquivo \texttt{inmet\_YYYY.csv} com metainformação uniforme. A Listagem~\ref{lst:inmet-process} resume os passos principais dessa consolidação.
+
+\begin{lstlisting}[language=Python, caption={Consolidação anual das séries INMET}, label={lst:inmet-process}]
+def process_inmet_year(year: int,
+                       drop_cols: Optional[list[str]] = None,
+                       overwrite: bool = False) -> Optional[Path]:
+    log = get_logger("inmet.load", kind="load", per_run_file=True)
+    year_dir = _inmet_year_dir(year)
+    if not year_dir:
+        log.warning(f"[WARN] Pasta do ano {year} não encontrada em INMET/csv.")
+        return None
+
+    proc_dir = get_path("paths", "providers", "inmet", "processed")
+    ensure_dir(proc_dir)
+
+    cfg = loadConfig()
+    patt = (cfg.get("filenames", {})
+              .get("patterns", {})
+              .get("inmet_csv", "inmet_{year}.csv"))
+    out_path = Path(proc_dir) / patt.format(year=year)
+
+    files = sorted([*year_dir.glob("*.CSV"), *year_dir.glob("*.csv")])
+    dfs = []
+    for fp in files:
+        header, cidade, lat, lon = _parse_inmet_header(fp)
+        df = pd.read_csv(fp, sep=";", skiprows=9,
+                         encoding="latin1", engine="python",
+                         on_bad_lines="skip")
+        df.columns = header
+        df["ANO"] = year
+        df["CIDADE"] = cidade
+        df["LATITUDE"] = lat
+        df["LONGITUDE"] = lon
+        dfs.append(df)
+        log.info(f"[READ] {fp.name}")
+
+    final = pd.concat(dfs, ignore_index=True)
+    final.to_csv(out_path, index=False, encoding="utf-8")
+    log.info(f"[WRITE] {out_path}")
+    return out_path
+\end{lstlisting}
+
+Esse procedimento padroniza o formato das séries horárias, adiciona identificadores de ano e localização e remove colunas estritamente redundantes ou derivadas. O resultado da etapa são arquivos anuais consolidados para o INMET e um conjunto de arquivos anuais do BDQueimadas com conteúdo enriquecido, prontos para a etapa de integração.
+
+Após a consolidação das séries horárias e a filtragem espacial para o bioma Cerrado, o arquivo \texttt{inmet\_all\_years\_cerrado.csv} totalizou 49.922.606 linhas, 15 colunas, cobertura temporal de 2000 a 2025 e tamanho em disco de 4,96~GB. A Tabela~\ref{tab:inmet-colunas} sintetiza a estrutura final desse consolidado. Entre as variáveis meteorológicas, destaca-se a coluna de radiação global, que apresentou 48,8956\% de valores faltantes, constituindo o principal ponto crítico de completude entre os atributos climáticos e motivando sua avaliação explícita em cenários distintos de modelagem.
+
+\begin{longtable}{p{5.0cm}p{2.3cm}p{6.3cm}}
+\caption{Estrutura do consolidado INMET utilizado na etapa de integração.}
+\label{tab:inmet-colunas}\\
+\hline
+\textbf{Coluna} & \textbf{Tipo de dado} & \textbf{Descrição} \\
+\hline
+\endfirsthead
+
+\hline
+\textbf{Coluna} & \textbf{Tipo de dado} & \textbf{Descrição} \\
+\hline
+\endhead
+
+\hline
+\endfoot
+
+\texttt{ANO} & inteiro & Ano de referência do registro meteorológico. \\
+\texttt{DATA (YYYY-MM-DD)} & data & Data da observação horária. \\
+\texttt{HORA (UTC)} & hora & Hora da observação em UTC. \\
+\texttt{CIDADE} & texto & Município associado à estação meteorológica. \\
+\texttt{LATITUDE} & real & Latitude da estação meteorológica. \\
+\texttt{LONGITUDE} & real & Longitude da estação meteorológica. \\
+\texttt{TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)} & real & Temperatura horária do ar medida na estação. \\
+\texttt{TEMPERATURA DO PONTO DE ORVALHO (°C)} & real & Temperatura horária do ponto de orvalho. \\
+\texttt{UMIDADE RELATIVA DO AR, HORARIA (\%)} & real & Umidade relativa horária do ar. \\
+\texttt{PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)} & real & Pressão atmosférica horária ao nível da estação. \\
+\texttt{VENTO, DIREÇÃO HORARIA (gr) (° (gr))} & real & Direção horária do vento em graus. \\
+\texttt{VENTO, RAJADA MAXIMA (m/s)} & real & Rajada máxima horária do vento. \\
+\texttt{VENTO, VELOCIDADE HORARIA (m/s)} & real & Velocidade horária do vento. \\
+\texttt{RADIACAO GLOBAL (KJ/m²)} & real & Radiação global horária incidente. \\
+\texttt{PRECIPITAÇÃO TOTAL, HORÁRIO (mm)} & real & Precipitação total acumulada no intervalo horário. \\
+\end{longtable}
+
+\section{Processamento, integração espaço temporal e definição da variável alvo}
+\label{sec:pipeline-extracao}
+
+O fluxo de \textit{Extract Transform Load} (ETL) foi projetado para correlacionar eventos discretos de fogo com registros climáticos contínuos em escala horária e municipal. A Figura~\ref{fig:pipeline-dataset} apresenta a visão geral desse pipeline, desde a ingestão das fontes brutas até a produção das bases integradas de uso em modelagem.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{imagens/TCC_dataExtractionPipeline.png}
+    \caption{Fluxo geral do pipeline de dados integrando BDQueimadas e INMET.}
+    \label{fig:pipeline-dataset}
+    {\footnotesize \textbf{Fonte:} elaborado pelo autor.}
+\end{figure}
+
+A consolidação dos focos de calor é realizada no módulo \path{src/consolidated_bdqueimadas.py}. Os arquivos manuais \texttt{exportador\_\ldots\_ref\_YYYY.csv} são lidos e normalizados, com conversão de datas para objetos temporais, criação de colunas de saída sem diacríticos e construção de chaves de junção robustas baseadas em data, país, unidade da federação e município. Em paralelo, os arquivos processados \texttt{focos\_br\_ref\_YYYY.csv}, extraídos a partir dos \texttt{.zip} anuais, são lidos e reduzidos às colunas de interesse (\texttt{id\_bdq}, \texttt{foco\_id}, latitude, longitude), com deduplicação por chave. A junção 1:1 é concretizada por meio da chave sintética \texttt{\_\_KEY}, mostrada na Listagem~\ref{lst:bdq-key}.
+
+\begin{lstlisting}[language=Python, caption={Chave sintética para junção horário x local no BDQueimadas}, label={lst:bdq-key}]
+df["__KEY"] = (
+    df["__DT_H"].astype("int64").astype("string") + "|" +
+    df["__PAIS_KEY"].astype(str) + "|" +
+    df["__UF_KEY"].astype(str)   + "|" +
+    df["__MUN_KEY"].astype(str)
+)
+\end{lstlisting}
+
+Após o \textit{merge}, o módulo organiza, para cada ano, um arquivo \texttt{bdq\_targets\_YYYY\_[bioma].csv} contendo, por linha, a combinação hora x município, o Risco de Fogo, o FRP e identificadores \texttt{ID\_BDQ} e \texttt{FOCO\_ID}. Um filtro opcional por bioma utiliza chaves normalizadas de município para restringir o conjunto ao Cerrado.
+
+Do lado meteorológico, o módulo \path{src/inmet_consolidated.py} toma os arquivos \texttt{inmet\_YYYY.csv} processados e gera arquivos consolidados por ano em \texttt{data/external/INMET/}, com opção de filtragem por bioma. Um dicionário CSV (\texttt{bdq\_municipio\_bioma.csv}) associa municípios a biomas, permitindo selecionar apenas os registros de estações cuja cidade pertence ao Cerrado. Durante essa consolidação, normaliza-se a representação de datas para o formato \texttt{YYYY-MM-DD} e removem-se linhas em que todas as variáveis de medida assumem valores sentinela (\texttt{-999} ou \texttt{-9999}), o que reduz o impacto de falhas sistemáticas de sensores.
+
+A etapa de integração espaço temporal é implementada no módulo \path{src/build_dataset_hourly.py}. Para cada ano e bioma, são lidos os arquivos \texttt{inmet\_YYYY\_cerrado.csv} e \texttt{bdq\_targets\_YYYY\_cerrado.csv}. No caso do INMET, o código detecta automaticamente o esquema de colunas de data e hora adotado (padrão antigo ou formato pós 2019) e constrói uma marca temporal horária \texttt{ts\_hour = YYYY-MM-DD HH:00:00}. Para o BDQueimadas, os focos são reamostrados de forma a obter uma única linha por combinação município normalizado x hora, escolhendo o foco com maior FRP quando há múltiplas detecções no mesmo intervalo.
+
+A fusão das fontes é realizada por uma junção entre o \texttt{ts\_hour} e as chaves de município normalizado em cada base, conforme ilustrado na Listagem~\ref{lst:fuse-hourly}. Esse procedimento define a variável alvo binária \texttt{HAS\_FOCO}.
+
+\begin{lstlisting}[language=Python, caption={Integração horária INMET x BDQueimadas e definição de HAS\_FOCO}, label={lst:fuse-hourly}]
+def _fuse_inmet_bdq_year(year: int, biome: str,
+                         out_dir: Path,
+                         encoding: str = "utf-8") -> Path:
+    inmet = _read_inmet_year(year, biome, encoding=encoding)
+    bdq   = _read_bdq_year_reduced(year, biome, encoding=encoding)
+
+    merged = inmet.merge(
+        bdq,
+        left_on=["cidade_norm", "ts_hour"],
+        right_on=["municipio_norm", "ts_hour"],
+        how="left",
+        suffixes=("", "_bdq"),
+    )
+
+    merged["HAS_FOCO"] = merged["FOCO_ID"].notna().astype("int64")
+    merged = merged.drop(columns=["municipio_norm"], errors="ignore")
+
+    date_col = inmet.attrs.get("date_col")
+    hour_col = inmet.attrs.get("hour_col")
+    if date_col and hour_col and date_col in merged.columns and hour_col in merged.columns:
+        merged = merged.sort_values([date_col, hour_col, "CIDADE"], kind="stable")
+
+    out_path = out_dir / f"inmet_bdq_{year}_{biome}.csv"
+    merged.to_csv(out_path, index=False, encoding=encoding)
+    return out_path
+\end{lstlisting}
+O módulo \texttt{build\_hourly\_dataset} aplica essa fusão para todos os anos em que há interseção entre as séries consolidadas de INMET e BDQueimadas, restringindo-se a anos a partir de 2003. Os arquivos anuais \texttt{inmet\_bdq\_YYYY\_cerrado.csv} são gravados em \texttt{data/dataset/} e, em seguida, concatenados em um arquivo único \path{inmet_bdq_all_years_cerrado.csv}, que é a base integrada utilizada nas etapas de auditoria e modelagem.
+
+Após a concatenação anual, a base integrada \texttt{inmet\_bdq\_all\_years\_cerrado.csv} reuniu 45.135.924 linhas e 23 colunas, cobrindo o período de 2003 a 2024, com tamanho em disco de 6,18~GB. A variável alvo \texttt{HAS\_FOCO} apresentou 151.544 observações positivas e 44.984.380 observações negativas, o que corresponde a uma proporção positiva de 0,3358\%. Esses valores confirmam o forte desbalanceamento da tarefa de predição proposta. A Tabela~\ref{tab:dataset-integrado-resumo} resume essas características gerais da base final.
+
+\begin{table}[H]
+\centering
+\caption{Resumo da base integrada final utilizada na modelagem.}
+\label{tab:dataset-integrado-resumo}
+\begin{tabular}{p{7.2cm}p{5.2cm}}
+\hline
+\textbf{Característica} & \textbf{Valor} \\
+\hline
+Arquivo consolidado final & \texttt{inmet\_bdq\_all\_years\_cerrado.csv} \\
+Período temporal & 2003 a 2024 \\
+Número total de linhas & 45.135.924 \\
+Número total de colunas & 23 \\
+Tamanho em disco & 6,18~GB \\
+Observações com \texttt{HAS\_FOCO = 1} & 151.544 \\
+Observações com \texttt{HAS\_FOCO = 0} & 44.984.380 \\
+Proporção da classe positiva & 0,3358\% \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Auditoria e construção de cenários de modelagem}
+\label{sec:bases-modelagem}
+
+A base integrada final \texttt{inmet\_bdq\_all\_years\_cerrado.csv} apresenta padrões distintos de ausência de dados, que decorrem tanto de falhas de medição quanto da própria lógica de integração entre as fontes. Em particular, por se tratar de uma junção à esquerda entre registros meteorológicos e focos de calor, colunas como \texttt{FOCO\_ID}, \texttt{FRP} e \texttt{RISCO\_FOGO} permanecem ausentes na maior parte das instâncias sem foco, o que caracteriza ausência estrutural associada ao processo de rotulação e não perda de informação meteorológica. Entre as variáveis climáticas, a radiação global constitui o caso mais crítico de incompletude, com 48,9370\% de valores faltantes no consolidado integrado. Para caracterizar de forma sistemática o padrão de completude das variáveis e orientar decisões de pré-processamento, foi desenvolvida uma rotina de auditoria de dados ausentes no módulo \path{src/dataset_missing_audit.py}. A Figura~\ref{fig:audit-modeling-pipeline} sintetiza o fluxo de auditoria e construção de cenários de modelagem a partir do \textit{dataset} integrado, destacando a interação entre os módulos responsáveis por análise de \textit{missing}, geração das bases A a F e engenharia de atributos.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{imagens/TCC_dataAudit_dataProcessing.png}
+    \caption{Fluxo de auditoria, construção de cenários de modelagem e engenharia de atributos físico inspirada.}
+    \label{fig:audit-modeling-pipeline}
+    {\footnotesize \textbf{Fonte:} elaborado pelo autor.}
+\end{figure}
+
+O componente \texttt{DatasetMissingAnalyzer} lê, para cada ano, o arquivo consolidado correspondente, harmoniza colunas de radiação global que aparecem com grafias diferentes e constrói uma matriz booleana de missing. Consideram-se como valores faltantes: \textit{NaN} explícito, strings vazias após operação de \textit{strip} e códigos especiais negativos \texttt{-999} e \texttt{-9999}. A Listagem~\ref{lst:missing-matrix} apresenta o núcleo desse procedimento.
+
+\begin{lstlisting}[language=Python, caption={Construção da matriz de dados faltantes por coluna de feature}, label={lst:missing-matrix}]
+def build_missing_matrix(self, df: pd.DataFrame) -> pd.DataFrame:
+    cols = [c for c in df.columns if c not in self.exclude]
+    missing = pd.DataFrame(index=df.index)
+
+    for c in cols:
+        s = df[c]
+        if pd.api.types.is_bool_dtype(s):
+            mask = s.isna()
+        elif pd.api.types.is_numeric_dtype(s):
+            mask = s.isna() | s.isin(self.missing_codes)
+        else:
+            s_str = s.astype("string")
+            mask = s_str.isna()
+            mask |= s_str.str.strip().eq("")
+            mask |= s_str.isin(self.missing_codes_str)
+        missing[c] = mask.fillna(False)
+
+    return missing
+\end{lstlisting}
+
+Para cada ano analisado, são produzidos dois artefatos em \texttt{data/eda/dataset/\{ANO\}/}: um arquivo \texttt{missing\_by\_column.csv}, contendo contagens e proporções de valores ausentes em cada variável de contexto, e um documento \texttt{README\_missing.md}, que resume o volume de observações, a proporção de instâncias com foco (\texttt{HAS\_FOCO = 1}) e as colunas mais críticas em termos de missing. Esses resultados orientam a definição de cenários de modelagem com diferentes estratégias de tratamento de dados faltantes.
+
+A construção das bases primárias de modelagem é conduzida pelo módulo \path{src/modeling_build_datasets.py}, por meio da classe \texttt{ModelingDatasetBuilder}. A partir dos CSVs anuais integrados, esse componente aplica três etapas principais: (i) harmonização de colunas, (ii) definição de semântica de missing e coerção de tipos e (iii) geração de seis cenários de base, com e sem radiação global, utilizando remoção de linhas ou imputação por KNN. A seleção das colunas de \textit{feature} exclui datas, identificadores, textos e colunas alvo (\texttt{RISCO\_FOGO}, \texttt{FRP}, \texttt{FOCO\_ID}) e considera apenas variáveis numéricas de contexto.
+
+A semântica de missing é aplicada de forma uniforme sobre todas as bases, substituindo códigos sentinela por valores nulos e convertendo strings vazias em ausência de dado. Em seguida, as colunas de \textit{feature} são convertidas para \texttt{float32}, o que permite o uso eficiente de imputadores numéricos. A imputação por KNN é realizada ano a ano, com possibilidade de segmentação por mês quando grupos de linhas atingem um tamanho mínimo, de forma a respeitar variações sazonais sem comprometer a eficiência computacional. A Listagem~\ref{lst:knn-apply} apresenta a função de alto nível que organiza a imputação.
+
+\begin{lstlisting}[language=Python, caption={Aplicação da imputação KNN por ano de dados integrados}, label={lst:knn-apply}]
+def apply_knn_imputation(self,
+                         df: pd.DataFrame,
+                         feature_cols: List[str],
+                         n_neighbors: int = 5) -> pd.DataFrame:
+    df = df.copy()
+    num_cols = self.get_numeric_feature_columns(df, feature_cols)
+    if not num_cols:
+        log.warning("[KNN] Sem colunas numéricas de feature. Imputação ignorada.")
+        return df
+
+    if self.imputer_group_by_month and "DATA (YYYY-MM-DD)" in df.columns:
+        months = pd.to_numeric(
+            df["DATA (YYYY-MM-DD)"].astype("string").str.slice(5, 7),
+            errors="coerce"
+        ).fillna(-1).astype(int)
+
+        result = df.copy()
+        # grupos mensais grandes são imputados separadamente
+        # grupos pequenos e meses desconhecidos caem no fallback anual
+        ...
+        log.info("[KNN] Imputação (agrupada por mês) concluída.")
+        return result
+
+    return self._impute_block(df, num_cols, n_neighbors=n_neighbors)
+\end{lstlisting}
+
+Com base nesses componentes, são definidos seis cenários de base, gravados em \texttt{data/modeling/} como arquivos \texttt{.parquet} particionados por ano:
+
+\begin{itemize}
+    \item \textbf{Base F (\texttt{base\_F\_full\_original})}: mantém todas as variáveis, incluindo radiação global, substitui códigos sentinela por \textit{NaN}, mas não realiza imputação nem remoção de linhas. Representa a visão mais próxima dos dados observados.
+    \item \textbf{Base A (\texttt{base\_A\_no\_rad})}: remove a coluna de radiação global, mantém os demais atributos e preserva todas as linhas. Serve como referência para avaliar o impacto da exclusão dessa variável, que frequentemente apresenta elevado nível de missing.
+    \item \textbf{Base B (\texttt{base\_B\_no\_rad\_knn})}: parte da base A e aplica imputação KNN apenas às variáveis numéricas de contexto. Investiga o efeito de recuperar parcialmente a informação perdida sem recorrer à radiação global.
+    \item \textbf{Base C (\texttt{base\_C\_no\_rad\_drop\_rows})}: parte da base A e remove todas as linhas que contêm qualquer valor ausente em colunas de \textit{feature}. Implementa uma estratégia conservadora de análise de casos completos sem radiação.
+    \item \textbf{Base D (\texttt{base\_D\_with\_rad\_drop\_rows})}: utiliza a base original com radiação global e remove linhas com qualquer valor ausente em \textit{features}. Permite avaliar o comportamento do modelo quando se exige completude total dos atributos, incluindo a variável de radiação.
+    \item \textbf{Base E (\texttt{base\_E\_with\_rad\_knn})}: utiliza a base original, preserva a coluna de radiação global e aplica imputação KNN a todas as \textit{features} numéricas. Representa a estratégia mais agressiva de recuperação de informação, combinando radiação com imputação multivariada.
+\end{itemize}
+
+Após a geração dessas bases de modelagem, o módulo \path{src/audit_databases.py} executa uma auditoria consolidada em nível de cenário. A classe \texttt{ScenarioAuditor} percorre todos os arquivos \texttt{.parquet} de cada cenário, acumula estatísticas globais de distribuição da variável alvo \texttt{HAS\_FOCO}, contabiliza valores ausentes e sentinelas nas variáveis climáticas e sumariza essas informações por ano. Em seguida, a classe \texttt{MarkdownReporter} grava, em \texttt{doc/databases/}, relatórios em formato \texttt{.md} contendo uma visão global da base, uma amostra tabular de registros e tabelas sintéticas de qualidade dos dados por variável e por ano. Esses documentos complementam a auditoria anual inicial e fornecem uma visão agregada da qualidade de cada cenário de modelagem.
+
+Além do tratamento de dados ausentes, foi implementada uma etapa de engenharia de atributos físico no módulo \path{src/feature_engineering_physics.py}, baseada no método de cálculo do risco de fogo proposto por Setzer et al.\ \cite{setzer2019metodo}. Essa etapa utiliza a Base E, que combina radiação global com imputação KNN, como fonte de referência sem lacunas para o cálculo de variáveis derivadas e, em seguida, distribui essas variáveis para todas as bases de modelagem.
+
+A engenharia de atributos foi, portanto, orientada por um racional físico inspirado no método operacional do Programa Queimadas do INPE, sem buscar reproduzir integralmente seu índice de risco. Em termos metodológicos, optou-se por construir variáveis derivadas que representassem dois eixos centrais do fenômeno: a memória recente de precipitação e secura antecedente, por meio de medidas acumulativas com decaimento temporal, e a ocorrência de condições meteorológicas críticas associadas à ignição e à propagação do fogo, por meio de indicadores de limiares de temperatura, umidade e vento. O objetivo é fornecer aos algoritmos de classificação atributos mais diretamente relacionados aos mecanismos do domínio, preservando, ao mesmo tempo, simplicidade computacional e reprodutibilidade no pipeline.
+
+A classe \texttt{PhysicsFeatureEngineer} percorre os arquivos anuais de \texttt{.parquet} da Base E, ordenados por cidade normalizada e carimbo horário, e calcula quatro grupos de atributos: (i) chuva ponderada no tempo, (ii) duração da seca recente, (iii) indicadores binários de limiares críticos de temperatura e umidade e (iv) um fator de propagação que combina vento, temperatura e umidade. A Listagem~\ref{lst:physics-features} ilustra o cálculo da chuva ponderada (\texttt{precip\_ewma}) e do contador de dias sem chuva (\texttt{dias\_sem\_chuva}), que preserva memória entre anos consecutivos para cada município.
+
+\begin{lstlisting}[language=Python, caption={Cálculo de variáveis físico inspiradas de precipitação e seca recente}, label={lst:physics-features}]
+# 1. PRECIPITAÇÃO PONDERADA (EWMA com decaimento 0.5)
+df['precip_ewma'] = df.groupby('cidade_norm')[COL_PRECIP].transform(
+    lambda x: x.ewm(alpha=0.5, adjust=False).mean()
+)
+
+# 2. DIAS SEM CHUVA (contador com memória entre anos)
+RAIN_THRESHOLD = 1.0
+df['is_rain'] = (df[COL_PRECIP] >= RAIN_THRESHOLD).astype(int)
+
+results = []
+for cidade, group in df.groupby('cidade_norm'):
+    initial_dry = 0
+    if cidade in self.memory_state:
+        initial_dry = self.memory_state[cidade]['last_dry']
+
+    vals = group[COL_PRECIP].values
+    dry_hours = np.zeros(len(vals), dtype=np.float32)
+    current_counter = initial_dry
+
+    for i in range(len(vals)):
+        if vals[i] < RAIN_THRESHOLD:
+            current_counter += 1
+        else:
+            current_counter = 0
+        dry_hours[i] = current_counter
+
+    self.memory_state[cidade] = {'last_dry': current_counter}
+    group_res = pd.DataFrame({'dias_sem_chuva': dry_hours / 24.0}, index=group.index)
+    results.append(group_res)
+
+df_dry = pd.concat(results)
+df = df.join(df_dry)
+\end{lstlisting}
+
+A partir dessas variáveis, são ainda construídos indicadores binários de risco térmico e hídrico (\texttt{risco\_temp\_max}, \texttt{risco\_umid\_critica}, \texttt{risco\_umid\_alerta}) e um fator de propagação \texttt{fator\_propagacao}, definido como o produto entre velocidade do vento e temperatura dividido pela umidade relativa acrescida de uma unidade. Essas \textit{features} procuram sintetizar, em escala horária, condições meteorológicas que favorecem a ignição e a propagação do fogo, incorporando informação física de forma compacta ao vetor de \textit{features} numéricas.
+
+Após o cálculo das variáveis derivadas na Base E, o módulo \texttt{PhysicsFeatureEngineer} realiza, para cada ano, uma junção por chaves \texttt{cidade\_norm} e \texttt{ts\_hour} com todas as bases de modelagem A a F. O resultado é armazenado em novos diretórios, cujos nomes são formados pela concatenação do identificador do cenário original com o sufixo \texttt{\_calculated}, por exemplo \texttt{base\_A\_no\_rad\_calculated}, \texttt{base\_B\_no\_rad\_knn\_calculated} e assim por diante. Dessa forma, cada cenário possui uma versão primária, composta apenas pelas variáveis diretamente observadas e imputadas, e uma versão enriquecida, que adiciona as variáveis físico inspiradas calculadas a partir da Base E.
+
+Esses conjuntos, associados aos relatórios consolidados de auditoria por cenário, permitem avaliar de forma sistemática três dimensões metodológicas: (i) o impacto da inclusão ou exclusão da radiação global na presença de missing, (ii) a diferença entre estratégias de remoção de linhas e imputação multivariada via KNN e (iii) os ganhos associados à incorporação de atributos físico inspirados derivados de modelos simplificados de risco de fogo. Em todos os cenários, a variável alvo \texttt{HAS\_FOCO} permanece inalterada, preservando a mesma definição binária de ocorrência de foco de queimada.
+
+\section{Procedimentos experimentais e comparação de algoritmos}
+\label{sec:protocolo-experimentos}
+
+A tarefa de predição é formulada como um problema de classificação binária sob forte desbalanceamento de classes. A variável alvo \texttt{HAS\_FOCO} indica a ocorrência de focos de queimada e assume valor igual a zero na maioria das instâncias, o que exige cuidados específicos tanto na construção dos conjuntos de treinamento e teste quanto na escolha das métricas de avaliação.
+
+O protocolo experimental é implementado pelo módulo \path{src/train_runner.py}, que oferece uma interface de linha de comando para seleção de cenários de base e algoritmos de classificação. As bases A a F, nas versões primárias e enriquecidas com atributos físico inspirados, são definidas na chave \texttt{modeling\_scenarios} do arquivo de configuração e podem ser combinadas com os modelos disponíveis em um mesmo lote de execução. A Figura~\ref{fig:test-train-logic} ilustra o fluxo geral quando o usuário seleciona, no \textit{CLI}, todas as bases e todos os algoritmos: os arquivos anuais de \texttt{.parquet} de cada cenário são carregados em blocos, particionados em conjuntos de treinamento e teste, submetidos a amostragem e, em seguida, usados para treinar e avaliar cada combinação de modelo e variação de configuração.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{imagens/TCC_testTrainLogic.png}
+    \caption{Esquema lógico de seleção de cenários, amostragem e treino de modelos implementado em \texttt{src/train\_runner.py}. O fluxo representa o caso em que todas as bases e algoritmos são selecionados no \textit{CLI}.}
+    \label{fig:test-train-logic}
+    {\footnotesize \textbf{Fonte:} elaborado pelo autor.}
+\end{figure}
+
+Em cada cenário descrito na Seção~\ref{sec:bases-modelagem}, o módulo \texttt{TrainingOrchestrator} carrega os arquivos anuais de \texttt{.parquet} de forma incremental, tipicamente um ano por vez, por meio do método \texttt{load\_split\_batched}. Esse método utiliza o ano presente no nome do arquivo para separar cronologicamente os dados em um conjunto de treinamento formado pelos anos mais antigos e um conjunto de teste formado pelos anos mais recentes, garantindo que todas as observações de teste sejam posteriores às de treinamento. Quando a inferência do ano pelo nome não é possível, aplica-se um particionamento alternativo baseado na coluna \texttt{ANO}, preservando, em ambos os casos, a ordenação temporal e reduzindo o risco de vazamento de informação entre os conjuntos.
+
+Devido ao desbalanceamento extremo entre instâncias com e sem foco de queimada, o conjunto de treinamento passa por um procedimento de amostragem controlada, implementado na função auxiliar \texttt{\_downsample\_keep\_all\_pos}. Essa rotina preserva todas as observações positivas (\texttt{HAS\_FOCO = 1}) e amostra as observações negativas de forma a respeitar simultaneamente um orçamento máximo de linhas por cenário e uma razão limite entre negativos e positivos, com um número mínimo de negativos por bloco anual. A amostragem é realizada de maneira independente em cada arquivo anual, o que reduz o consumo de memória, mantém a representatividade temporal e evita que anos com muitos registros dominem o conjunto de treinamento. O conjunto de teste permanece o mais próximo possível da distribuição original, de forma a avaliar os modelos em uma condição realista de raridade de eventos.
+
+A partir dos conjuntos \texttt{X\_train}, \texttt{y\_train}, \texttt{X\_test} e \texttt{y\_test}, o \textit{runner} constrói um plano de execução que combina, para cada algoritmo, diferentes variações de configuração. Essas variações são definidas por objetos \texttt{VariationOption}, que especificam, entre outros parâmetros, o uso ou não de busca de hiperparâmetros por \textit{GridSearchCV} com validação cruzada temporal, a aplicação de técnicas de balanceamento de classes por pesos ou por amostragem sintética (SMOTE) e a normalização de \textit{features} em modelos sensíveis à escala. Para cada item do plano, o \texttt{TrainingOrchestrator} instancia a classe de \textit{trainer} correspondente (\texttt{LogisticTrainer}, \texttt{NaiveBayesTrainer}, \texttt{SVMTrainer}, \texttt{RandomForestTrainer} ou \texttt{XGBoostTrainer}), registra metadados da execução e delega o processo de treino, avaliação e salvamento de artefatos ao núcleo comum definido em \path{src/ml/core.py}.
+
+Cada modelo recebe um vetor de \textit{features} numéricas composto pelas variáveis climáticas do INMET e, quando disponível, pelas variáveis físico inspiradas geradas na etapa de engenharia de atributos. Assim, os cenários A a F e suas versões enriquecidas diferem quanto à presença da radiação global, ao tratamento de dados ausentes e ao uso ou não das variáveis derivadas, o que permite quantificar o impacto das decisões de pré-processamento e de engenharia de atributos sobre o desempenho preditivo.
+
+A comparação quantitativa entre os modelos é conduzida com base em métricas adequadas a eventos raros. Além da acurácia e do \textit{F1-Score}, são calculadas a área sob a curva \textit{Precision-Recall} (PR-AUC), a área sob a curva ROC (ROC-AUC), a sensibilidade, a especificidade e o \textit{Brier Score} para calibração probabilística, conforme implementado na classe \texttt{TCCMetrics}. Essas métricas são computadas sobre o conjunto de teste mantido separado temporalmente e registrados, junto com os parâmetros de execução, em arquivos \texttt{.json} e \texttt{.joblib} no diretório de resultados de cada modelo, permitindo avaliar de forma consistente o impacto de cada cenário de modelagem, de cada conjunto de \textit{features} e de cada algoritmo na capacidade de identificar focos de queimada no Cerrado.

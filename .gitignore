@@ -1,0 +1,19 @@
+/venv/
+*.zip
+*.csv
+*.json
+*.log
+*.parquet
+*.jsonl
+*.jsonl.gz
+*.jsonl.gz.part
+*.jsonl.gz.part.1
+doc/tcc/output/*
+doc/templates/*
+*.nc
+*.joblib
+*.png
+# artefatos de modelagem
+data/modeling/results/
+*.pyc
+*.dll

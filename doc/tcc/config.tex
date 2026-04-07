@@ -1,0 +1,198 @@
+% !TEX root = main.tex
+\documentclass[12pt,openright,twoside,a4paper]{abntex2}
+
+% --------------------------------------------------
+% Fonte principal: Helvetica (parecida com Arial)
+% --------------------------------------------------
+\usepackage[scaled=0.92]{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+
+% Matemática e Fontes
+\usepackage{newtxmath}
+\usepackage{textcase} % Essencial para conversão de maiúsculas com acento
+
+% Margens padrão da UFSCar
+\usepackage[top=3cm,bottom=2cm,left=3cm,right=2cm]{geometry}
+
+% Pacotes essenciais
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{setspace}
+\usepackage{fancyhdr} % Para controle total dos cabeçalhos
+\usepackage{ragged2e}
+\usepackage{indentfirst}
+\usepackage[alf]{abntex2cite}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{longtable}
+
+\captionsetup[figure]{font=footnotesize, labelfont=bf}
+\captionsetup[lstlisting]{font=footnotesize, labelfont=bf}
+
+
+% Cores para os códigos
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{190,190,190}
+\definecolor{codecomment}{RGB}{100,100,100}
+\definecolor{codekeyword}{RGB}{0,0,150}
+\definecolor{codestring}{RGB}{0,120,0}
+
+% Estilo padrao para códigos Python
+\lstdefinestyle{pythonstyle}{
+  language=Python,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\bfseries\color{codekeyword},
+  commentstyle=\itshape\color{codecomment},
+  stringstyle=\color{codestring},
+  showstringspaces=false,
+  breaklines=true,
+  breakatwhitespace=true,
+  columns=fullflexible,
+  % moldura
+  frame=single,
+  framerule=0.6pt,
+  rulecolor=\color{codeframe},
+  backgroundcolor=\color{codebg},
+  xleftmargin=0.5em,
+  xrightmargin=0.5em,
+  framesep=0.5em,
+  % numeros de linha (opcional: retire se nao quiser)
+  numbers=left,
+  numberstyle=\tiny\color{codecomment},
+  numbersep=0.6em,
+  % UTF-8 seguro
+  inputencoding=utf8,
+  upquote=true,
+  literate=
+    {á}{{\'a}}1 {à}{{\`a}}1 {ã}{{\~a}}1 {â}{{\^a}}1
+    {Á}{{\'A}}1 {À}{{\`A}}1 {Ã}{{\~A}}1 {Â}{{\^A}}1
+    {é}{{\'e}}1 {ê}{{\^e}}1 {É}{{\'E}}1 {Ê}{{\^E}}1
+    {í}{{\'i}}1 {Í}{{\'I}}1
+    {ó}{{\'o}}1 {ô}{{\^o}}1 {õ}{{\~o}}1 {Ó}{{\'O}}1 {Ô}{{\^O}}1 {Õ}{{\~O}}1
+    {ú}{{\'u}}1 {Ú}{{\'U}}1
+    {ç}{{\c c}}1 {Ç}{{\c C}}1
+    {º}{{\textsuperscript{o}}}1
+    {ª}{{\textsuperscript{a}}}1
+    {°}{{\textdegree}}1
+    {²}{{\textsuperscript{2}}}1
+}
+
+% Aplica o estilo como padrao de todas as lstlisting
+\lstset{style=pythonstyle}
+
+
+
+% Hiperlinks
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=black
+}
+
+% --------------------------------------------------
+% CONFIGURAÇÃO DE CABEÇALHOS (ESTILO ARCENCIO)
+% --------------------------------------------------
+% Define o estilo 'fancy' para páginas textuais
+\pagestyle{fancy}
+\fancyhf{} % Limpa todas as configurações
+
+% Redefine a forma como o capítulo e a seção aparecem no cabeçalho
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+\renewcommand{\sectionmark}[1]{\markright{#1}}
+
+% Página Par (Even - Esquerda): Página à esquerda, Capítulo à direita
+\fancyhead[LE]{\thepage}
+\fancyhead[RE]{\textit{Capítulo \thechapter. \leftmark}}
+
+% Página Ímpar (Odd - Direita): Seção à esquerda, Página à direita
+\fancyhead[LO]{\textit{\thesection. \rightmark}}
+\fancyhead[RO]{\thepage}
+
+\renewcommand{\headrulewidth}{0.4pt} % Linha horizontal
+
+% Garante que páginas de início de capítulo fiquem sem cabeçalho (vazias)
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \renewcommand{\headrulewidth}{0pt}
+}
+\aliaspagestyle{chapter}{plain}
+
+% Ajuste de espaçamento de listas para ser mais compacto (como o exemplo)
+\setlist{nosep} 
+
+% --------------------------------------------------
+% INFORMAÇÕES INSTITUCIONAIS
+% --------------------------------------------------
+\titulo{Análise Comparativa do Desempenho de Modelos de Machine Learning na Previsão de Focos de Incêndio no Cerrado Utilizando Variáveis Climáticas}
+\autor{Juliano Eleno Silva Pádua}
+\local{São Carlos - SP}
+\data{2025}
+\instituicao{
+  Universidade Federal de São Carlos\\
+  Centro de Ciências Exatas e de Tecnologia -- CCET\\
+  Departamento de Computação -- DC\\
+  Curso de Bacharelado em Engenharia de Computação
+}
+\orientador{Prof. Dr. Alexandre Levada}
+\tipotrabalho{Trabalho de Conclusão de Curso}
+
+% ===== Capa (Corrigindo PáDUA) =====
+\renewcommand{\imprimircapa}{
+  \begin{center}
+    {\ABNTEXchapterfont\large\MakeTextUppercase{\imprimirinstituicao}}
+    \vspace*{4cm}
+
+    {\ABNTEXchapterfont\bfseries\LARGE\imprimirtitulo}
+    \vspace*{5cm}
+
+    % Força a conversão correta de Juliano Eleno Silva Pádua para maiúsculas
+    {\large\MakeTextUppercase{\imprimirautor}}
+    \vspace*{6cm}
+
+    {\large\imprimirlocal}\\
+    {\large\imprimirdata}
+  \end{center}
+}
+
+% ===== Folha de rosto =====
+\makeatletter
+\renewcommand{\folhaderostocontent}{
+  \begin{center}
+    {\large\MakeTextUppercase{\imprimirautor}}
+
+    \vspace*{6cm}
+    {\ABNTEXchapterfont\bfseries\Large \imprimirtitulo \par}
+
+    \vspace*{3cm}
+  \end{center}
+
+  \noindent\hfill
+  \begin{minipage}{0.52\textwidth}
+    \justifying
+    \SingleSpacing
+    \noindent Trabalho de Conclusão de Curso apresentado ao curso de Engenharia de Computação da Universidade Federal de São Carlos, como requisito parcial para a obtenção do título de Bacharel em Engenharia de Computação.
+
+    \vspace{1em}
+    \noindent Orientação: \imprimirorientador
+  \end{minipage}
+
+  \vfill
+
+  \begin{center}
+    {\large \imprimirlocal}\\[2pt]
+    {\large \imprimirdata}
+  \end{center}
+}
+\makeatother

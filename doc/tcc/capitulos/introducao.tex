@@ -1,0 +1,29 @@
+\chapter{Introdução}
+
+\section{Contexto e motivação}
+
+As queimadas no Cerrado configuram um fenômeno recorrente e estruturado no tempo e no espaço, com sazonalidade marcada na estação seca e associação a tipos de cobertura da terra e vetores antrópicos \cite{nascimento2011analise}. Nesse contexto, abordagens orientadas por dados têm se mostrado adequadas para capturar padrões multivariados e não lineares relacionados à ocorrência de fogo, especialmente em tarefas de classificação e mapeamento de suscetibilidade \cite{andrianarivony2024review,freitas2025xingu}.
+
+Para que estimativas preditivas sejam úteis em apoio à decisão, é necessário construir uma base integrada e metodologicamente consistente, combinando registros de focos do BDQueiamdas\footnote{BDQueimadas: \url{https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/anual/Brasil_sat_ref/}} com variáveis climáticas observadas pelo INMET \footnote{INMET: \url{https://portal.inmet.gov.br/dadoshistoricos}} em resolução horária. Essa integração exige controle explícito de qualidade, padronização de formatos, compatibilização de chaves espaço-temporais e tratamento adequado de valores ausentes.
+
+Em séries climáticas, dados faltantes são frequentes e podem afetar tanto estatísticas descritivas quanto o desempenho de modelos preditivos. Por essa razão, a literatura recomenda tratar a imputação como uma escolha metodológica com impacto potencial sobre os resultados, o que justifica a construção de cenários comparativos com e sem preenchimento de lacunas \cite{alejosanchez2025review,afridayamoah2020imputation,ribeiro2021imputation}. Entre os métodos possíveis, a imputação por \textit{k}-vizinhos mais próximos (KNN) constitui uma alternativa simples, transparente e reprodutível para avaliação de sensibilidade do pipeline de dados.
+
+Nesse quadro, a comparação entre diferentes algoritmos de aprendizado de máquina torna-se relevante, sobretudo porque a previsão de focos de queimadas envolve relações complexas entre variáveis meteorológicas e forte desbalanceamento entre classes. Assim, a avaliação comparativa de modelos sob protocolos consistentes de treino, validação e teste permite identificar quais combinações de base, estratégia de balanceamento e algoritmo produzem melhor desempenho para a tarefa proposta.
+
+\section{Objetivos}
+
+O objetivo geral deste trabalho é avaliar, de forma comparativa, modelos de aprendizado de máquina para a previsão horária da ocorrência de focos de queimadas no Cerrado brasileiro, a partir da integração entre dados do INMET e do BDQueimadas em um pipeline reprodutível.
+
+Como objetivos específicos, pretende-se:
+\begin{itemize}
+    \item construir uma base horária integrada INMET--BDQueimadas, com auditoria de qualidade, padronização de sentinelas e organização por cenários de dados;
+    \item definir cenários sem imputação e com imputação por KNN em variáveis climaticamente relevantes, permitindo análise de sensibilidade quanto ao tratamento de valores ausentes;
+    \item formular o problema como uma tarefa de classificação probabilística binária;
+    \item comparar os modelos Regressão Logística, Random Forest, XGBoost, SVM linear e Naive Bayes \cite{breiman2001randomForest,chen2016xgboost};
+    \item empregar um protocolo de avaliação compatível com a estrutura temporal dos dados, reportando métricas como PR-AUC, revocação, \textit{F1-score}, ROC-AUC e \textit{Brier score};
+    \item discutir os compromissos entre sensibilidade à classe positiva, capacidade de ranqueamento e custo operacional das diferentes estratégias avaliadas.
+\end{itemize}
+
+\section{Organização}
+
+O texto organiza-se como segue. O Capítulo 2 apresenta a fundamentação teórica, abordando Inteligência Artificial, aprendizado de máquina, imputação de dados climáticos, desbalanceamento de classes e os modelos comparados. O Capítulo 3 descreve a metodologia, incluindo o pipeline de integração INMET--BDQueimadas, a auditoria de qualidade dos dados, a definição dos cenários com e sem imputação por KNN e o desenho experimental de comparação. O Capítulo 4 apresenta os resultados obtidos nas bases originais e nas bases com variáveis derivadas, seguido de sua discussão. Por fim, o Capítulo 5 reúne as conclusões do estudo, suas limitações e possibilidades de trabalhos futuros.

@@ -1,0 +1,53 @@
+\input{config.tex}
+
+% Caminho padrão para figuras
+\graphicspath{{imagens/}}
+
+\begin{document}
+
+% ===== Elementos pré-textuais =====
+% Capa e folha de rosto não possuem numeração nem cabeçalho
+\imprimircapa
+\imprimirfolhaderosto*
+
+\input{pre_textuais/dedicatoria.tex}
+\input{pre_textuais/agradecimentos.tex}
+\input{pre_textuais/epigrafe.tex}
+\input{pre_textuais/resumo.tex}
+\input{pre_textuais/abstract.tex}
+
+% Listas e Sumário
+\pdfbookmark[0]{\listfigurename}{lof}
+\listoffigures
+\cleardoublepage
+
+\pdfbookmark[0]{\listtablename}{lot}
+\listoftables
+\cleardoublepage
+
+\pdfbookmark[0]{\contentsname}{toc}
+\tableofcontents
+\cleardoublepage
+
+% ===== Corpo do trabalho (Elementos Textuais) =====
+% \textual reinicia a numeração e configura o estilo abntex2
+\textual 
+
+% Ativa o estilo fancy definido no config.tex para cabeçalhos alternados
+\pagestyle{fancy} 
+
+\input{capitulos/introducao.tex}
+\input{capitulos/fundamentacao.tex}
+\input{capitulos/metodologia.tex}
+\input{capitulos/resultados.tex}
+
+% Conclusão (ajustado para o caminho correto)
+\input{pre_textuais/conclusao.tex}
+
+% ===== Referências =====
+\cleardoublepage
+% Retorna ao estilo plain ou mantém fancy para as referências conforme preferência
+\pagestyle{fancy}
+\bibliography{ref}
+
+\end{document}

@@ -1,0 +1,7 @@
+% !TEX root = ../main.tex
+\begin{resumo}
+A predição de focos de queimadas no Cerrado a partir de variáveis meteorológicas constitui um problema relevante para monitoramento ambiental e apoio a sistemas de alerta. Neste trabalho, foi realizada uma análise comparativa de modelos de aprendizado de máquina clássico para a predição horária da ocorrência de focos de queimadas, a partir da integração entre dados do INMET e registros do BDQueimadas, do INPE. Foram avaliados os modelos Regressão Logística, Naive Bayes, SVM linear, Random Forest e XGBoost em diferentes cenários de preparação dos dados, incluindo bases originais, bases com variáveis derivadas, imputação por KNN e estratégias de tratamento do desbalanceamento, como \textit{SMOTE} e balanceamento por peso. Os resultados mostraram que os modelos baseados em \textit{ensemble} de árvores foram os mais adequados ao problema, com destaque para o XGBoost, e que a engenharia de atributos e o tratamento explícito do desbalanceamento contribuíram de forma decisiva para o aumento do desempenho, especialmente em métricas mais sensíveis à detecção da classe positiva, como $PR\text{-}AUC$ e \textit{F1-score}.
+\medskip
+
+\textbf{Palavras-chave}: queimadas; Cerrado; focos de calor; aprendizado de máquina; INMET; INPE.
+\end{resumo}

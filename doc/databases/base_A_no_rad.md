@@ -1,0 +1,64 @@
+# Auditoria Consolidada: base_A_no_rad
+
+**Arquivos Processados:** 2003 a 2024
+**Total de Registros:** 45,434,876
+
+## 0. Amostra e Estrutura dos Dados
+> **Arquivo de Referência:** `inmet_bdq_2003_cerrado.parquet`
+
+**Total de Colunas:** 20
+
+**Lista de Colunas:**
+`DATA (YYYY-MM-DD), HORA (UTC), PRECIPITAÇÃO TOTAL, HORÁRIO (mm), PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB), TEMPERATURA DO AR - BULBO SECO, HORARIA (°C), TEMPERATURA DO PONTO DE ORVALHO (°C), UMIDADE RELATIVA DO AR, HORARIA (%), VENTO, DIREÇÃO HORARIA (gr) (° (gr)), VENTO, RAJADA MAXIMA (m/s), VENTO, VELOCIDADE HORARIA (m/s), ANO, CIDADE, LATITUDE, LONGITUDE, cidade_norm, ts_hour, RISCO_FOGO, FRP, FOCO_ID, HAS_FOCO`
+
+**Preview (5 primeiras linhas):**
+| DATA (YYYY-MM-DD)   | HORA (UTC)   | PRECIPITAÇÃO TOTAL, HORÁRIO (mm)   | PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)   | TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)   | TEMPERATURA DO PONTO DE ORVALHO (°C)   | UMIDADE RELATIVA DO AR, HORARIA (%)   | VENTO, DIREÇÃO HORARIA (gr) (° (gr))   | VENTO, RAJADA MAXIMA (m/s)   | VENTO, VELOCIDADE HORARIA (m/s)   | ANO   | CIDADE   | LATITUDE   | LONGITUDE   | cidade_norm   | ts_hour             | RISCO_FOGO   | FRP   | FOCO_ID   | HAS_FOCO   |
+|:--------------------|:-------------|:-----------------------------------|:--------------------------------------------------------|:-----------------------------------------------|:---------------------------------------|:--------------------------------------|:---------------------------------------|:-----------------------------|:----------------------------------|:------|:---------|:-----------|:------------|:--------------|:--------------------|:-------------|:------|:----------|:-----------|
+| 2003-01-01          | 01:00        | 0                                  | 897.3                                                   | 21.2                                           | 19.5                                   | 90                                    | 142                                    | 4.2                          | 0.8                               | 2003  | ARAXA    | -19.6056   | -46.9494    | araxa         | 2003-01-01 01:00:00 | nan          | <NA>  | <NA>      | 0          |
+| 2003-01-01          | 01:00        | 0                                  | 897.3                                                   | 21.2                                           | 19.5                                   | 90                                    | 142                                    | 4.2                          | 0.8                               | 2003  | ARAXA    | -19.6056   | -46.9494    | araxa         | 2003-01-01 01:00:00 | nan          | <NA>  | <NA>      | 0          |
+| 2003-01-01          | 01:00        | 0                                  | 941.1                                                   | 26                                             | 18.7                                   | 64                                    | 5                                      | 1.8                          | 0.4                               | 2003  | BAURU    | -22.3581   | -49.0289    | bauru         | 2003-01-01 01:00:00 | nan          | <NA>  | <NA>      | 0          |
+| 2003-01-01          | 01:00        | 0                                  | 941.1                                                   | 26                                             | 18.7                                   | 64                                    | 5                                      | 1.8                          | 0.4                               | 2003  | BAURU    | -22.3581   | -49.0289    | bauru         | 2003-01-01 01:00:00 | nan          | <NA>  | <NA>      | 0          |
+| 2003-01-01          | 01:00        | 0                                  | 887.3                                                   | 19.9                                           | 18.5                                   | 92                                    | 302                                    | 2.2                          | 1.3                               | 2003  | BRASILIA | -15.7894   | -47.9258    | brasilia      | 2003-01-01 01:00:00 | nan          | <NA>  | <NA>      | 0          |
+
+## 1. Distribuição do Target (HAS_FOCO)
+| Classe | Contagem | Proporção |
+| :--- | :---: | :---: |
+| Sem Fogo (0) | 45,282,000 | 99.6635% |
+| **Fogo (1)** | 152,876 | 0.3365% |
+
+## 2. Qualidade Global (Variáveis Climáticas)
+| Variável | Nulos (NaN) | Sentinelas (<= -999) | Total Ausente | % da Base |
+| :--- | :---: | :---: | :---: | :---: |
+| `PRECIPITAÇÃO TOTAL, HORÁRIO (mm)` | 7,217,486 | 0 | 7,217,486 | 15.89% |
+| `RADIACAO GLOBAL (KJ/m²)` | 45,434,876 | 0 | 45,434,876 | 100.00% |
+| `TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)` | 4,312,760 | 0 | 4,312,760 | 9.49% |
+| `UMIDADE RELATIVA DO AR, HORARIA (%)` | 4,897,812 | 0 | 4,897,812 | 10.78% |
+| `PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)` | 4,376,744 | 0 | 4,376,744 | 9.63% |
+| `VENTO, VELOCIDADE HORARIA (m/s)` | 10,757,432 | 0 | 10,757,432 | 23.68% |
+| `VENTO, DIREÇÃO HORARIA (gr) (° (gr))` | 5,333,284 | 0 | 5,333,284 | 11.74% |
+| `VENTO, RAJADA MAXIMA (m/s)` | 11,212,448 | 0 | 11,212,448 | 24.68% |
+
+## 3. Detalhamento Temporal (Falhas Críticas)
+| Ano | Linhas | Focos | Temp (Falhas) | Rad (Falhas) | Pressão (Falhas) | Vento (Falhas) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| 2003 | 198,028 | 1,054 | 28 | 198,028 | 1,562 | 12,958 |
+| 2004 | 198,244 | 994 | 16 | 198,244 | 104 | 104 |
+| 2005 | 298,952 | 1,332 | 5,314 | 298,952 | 38 | 1,230 |
+| 2006 | 302,130 | 1,236 | 6,618 | 302,130 | 0 | 12,770 |
+| 2007 | 1,181,586 | 5,902 | 1,076 | 1,181,586 | 2,326 | 3,224 |
+| 2008 | 2,000,366 | 7,222 | 5,998 | 2,000,366 | 14,552 | 10,660 |
+| 2009 | 2,185,516 | 5,076 | 4,652 | 2,185,516 | 208 | 50,776 |
+| 2011 | 2,298,104 | 6,990 | 64 | 2,298,104 | 17,254 | 8,094 |
+| 2012 | 2,442,676 | 8,450 | 702 | 2,442,676 | 26,956 | 2,710 |
+| 2013 | 2,505,914 | 6,926 | 4,686 | 2,505,914 | 33,574 | 30,226 |
+| 2014 | 2,510,432 | 8,132 | 2,412 | 2,510,432 | 29,566 | 69,202 |
+| 2015 | 2,462,726 | 8,282 | 3,322 | 2,462,726 | 5,176 | 33,730 |
+| 2016 | 2,583,240 | 8,854 | 5,346 | 2,583,240 | 17,344 | 62,102 |
+| 2017 | 2,734,100 | 9,090 | 4,358 | 2,734,100 | 18,774 | 55,222 |
+| 2018 | 3,053,532 | 7,732 | 4,314 | 3,053,532 | 510 | 40,326 |
+| 2019 | 3,378,380 | 11,492 | 385,696 | 3,378,380 | 384,328 | 2,746,678 |
+| 2020 | 3,407,804 | 11,388 | 758,290 | 3,407,804 | 758,084 | 2,778,764 |
+| 2021 | 3,433,528 | 11,288 | 1,453,660 | 3,433,528 | 1,442,606 | 2,958,908 |
+| 2022 | 3,153,240 | 10,628 | 835,818 | 3,153,240 | 819,544 | 920,428 |
+| 2023 | 1,944,498 | 8,068 | 281,622 | 1,944,498 | 287,200 | 331,236 |
+| 2024 | 3,161,880 | 12,740 | 548,768 | 3,161,880 | 517,038 | 628,084 |

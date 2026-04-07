@@ -1,0 +1,867 @@
+% !TEX root = ../main.tex
+
+
+% ==============================================================================
+% TEMPLATE PADRONIZADO PARA TABELAS DE RESULTADOS - TCC JULIANO PÁDUA
+% Requer no preâmbulo: 
+% \usepackage{booktabs}  % Linhas horizontais de alta qualidade
+% \usepackage{multirow}  % Agrupamento de linhas por cenário
+% \usepackage{longtable} % Tabelas que ocupam mais de uma página
+% 
+% PADRÕES DE PREENCHIMENTO:
+% 1. Separador decimal: vírgula (Ex: 0,0536)
+% 2. Precisão: 4 casas decimais para AUC/F1/Brier e 2 para Acc/Rec/Prec (opcional)
+% 3. Ordem das colunas: Cenário, Modelo, PR-AUC, ROC-AUC, F1, Prec, Rec, Spec, Brier, Acc.
+% ==============================================================================
+
+% \footnotesize % Recomendado para tabelas com muitas colunas
+% \begin{longtable}{llcccccccc}
+% \caption{Título descritivo da tabela aqui.} \label{tab:nome_da_tabela} \\
+% \toprule
+% \textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Spec.} & \textbf{Brier} & \textbf{Acc.} \\
+% \midrule
+% \endfirsthead
+% \multicolumn{10}{c}{{\bfseries \tablename\ \thetable{} -- Continuação}} \\
+% \toprule
+% \textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Spec.} & \textbf{Brier} & \textbf{Acc.} \\
+% \midrule
+% \endhead
+% \bottomrule
+% \endfoot
+% \bottomrule
+% \endlastfoot
+%
+% \multirow{5}{*}{\parbox{2.2cm}{ID do Cenário (Descrição)}} 
+%    & Modelo 1 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 \\
+%    & Modelo 2 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 \\
+%    & Modelo 3 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 \\
+%    & Modelo 4 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 \\
+%    & Modelo 5 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 & 0,0000 \\
+% \midrule
+% \end{longtable}
+% \normalsize
+
+\chapter{Resultados e Discussão}
+
+Após a condução das rodadas experimentais, foram obtidas as métricas de desempenho dos modelos de aprendizado de máquina na tarefa de previsão de focos de queimada. A análise é organizada em três etapas. Primeiro, apresentam-se os classificadores triviais, utilizados como linha de base. Em seguida, discutem-se os resultados dos modelos supervisionados nas bases originais e, posteriormente, nas bases enriquecidas com variáveis derivadas. Ao final, é realizada uma síntese comparativa entre os dois grupos de bases.
+
+\section{Desempenho dos Classificadores Triviais (Dummies)}
+
+Como etapa inicial de validação, foram utilizados classificadores do tipo \textit{Dummy}, que servem como linha de base (\textit{baseline}) para a avaliação de ganho preditivo. O uso desses modelos é particularmente importante em problemas com forte desbalanceamento de classes, como a previsão de incêndios, pois evita interpretações indevidas de métricas agregadas, especialmente da acurácia \cite{saito2015prc}.
+
+A Tabela \ref{tab:resultados_dummies_completa} reúne os resultados das duas estratégias triviais avaliadas. A estratégia de classe majoritária prevê sempre a ausência de focos e, por isso, alcança acurácia muito elevada, porém com revocação e \textit{F1-score} nulos. Já a estratégia estratificada realiza predições aleatórias respeitando a distribuição observada das classes, produzindo valores de $PR\text{-}AUC$ compatíveis com a prevalência da classe positiva na base.
+\begin{enumerate}
+    \item \textbf{Estratégia de Classe Majoritária}: prevê invariavelmente a ausência de focos ($y=0$). Devido à raridade do evento de interesse, essa estratégia resulta em uma acurácia próxima a 99\%, porém com revocação (\textit{Recall}) e precisão nulas, sendo inútil para um sistema de alerta \cite{andrianarivony2024review}. Note-se que, embora a acurácia seja a mais alta entre as baselines, o modelo falha completamente em identificar qualquer foco de incêndio (TP = 0).
+    \item \textbf{Estratégia Estratificada}: realiza predições aleatórias respeitando a distribuição de frequência das classes na base de treinamento. Neste caso, o valor da $PR\text{-}AUC$ converge para a prevalência real da classe positiva na base de dados, permitindo observar o limite inferior de detecção estatística.
+\end{enumerate}
+
+\begin{table}[ht]
+\centering
+\caption{Desempenho comparativo das baselines Dummy por estratégia e cenário.}
+\label{tab:resultados_dummies_completa}
+\small
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Cenário} & \textbf{Estratégia} & \textbf{PR-AUC} & \textbf{Recall} & \textbf{F1-Score} & \textbf{Acurácia} \\
+\midrule
+\multirow{2}{*}{Cenário D} & Estratificada & 0,0073 & 0,0061 & 0,0067 & 0,9869 \\
+                           & Majoritária   & 0,0073 & 0,0000 & 0,0000 & 0,9927 \\
+\midrule
+\multirow{2}{*}{Cenário F} & Estratificada & 0,0072 & 0,0070 & 0,0077 & 0,9869 \\
+                           & Majoritária   & 0,0072 & 0,0000 & 0,0000 & 0,9928 \\
+\midrule
+\multirow{2}{*}{Cenário C} & Estratificada & 0,0044 & 0,0035 & 0,0039 & 0,9923 \\
+                           & Majoritária   & 0,0044 & 0,0000 & 0,0000 & 0,9956 \\
+\midrule
+\multirow{2}{*}{Cenário A} & Estratificada & 0,0044 & 0,0031 & 0,0035 & 0,9923 \\
+                           & Majoritária   & 0,0044 & 0,0000 & 0,0000 & 0,9956 \\
+\midrule
+\multirow{2}{*}{Cenário E} & Estratificada & 0,0041 & 0,0035 & 0,0038 & 0,9926 \\
+                           & Majoritária   & 0,0041 & 0,0000 & 0,0000 & 0,9959 \\
+\midrule
+\multirow{2}{*}{Cenário B} & Estratificada & 0,0041 & 0,0035 & 0,0038 & 0,9926 \\
+                           & Majoritária   & 0,0041 & 0,0000 & 0,0000 & 0,9959 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Análise do Comportamento das Baselines}
+
+A Tabela \ref{tab:resultados_dummies_completa} evidencia com clareza a limitação da acurácia em cenários altamente desbalanceados. Embora a estratégia majoritária apresente valores próximos de 99\%, ela não recupera nenhum evento positivo. Nesse contexto, a $PR\text{-}AUC$ fornece uma referência mais adequada, pois estabelece o patamar mínimo a ser superado pelos modelos supervisionados para que exista ganho preditivo efetivo \cite{andrianarivony2024review}.
+
+% ---------------------------------------------------------------------------------------------------------------------
+
+\section{Desempenho dos Modelos nas Bases Originais}
+Nesta seção, analisam-se os resultados obtidos pelos modelos supervisionados nas bases originais do estudo, isto é, antes da incorporação de variáveis derivadas. O objetivo é examinar o comportamento dos classificadores sob três estratégias de treinamento: configuração base, ajuste via \textit{GridSearchCV} com \textit{SMOTE} e ajuste via \textit{GridSearchCV} com balanceamento por peso. Ao final, apresentam-se sínteses por cenário e uma consolidação das melhores combinações desta etapa.
+
+\subsection{Modelos em Configuração Base}
+Antes da aplicação de técnicas de ajuste de hiperparâmetros ou de tratamento do desbalanceamento, os modelos foram avaliados em sua configuração padrão. Essa etapa permite observar o comportamento inicial dos algoritmos diante da assimetria entre classes e serve como referência para interpretar os ganhos obtidos nas estratégias subsequentes.
+
+A Tabela \ref{tab:resultados_base_sem_tratamento} consolida os resultados segundo $PR\text{-}AUC$, $ROC\text{-}AUC$, \textit{F1-score}, precisão, revocação e \textit{Brier score}. As métricas de acurácia e especificidade foram omitidas da tabela principal por apresentarem valores sistematicamente elevados e pouco informativos neste contexto.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+
+\begin{longtable}{p{3.2cm} l c c c c c c}
+\caption{Desempenho dos modelos supervisionados na configuração base, sem uso de SMOTE, GridSearchCV ou balanceamento por peso, para todos os cenários avaliados.}
+\label{tab:resultados_base_sem_tratamento} \\
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endhead
+
+\bottomrule
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário A\\(sem radiação)}} 
+   & XGBoost             & 0,0446 & 0,9158 & 0,0000 & 0,0000 & 0,0000 & 0,0042 \\
+   & Random Forest       & 0,0281 & 0,8358 & 0,0013 & 0,0427 & 0,0007 & 0,0045 \\
+   & SVM (Linear)        & 0,0369 & 0,9017 & 0,0000 & 0,0000 & 0,0000 & 0,0043 \\
+   & Regressão Logística & 0,0369 & 0,9006 & 0,0000 & 0,0000 & 0,0000 & 0,0043 \\
+   & Naive Bayes         & 0,0317 & 0,8942 & 0,0629 & 0,0341 & 0,4035 & 0,0363 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário B\\(sem radiação, KNN)}} 
+   & XGBoost             & 0,0365 & 0,8726 & 0,0000 & 0,0000 & 0,0000 & 0,0040 \\
+   & Random Forest       & 0,0222 & 0,7877 & 0,0010 & 0,0515 & 0,0005 & 0,0042 \\
+   & SVM (Linear)        & 0,0318 & 0,8631 & 0,0000 & 0,0000 & 0,0000 & 0,0040 \\
+   & Regressão Logística & 0,0316 & 0,8611 & 0,0000 & 0,0000 & 0,0000 & 0,0040 \\
+   & Naive Bayes         & 0,0252 & 0,8506 & 0,0587 & 0,0321 & 0,3400 & 0,0321 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário C\\(sem radiação, remoção de linhas)}} 
+   & XGBoost             & 0,0443 & 0,9160 & 0,0000 & 0,0000 & 0,0000 & 0,0043 \\
+   & Random Forest       & 0,0273 & 0,8375 & 0,0011 & 0,0519 & 0,0006 & 0,0045 \\
+   & SVM (Linear)        & 0,0373 & 0,9016 & 0,0000 & 0,0000 & 0,0000 & 0,0043 \\
+   & Regressão Logística & 0,0374 & 0,9005 & 0,0000 & 0,0000 & 0,0000 & 0,0043 \\
+   & Naive Bayes         & 0,0320 & 0,8939 & 0,0628 & 0,0341 & 0,4046 & 0,0367 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário D\\(com radiação, remoção de linhas)}} 
+   & XGBoost             & 0,0536 & 0,8913 & 0,0000 & 0,0000 & 0,0000 & 0,0070 \\
+   & Random Forest       & 0,0436 & 0,8402 & 0,0003 & 0,0435 & 0,0001 & 0,0072 \\
+   & SVM (Linear)        & 0,0407 & 0,8532 & 0,0000 & 0,0000 & 0,0000 & 0,0071 \\
+   & Regressão Logística & 0,0405 & 0,8488 & 0,0000 & 0,0000 & 0,0000 & 0,0071 \\
+   & Naive Bayes         & 0,0365 & 0,8441 & 0,0696 & 0,0631 & 0,0778 & 0,0157 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário E\\(com radiação, KNN)}} 
+   & XGBoost             & 0,0412 & 0,9002 & 0,0000 & 0,0000 & 0,0000 & 0,0040 \\
+   & Random Forest       & 0,0325 & 0,8304 & 0,0004 & 0,0625 & 0,0002 & 0,0041 \\
+   & SVM (Linear)        & 0,0339 & 0,8749 & 0,0000 & 0,0000 & 0,0000 & 0,0040 \\
+   & Regressão Logística & 0,0329 & 0,8712 & 0,0000 & 0,0000 & 0,0000 & 0,0040 \\
+   & Naive Bayes         & 0,0261 & 0,8653 & 0,0641 & 0,0363 & 0,2708 & 0,0238 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário F\\(base completa)}} 
+   & XGBoost             & 0,0535 & 0,8917 & 0,0005 & 0,5000 & 0,0003 & 0,0070 \\
+   & Random Forest       & 0,0421 & 0,8390 & 0,0003 & 0,0278 & 0,0001 & 0,0072 \\
+   & SVM (Linear)        & 0,0404 & 0,8531 & 0,0000 & 0,0000 & 0,0000 & 0,0071 \\
+   & Regressão Logística & 0,0401 & 0,8485 & 0,0000 & 0,0000 & 0,0000 & 0,0071 \\
+   & Naive Bayes         & 0,0365 & 0,8442 & 0,0700 & 0,0638 & 0,0776 & 0,0156 \\
+\end{longtable}
+\endgroup
+
+De modo geral, observa-se que, sem tratamento explícito do desbalanceamento, a maior parte dos modelos apresenta revocação nula ou residual. O \textit{Naive Bayes} constitui a principal exceção, exibindo maior sensibilidade à classe positiva, embora com precisão reduzida e \textit{Brier score} mais elevado. Também se nota que os maiores valores de $PR\text{-}AUC$ já se concentram nos cenários com radiação global, especialmente D e F.
+
+\subsection{Modelos com GridSearchCV e SMOTE}
+
+Na sequência, avaliou-se a combinação entre ajuste de hiperparâmetros via \textit{GridSearchCV} e sobreamostragem sintética da classe minoritária por meio do \textit{SMOTE}. Essa estratégia foi empregada com o objetivo de reduzir a insensibilidade dos classificadores à classe positiva e verificar em que medida o reequilíbrio do conjunto de treinamento melhora o desempenho dos modelos.
+
+A Tabela \ref{tab:resultados_grid_smote} resume os resultados obtidos para todos os cenários sob essa configuração.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+
+\begin{longtable}{p{3.2cm} l c c c c c c}
+\caption{Desempenho dos modelos supervisionados com ajuste via GridSearchCV e balanceamento por SMOTE}
+\label{tab:resultados_grid_smote} \\
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endhead
+
+\bottomrule
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário A\\(sem radiação)}} 
+   & Random Forest       & 0,0404 & 0,9130 & 0,0862 & 0,0524 & 0,2431 & 0,0204 \\
+   & XGBoost             & 0,0402 & 0,9103 & 0,0799 & 0,0464 & 0,2870 & 0,0248 \\
+   & SVM (Linear)        & 0,0369 & 0,9015 & 0,0735 & 0,0414 & 0,3321 & 0,0289 \\
+   & Regressão Logística & 0,0368 & 0,9013 & 0,0728 & 0,0409 & 0,3321 & 0,0291 \\
+   & Naive Bayes         & 0,0327 & 0,8943 & 0,0374 & 0,0192 & 0,8092 & 0,1432 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário B\\(sem radiação, KNN)}} 
+   & XGBoost             & 0,0344 & 0,8707 & 0,0763 & 0,0446 & 0,2621 & 0,0237 \\
+   & Random Forest       & 0,0324 & 0,8705 & 0,0798 & 0,0501 & 0,1954 & 0,0195 \\
+   & SVM (Linear)        & 0,0318 & 0,8630 & 0,0724 & 0,0423 & 0,2488 & 0,0239 \\
+   & Regressão Logística & 0,0315 & 0,8623 & 0,0708 & 0,0411 & 0,2578 & 0,0246 \\
+   & Naive Bayes         & 0,0258 & 0,8508 & 0,0332 & 0,0170 & 0,7376 & 0,1356 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário C\\(sem radiação, remoção de linhas)}} 
+   & XGBoost             & 0,0404 & 0,9105 & 0,0811 & 0,0469 & 0,3007 & 0,0252 \\
+   & Random Forest       & 0,0388 & 0,9104 & 0,0846 & 0,0511 & 0,2460 & 0,0210 \\
+   & SVM (Linear)        & 0,0373 & 0,9014 & 0,0740 & 0,0416 & 0,3320 & 0,0289 \\
+   & Regressão Logística & 0,0372 & 0,9012 & 0,0732 & 0,0411 & 0,3327 & 0,0292 \\
+   & Naive Bayes         & 0,0329 & 0,8940 & 0,0375 & 0,0192 & 0,8121 & 0,1448 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário D\\(com radiação, remoção de linhas)}} 
+   & Random Forest       & 0,0528 & 0,8894 & 0,1044 & 0,0782 & 0,1570 & 0,0182 \\
+   & XGBoost             & 0,0514 & 0,8857 & 0,1072 & 0,0770 & 0,1768 & 0,0206 \\
+   & SVM (Linear)        & 0,0407 & 0,8531 & 0,0441 & 0,0921 & 0,0290 & 0,0180 \\
+   & Regressão Logística & 0,0406 & 0,8503 & 0,0911 & 0,0639 & 0,1588 & 0,0251 \\
+   & Naive Bayes         & 0,0373 & 0,8419 & 0,0493 & 0,0256 & 0,6869 & 0,1319 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário E\\(com radiação, KNN)}} 
+   & XGBoost             & 0,0392 & 0,8962 & 0,0853 & 0,0502 & 0,2847 & 0,0214 \\
+   & Random Forest       & 0,0373 & 0,8944 & 0,0786 & 0,0469 & 0,2412 & 0,0195 \\
+   & SVM (Linear)        & 0,0349 & 0,8773 & 0,0847 & 0,0578 & 0,1582 & 0,0189 \\
+   & Regressão Logística & 0,0334 & 0,8742 & 0,0740 & 0,0431 & 0,2622 & 0,0247 \\
+   & Naive Bayes         & 0,0280 & 0,8664 & 0,0349 & 0,0179 & 0,7385 & 0,1259 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário F\\(base completa)}} 
+   & XGBoost             & 0,0518 & 0,8864 & 0,1080 & 0,0772 & 0,1795 & 0,0207 \\
+   & Random Forest       & 0,0514 & 0,8884 & 0,1035 & 0,0752 & 0,1658 & 0,0189 \\
+   & SVM (Linear)        & 0,0404 & 0,8530 & 0,0434 & 0,0897 & 0,0286 & 0,0180 \\
+   & Regressão Logística & 0,0403 & 0,8502 & 0,0906 & 0,0634 & 0,1586 & 0,0251 \\
+   & Naive Bayes         & 0,0373 & 0,8420 & 0,0495 & 0,0257 & 0,6837 & 0,1302 \\
+\end{longtable}
+\endgroup
+
+Em comparação com a etapa anterior, observa-se aumento generalizado de revocação e de \textit{F1-score}, indicando maior capacidade de recuperação da classe positiva. Os melhores resultados de $PR\text{-}AUC$ concentram-se novamente em \textit{XGBoost} e \textit{Random Forest}, sobretudo nos Cenários D e F. Os modelos lineares passam a detectar uma parcela maior de eventos, mas permanecem abaixo dos melhores \textit{ensembles}. Já o \textit{Naive Bayes} mantém revocação elevada, porém com baixa precisão e pior calibração.
+
+\subsection{Modelos com GridSearchCV e Balanceamento por Peso}
+
+Como alternativa ao balanceamento por sobreamostragem sintética, avaliou-se a combinação entre ajuste de hiperparâmetros via \textit{GridSearchCV} e ponderação diferencial das classes no processo de treinamento. Nessa abordagem, erros sobre a classe minoritária recebem maior penalização, deslocando a otimização em favor da detecção de focos de queimada.
+
+A Tabela \ref{tab:resultados_grid_pesos} apresenta os resultados obtidos com essa estratégia.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+
+\begin{longtable}{p{3.2cm} l c c c c c c}
+\caption{Desempenho dos modelos supervisionados com ajuste via GridSearchCV e balanceamento por peso}
+\label{tab:resultados_grid_pesos} \\
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endhead
+
+\bottomrule
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário A\\(sem radiação)}} 
+   & XGBoost             & 0,0434 & 0,9142 & 0,0348 & 0,0177 & 0,9184 & 0,1441 \\
+   & SVM (Linear)        & 0,0367 & 0,9010 & 0,0000 & 0,0000 & 0,0000 & 0,0043 \\
+   & Regressão Logística & 0,0367 & 0,9011 & 0,0333 & 0,0170 & 0,8917 & 0,1558 \\
+   & Random Forest       & 0,0356 & 0,9021 & 0,0437 & 0,0225 & 0,7399 & 0,0908 \\
+   & Naive Bayes         & 0,0317 & 0,8942 & 0,0629 & 0,0341 & 0,4035 & 0,0363 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário B\\(sem radiação, KNN)}} 
+   & XGBoost             & 0,0358 & 0,8726 & 0,0309 & 0,0157 & 0,8159 & 0,1406 \\
+   & Random Forest       & 0,0320 & 0,8602 & 0,0411 & 0,0212 & 0,6889 & 0,0845 \\
+   & Regressão Logística & 0,0314 & 0,8620 & 0,0277 & 0,0141 & 0,8245 & 0,1616 \\
+   & SVM (Linear)        & 0,0313 & 0,8615 & 0,0000 & 0,0000 & 0,0000 & 0,0040 \\
+   & Naive Bayes         & 0,0252 & 0,8506 & 0,0587 & 0,0321 & 0,3400 & 0,0321 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário C\\(sem radiação, remoção de linhas)}} 
+   & XGBoost             & 0,0430 & 0,9149 & 0,0349 & 0,0178 & 0,9229 & 0,1460 \\
+   & SVM (Linear)        & 0,0371 & 0,9008 & 0,0000 & 0,0000 & 0,0000 & 0,0043 \\
+   & Regressão Logística & 0,0371 & 0,9010 & 0,0335 & 0,0171 & 0,8911 & 0,1559 \\
+   & Random Forest       & 0,0355 & 0,9014 & 0,0437 & 0,0225 & 0,7390 & 0,0912 \\
+   & Naive Bayes         & 0,0320 & 0,8939 & 0,0628 & 0,0341 & 0,4046 & 0,0367 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário D\\(com radiação, remoção de linhas)}} 
+   & XGBoost             & 0,0527 & 0,8912 & 0,0557 & 0,0288 & 0,8344 & 0,1334 \\
+   & Regressão Logística & 0,0446 & 0,8596 & 0,0441 & 0,0227 & 0,8226 & 0,1666 \\
+   & Random Forest       & 0,0436 & 0,8646 & 0,0036 & 0,1008 & 0,0018 & 0,0076 \\
+   & SVM (Linear)        & 0,0413 & 0,8518 & 0,0000 & 0,0000 & 0,0000 & 0,0071 \\
+   & Naive Bayes         & 0,0365 & 0,8441 & 0,0696 & 0,0631 & 0,0778 & 0,0157 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário E\\(com radiação, KNN)}} 
+   & XGBoost             & 0,0413 & 0,8995 & 0,0378 & 0,0193 & 0,8075 & 0,1164 \\
+   & Regressão Logística & 0,0379 & 0,8837 & 0,0299 & 0,0152 & 0,8410 & 0,1483 \\
+   & Random Forest       & 0,0372 & 0,8880 & 0,0493 & 0,0256 & 0,6595 & 0,0690 \\
+   & SVM (Linear)        & 0,0344 & 0,8762 & 0,0000 & 0,0000 & 0,0000 & 0,0040 \\
+   & Naive Bayes         & 0,0261 & 0,8653 & 0,0641 & 0,0363 & 0,2708 & 0,0238 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.2cm}{\centering Cenário F\\(base completa)}} 
+   & XGBoost             & 0,0533 & 0,8914 & 0,0559 & 0,0289 & 0,8280 & 0,1313 \\
+   & Random Forest       & 0,0466 & 0,8802 & 0,0681 & 0,0360 & 0,6226 & 0,0811 \\
+   & Regressão Logística & 0,0443 & 0,8597 & 0,0441 & 0,0226 & 0,8231 & 0,1667 \\
+   & SVM (Linear)        & 0,0410 & 0,8518 & 0,0000 & 0,0000 & 0,0000 & 0,0071 \\
+   & Naive Bayes         & 0,0365 & 0,8442 & 0,0700 & 0,0638 & 0,0776 & 0,0156 \\
+\end{longtable}
+\endgroup
+
+De modo geral, o balanceamento por peso elevou substancialmente a revocação, sobretudo em \textit{XGBoost} e Regressão Logística. Em contrapartida, esse ganho veio acompanhado, em muitos casos, de queda de precisão e aumento do \textit{Brier score}, sinalizando maior incidência de falsos positivos e pior calibração probabilística. Também nesta configuração, os melhores valores de $PR\text{-}AUC$ permanecem concentrados nos cenários com radiação global, em especial D e F.
+
+\subsection{Melhores Resultados por Cenário nas Bases Originais}
+
+Após a análise das três estratégias avaliadas nesta etapa, torna-se possível consolidar, para cada cenário, as combinações de maior destaque. A Tabela \ref{tab:melhores_por_cenario_sem_feat} reúne os três melhores arranjos por base original, considerando prioritariamente o $PR\text{-}AUC$ e, de forma complementar, revocação, \textit{F1-score} e $ROC\text{-}AUC$.
+
+\begin{table}[ht]
+\centering
+\caption{Três melhores combinações de modelo e estratégia para cada cenário nas bases originais.}
+\label{tab:melhores_por_cenario_sem_feat}
+\small
+\begin{tabular}{llccccc}
+\toprule
+\textbf{Cenário} & \textbf{Modelo / Estratégia} & \textbf{PR-AUC} & \textbf{Recall} & \textbf{F1-Score} & \textbf{ROC-AUC} \\
+\midrule
+\multirow{3}{*}{Cenário A} 
+& XGBoost / GridSearchCV + Pesos   & 0,0434 & 0,9184 & 0,0348 & 0,9142 \\
+& Random Forest / GridSearchCV + SMOTE & 0,0404 & 0,2431 & 0,0862 & 0,9130 \\
+& XGBoost / GridSearchCV + SMOTE   & 0,0402 & 0,2870 & 0,0799 & 0,9103 \\
+\midrule
+\multirow{3}{*}{Cenário B} 
+& XGBoost / GridSearchCV + Pesos   & 0,0358 & 0,8159 & 0,0309 & 0,8726 \\
+& XGBoost / GridSearchCV + SMOTE   & 0,0344 & 0,2621 & 0,0763 & 0,8707 \\
+& Random Forest / GridSearchCV + SMOTE & 0,0324 & 0,1954 & 0,0798 & 0,8705 \\
+\midrule
+\multirow{3}{*}{Cenário C} 
+& XGBoost / GridSearchCV + Pesos   & 0,0430 & 0,9229 & 0,0349 & 0,9149 \\
+& XGBoost / GridSearchCV + SMOTE   & 0,0404 & 0,3007 & 0,0811 & 0,9105 \\
+& Random Forest / GridSearchCV + SMOTE & 0,0388 & 0,2460 & 0,0846 & 0,9104 \\
+\midrule
+\multirow{3}{*}{Cenário D} 
+& Random Forest / GridSearchCV + SMOTE & 0,0528 & 0,1570 & 0,1044 & 0,8894 \\
+& XGBoost / GridSearchCV + Pesos   & 0,0527 & 0,8344 & 0,0557 & 0,8912 \\
+& XGBoost / GridSearchCV + SMOTE   & 0,0514 & 0,1768 & 0,1072 & 0,8857 \\
+\midrule
+\multirow{3}{*}{Cenário E} 
+& XGBoost / GridSearchCV + Pesos   & 0,0413 & 0,8075 & 0,0378 & 0,8995 \\
+& XGBoost / GridSearchCV + SMOTE   & 0,0392 & 0,2847 & 0,0853 & 0,8962 \\
+& Random Forest / GridSearchCV + SMOTE & 0,0373 & 0,2412 & 0,0786 & 0,8944 \\
+\midrule
+\multirow{3}{*}{Cenário F} 
+& XGBoost / GridSearchCV + Pesos   & 0,0533 & 0,8280 & 0,0559 & 0,8914 \\
+& XGBoost / GridSearchCV + SMOTE   & 0,0518 & 0,1795 & 0,1080 & 0,8864 \\
+& Random Forest / GridSearchCV + SMOTE & 0,0514 & 0,1658 & 0,1035 & 0,8884 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A consolidação por cenário mostra que os maiores valores de $PR\text{-}AUC$ se concentram nos cenários com radiação global, ao passo que \textit{XGBoost} aparece de forma recorrente entre as melhores combinações. Também se observa a coexistência de dois perfis de solução: combinações com balanceamento por peso, mais orientadas à revocação, e combinações com \textit{SMOTE}, em geral mais equilibradas entre revocação e \textit{F1-score}.
+
+\subsection{Melhores Combinações Gerais nas Bases Originais}
+
+Para concluir a análise das bases sem engenharia de atributos, a Tabela \ref{tab:top3_geral_sem_feat} apresenta as três melhores combinações globais entre cenário, modelo e estratégia.
+
+\begin{table}[ht]
+\centering
+\caption{Três melhores combinações globais entre cenário, modelo e estratégia nas bases originais.}
+\label{tab:top3_geral_sem_feat}
+\small
+\begin{tabular}{llcccccc}
+\toprule
+\textbf{Cenário / Modelo / Estratégia} & \textbf{PR-AUC} & \textbf{Recall} & \textbf{F1-Score} & \textbf{ROC-AUC} \\
+\midrule
+Cenário F / XGBoost / GridSearchCV + Pesos & 0,0533 & 0,8280 & 0,0559 & 0,8914 \\
+Cenário D / Random Forest / GridSearchCV + SMOTE & 0,0528 & 0,1570 & 0,1044 & 0,8894 \\
+Cenário D / XGBoost / GridSearchCV + Pesos & 0,0527 & 0,8344 & 0,0557 & 0,8912 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A síntese geral confirma a predominância dos Cenários D e F e reforça o papel central dos modelos baseados em árvores, particularmente \textit{XGBoost} e \textit{Random Forest}. Em termos interpretativos, esta etapa sugere que a presença da radiação global e o uso de estratégias explícitas de tratamento do desbalanceamento são os fatores mais associados ao melhor desempenho nas bases originais.
+
+\section{Desempenho dos Modelos nas Bases com Variáveis Derivadas}
+
+Nesta seção, analisam-se os resultados obtidos nas bases enriquecidas com variáveis derivadas. Mantém-se a mesma organização adotada para as bases originais, a fim de preservar a comparabilidade entre as etapas do estudo e verificar em que medida a engenharia de atributos altera os padrões observados anteriormente.
+
+\subsection{Modelos em Configuração Base}
+
+Como ponto de partida, os modelos foram avaliados em sua configuração padrão, sem técnicas adicionais de balanceamento ou ajuste sistemático de hiperparâmetros.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+
+\begin{longtable}{p{3.4cm} l c c c c c c}
+\caption{Desempenho dos modelos supervisionados na configuração base para os cenários com variáveis derivadas.}
+\label{tab:resultados_base_calculadas_sem_tratamento} \\
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endhead
+
+\bottomrule
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário A\\(sem radiação, variáveis derivadas)}} 
+   & XGBoost             & 0,0455 & 0,9046 & 0,0000 & 0,0000 & 0,0000 & 0,0059 \\
+   & SVM (Linear)        & 0,0391 & 0,8923 & 0,0039 & 0,1212 & 0,0020 & 0,0060 \\
+   & Regressão Logística & 0,0381 & 0,8910 & 0,0000 & 0,0000 & 0,0000 & 0,0059 \\
+   & Random Forest       & 0,0353 & 0,8569 & 0,0000 & 0,0000 & 0,0000 & 0,0061 \\
+   & Naive Bayes         & 0,0346 & 0,8857 & 0,0602 & 0,0318 & 0,5649 & 0,0935 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário B\\(sem radiação, KNN, variáveis derivadas)}} 
+   & XGBoost             & 0,0544 & 0,8761 & 0,0005 & 0,1739 & 0,0002 & 0,0078 \\
+   & Regressão Logística & 0,0487 & 0,8704 & 0,0000 & 0,0000 & 0,0000 & 0,0078 \\
+   & SVM (Linear)        & 0,0485 & 0,8719 & 0,0029 & 0,1727 & 0,0015 & 0,0079 \\
+   & Random Forest       & 0,0398 & 0,8230 & 0,0000 & 0,0000 & 0,0000 & 0,0080 \\
+   & Naive Bayes         & 0,0395 & 0,8613 & 0,0757 & 0,0408 & 0,5280 & 0,0911 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário C\\(sem radiação, remoção de linhas, variáveis derivadas)}} 
+   & XGBoost             & 0,0456 & 0,9056 & 0,0000 & 0,0000 & 0,0000 & 0,0058 \\
+   & SVM (Linear)        & 0,0392 & 0,8924 & 0,0041 & 0,1633 & 0,0021 & 0,0058 \\
+   & Regressão Logística & 0,0375 & 0,8911 & 0,0000 & 0,0000 & 0,0000 & 0,0058 \\
+   & Random Forest       & 0,0337 & 0,8567 & 0,0000 & 0,0000 & 0,0000 & 0,0060 \\
+   & Naive Bayes         & 0,0337 & 0,8855 & 0,0587 & 0,0309 & 0,5776 & 0,0953 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário D\\(com radiação, remoção de linhas, variáveis derivadas)}} 
+   & XGBoost             & 0,1040 & 0,8911 & 0,0003 & 0,3333 & 0,0001 & 0,0134 \\
+   & Regressão Logística & 0,0942 & 0,8536 & 0,0000 & 0,0000 & 0,0000 & 0,0136 \\
+   & Random Forest       & 0,0928 & 0,8550 & 0,0003 & 0,0769 & 0,0001 & 0,0135 \\
+   & SVM (Linear)        & 0,0926 & 0,8556 & 0,0058 & 0,3717 & 0,0029 & 0,0137 \\
+   & Naive Bayes         & 0,0816 & 0,8493 & 0,1130 & 0,0637 & 0,4966 & 0,0994 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário E\\(com radiação, KNN, variáveis derivadas)}} 
+   & XGBoost             & 0,0827 & 0,9015 & 0,0042 & 0,1932 & 0,0021 & 0,0077 \\
+   & Random Forest       & 0,0643 & 0,8575 & 0,0000 & 0,0000 & 0,0000 & 0,0078 \\
+   & Regressão Logística & 0,0499 & 0,8705 & 0,0000 & 0,0000 & 0,0000 & 0,0078 \\
+   & SVM (Linear)        & 0,0484 & 0,8690 & 0,0025 & 0,1681 & 0,0012 & 0,0079 \\
+   & Naive Bayes         & 0,0390 & 0,8608 & 0,0747 & 0,0405 & 0,4832 & 0,0851 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário F\\(base completa, variáveis derivadas)}} 
+   & XGBoost             & 0,1064 & 0,8907 & 0,0016 & 0,2500 & 0,0008 & 0,0136 \\
+   & Regressão Logística & 0,0947 & 0,8533 & 0,0000 & 0,0000 & 0,0000 & 0,0138 \\
+   & SVM (Linear)        & 0,0930 & 0,8554 & 0,0057 & 0,3294 & 0,0029 & 0,0139 \\
+   & Random Forest       & 0,0861 & 0,8532 & 0,0016 & 0,4138 & 0,0008 & 0,0138 \\
+   & Naive Bayes         & 0,0832 & 0,8491 & 0,1152 & 0,0652 & 0,4931 & 0,0983 \\
+\end{longtable}
+\endgroup
+
+De modo geral, a Tabela \ref{tab:resultados_base_calculadas_sem_tratamento} mostra que a incorporação de variáveis derivadas elevou os valores de $PR\text{-}AUC$ em vários cenários, com destaque para D e F. Ainda assim, a maior parte dos modelos continua apresentando revocação nula ou muito baixa, o que indica que o enriquecimento do espaço de atributos, isoladamente, não elimina os efeitos do desbalanceamento. O \textit{Naive Bayes} permanece como o modelo mais sensível à classe positiva nessa configuração, enquanto o \textit{XGBoost} preserva os maiores valores de $PR\text{-}AUC$ nos cenários de melhor desempenho.
+
+\subsection{Modelos com GridSearchCV e SMOTE}
+
+Na sequência, avaliou-se a combinação entre ajuste de hiperparâmetros via \textit{GridSearchCV} e sobreamostragem sintética por \textit{SMOTE}, agora aplicada às bases com variáveis derivadas. O objetivo é verificar se o enriquecimento dos atributos amplia os ganhos obtidos com o reequilíbrio amostral.
+
+A Tabela \ref{tab:resultados_grid_smote_calculadas} apresenta os resultados para todos os cenários.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+
+\begin{longtable}{p{3.4cm} l c c c c c c}
+\caption{Desempenho dos modelos supervisionados com ajuste via GridSearchCV e balanceamento por SMOTE}
+\label{tab:resultados_grid_smote_calculadas} \\
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endhead
+
+\bottomrule
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário A\\(sem radiação, variáveis derivadas)}} 
+   & XGBoost             & 0,0443 & 0,9003 & 0,0883 & 0,0525 & 0,2791 & 0,0291 \\
+   & Random Forest       & 0,0439 & 0,8968 & 0,0910 & 0,0687 & 0,1348 & 0,0168 \\
+   & SVM (Linear)        & 0,0390 & 0,8927 & 0,0794 & 0,0466 & 0,2664 & 0,0302 \\
+   & Regressão Logística & 0,0375 & 0,8906 & 0,0756 & 0,0430 & 0,3105 & 0,0337 \\
+   & Naive Bayes         & 0,0345 & 0,8858 & 0,0515 & 0,0266 & 0,7657 & 0,1481 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário B\\(sem radiação, KNN, variáveis derivadas)}} 
+   & XGBoost             & 0,0544 & 0,8762 & 0,1088 & 0,0690 & 0,2564 & 0,0282 \\
+   & SVM (Linear)        & 0,0487 & 0,8729 & 0,1007 & 0,0655 & 0,2180 & 0,0276 \\
+   & Regressão Logística & 0,0478 & 0,8700 & 0,0975 & 0,0597 & 0,2656 & 0,0311 \\
+   & Random Forest       & 0,0433 & 0,8601 & 0,0849 & 0,0672 & 0,1151 & 0,0206 \\
+   & Naive Bayes         & 0,0395 & 0,8613 & 0,0653 & 0,0342 & 0,7176 & 0,1445 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário C\\(sem radiação, remoção de linhas, variáveis derivadas)}} 
+   & XGBoost             & 0,0454 & 0,9042 & 0,0908 & 0,0541 & 0,2806 & 0,0273 \\
+   & Random Forest       & 0,0431 & 0,8971 & 0,0916 & 0,0665 & 0,1471 & 0,0169 \\
+   & SVM (Linear)        & 0,0388 & 0,8929 & 0,0776 & 0,0454 & 0,2652 & 0,0300 \\
+   & Regressão Logística & 0,0369 & 0,8908 & 0,0739 & 0,0420 & 0,3096 & 0,0334 \\
+   & Naive Bayes         & 0,0337 & 0,8855 & 0,0497 & 0,0257 & 0,7746 & 0,1513 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário D\\(com radiação, remoção de linhas, variáveis derivadas)}} 
+   & XGBoost             & 0,1054 & 0,8911 & 0,1779 & 0,1425 & 0,2365 & 0,0260 \\
+   & Random Forest       & 0,1031 & 0,8902 & 0,1593 & 0,1526 & 0,1666 & 0,0232 \\
+   & SVM (Linear)        & 0,0893 & 0,8537 & 0,1304 & 0,1699 & 0,1058 & 0,0231 \\
+   & Regressão Logística & 0,0838 & 0,8509 & 0,1472 & 0,1358 & 0,1608 & 0,0294 \\
+   & Naive Bayes         & 0,0818 & 0,8491 & 0,0926 & 0,0497 & 0,6855 & 0,1632 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário E\\(com radiação, KNN, variáveis derivadas)}} 
+   & XGBoost             & 0,0831 & 0,9009 & 0,1437 & 0,0903 & 0,3516 & 0,0261 \\
+   & Random Forest       & 0,0695 & 0,8971 & 0,1463 & 0,1136 & 0,2056 & 0,0175 \\
+   & SVM (Linear)        & 0,0487 & 0,8698 & 0,0969 & 0,0728 & 0,1448 & 0,0233 \\
+   & Regressão Logística & 0,0482 & 0,8692 & 0,0994 & 0,0625 & 0,2436 & 0,0294 \\
+   & Naive Bayes         & 0,0392 & 0,8608 & 0,0650 & 0,0341 & 0,7022 & 0,1411 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário F\\(base completa, variáveis derivadas)}} 
+   & XGBoost             & 0,1057 & 0,8908 & 0,1782 & 0,1427 & 0,2370 & 0,0265 \\
+   & SVM (Linear)        & 0,0893 & 0,8533 & 0,1301 & 0,1689 & 0,1058 & 0,0234 \\
+   & Random Forest       & 0,0884 & 0,8804 & 0,1311 & 0,1352 & 0,1273 & 0,0228 \\
+   & Regressão Logística & 0,0836 & 0,8505 & 0,1470 & 0,1358 & 0,1603 & 0,0298 \\
+   & Naive Bayes         & 0,0835 & 0,8490 & 0,0943 & 0,0507 & 0,6803 & 0,1616 \\
+\end{longtable}
+\endgroup
+
+Em relação à configuração base, observa-se aumento expressivo de revocação e \textit{F1-score}, sem perda relevante da capacidade de ranqueamento. Os melhores resultados concentram-se novamente em \textit{XGBoost} e \textit{Random Forest}, mas agora em patamar absoluto superior ao das bases originais, sobretudo nos Cenários D e F. Também se nota que o Cenário E passa a se tornar mais competitivo após a incorporação das variáveis derivadas.
+
+\subsection{Modelos com GridSearchCV e Balanceamento por Peso}
+
+Como alternativa ao \textit{SMOTE}, avaliou-se a combinação entre \textit{GridSearchCV} e balanceamento por peso das classes nas bases com variáveis derivadas. Nessa abordagem, a maior penalização dos erros sobre a classe positiva busca ampliar a sensibilidade dos classificadores sem alterar a distribuição amostral do treinamento.
+
+A Tabela \ref{tab:resultados_grid_pesos_calculadas} reúne os resultados correspondentes.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+
+\begin{longtable}{p{3.4cm} l c c c c c c}
+\caption{Desempenho dos modelos supervisionados com ajuste via GridSearchCV e balanceamento por peso.}
+\label{tab:resultados_grid_pesos_calculadas} \\
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{Cenário} & \textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.} & \textbf{Brier} \\
+\midrule
+\endhead
+
+\bottomrule
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário A\\(sem radiação, variáveis derivadas)}} 
+   & Random Forest       & 0,0444 & 0,8976 & 0,0611 & 0,0320 & 0,6840 & 0,0822 \\
+   & XGBoost             & 0,0444 & 0,9006 & 0,0447 & 0,0229 & 0,9120 & 0,1561 \\
+   & Regressão Logística & 0,0364 & 0,8904 & 0,0430 & 0,0220 & 0,8999 & 0,1701 \\
+   & SVM (Linear)        & 0,0356 & 0,8902 & 0,0000 & 0,0000 & 0,0000 & 0,0060 \\
+   & Naive Bayes         & 0,0346 & 0,8857 & 0,0602 & 0,0318 & 0,5649 & 0,0935 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário B\\(sem radiação, KNN, variáveis derivadas)}} 
+   & Random Forest       & 0,0557 & 0,8699 & 0,0828 & 0,0445 & 0,6013 & 0,0711 \\
+   & XGBoost             & 0,0550 & 0,8756 & 0,0578 & 0,0299 & 0,8318 & 0,1456 \\
+   & Regressão Logística & 0,0458 & 0,8686 & 0,0572 & 0,0296 & 0,8332 & 0,1584 \\
+   & SVM (Linear)        & 0,0449 & 0,8696 & 0,0000 & 0,0000 & 0,0000 & 0,0078 \\
+   & Naive Bayes         & 0,0395 & 0,8613 & 0,0757 & 0,0408 & 0,5280 & 0,0911 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário C\\(sem radiação, remoção de linhas, variáveis derivadas)}} 
+   & XGBoost             & 0,0422 & 0,9004 & 0,0438 & 0,0224 & 0,9111 & 0,1544 \\
+   & Random Forest       & 0,0413 & 0,8909 & 0,0623 & 0,0329 & 0,5993 & 0,0679 \\
+   & Regressão Logística & 0,0358 & 0,8907 & 0,0422 & 0,0216 & 0,8975 & 0,1674 \\
+   & SVM (Linear)        & 0,0350 & 0,8904 & 0,0000 & 0,0000 & 0,0000 & 0,0058 \\
+   & Naive Bayes         & 0,0337 & 0,8855 & 0,0587 & 0,0309 & 0,5776 & 0,0953 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário D\\(com radiação, remoção de linhas, variáveis derivadas)}} 
+   & XGBoost             & 0,1088 & 0,8925 & 0,1041 & 0,0555 & 0,8395 & 0,1343 \\
+   & Random Forest       & 0,0958 & 0,8855 & 0,1331 & 0,0747 & 0,6112 & 0,0751 \\
+   & Regressão Logística & 0,0857 & 0,8536 & 0,0793 & 0,0417 & 0,8205 & 0,1758 \\
+   & SVM (Linear)        & 0,0843 & 0,8538 & 0,0000 & 0,0000 & 0,0000 & 0,0137 \\
+   & Naive Bayes         & 0,0816 & 0,8493 & 0,1130 & 0,0637 & 0,4966 & 0,0994 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário E\\(com radiação, KNN, variáveis derivadas)}} 
+   & XGBoost             & 0,0921 & 0,9026 & 0,0734 & 0,0384 & 0,8285 & 0,1150 \\
+   & Random Forest       & 0,0806 & 0,8942 & 0,1130 & 0,0629 & 0,5517 & 0,0485 \\
+   & Regressão Logística & 0,0471 & 0,8690 & 0,0569 & 0,0295 & 0,8283 & 0,1531 \\
+   & SVM (Linear)        & 0,0470 & 0,8698 & 0,0000 & 0,0000 & 0,0000 & 0,0078 \\
+   & Naive Bayes         & 0,0390 & 0,8608 & 0,0747 & 0,0405 & 0,4832 & 0,0851 \\
+\midrule
+
+\multirow{5}{*}{\parbox{3.4cm}{\centering Cenário F\\(base completa, variáveis derivadas)}} 
+   & XGBoost             & 0,1105 & 0,8925 & 0,1054 & 0,0562 & 0,8422 & 0,1353 \\
+   & Random Forest       & 0,0872 & 0,8772 & 0,1280 & 0,0720 & 0,5753 & 0,0751 \\
+   & Regressão Logística & 0,0862 & 0,8531 & 0,0804 & 0,0423 & 0,8223 & 0,1768 \\
+   & SVM (Linear)        & 0,0841 & 0,8532 & 0,0000 & 0,0000 & 0,0000 & 0,0140 \\
+   & Naive Bayes         & 0,0832 & 0,8491 & 0,1152 & 0,0652 & 0,4931 & 0,0983 \\
+\end{longtable}
+\endgroup
+
+O padrão observado é semelhante ao verificado nas bases originais, porém em um nível mais alto de $PR\text{-}AUC$. O \textit{XGBoost} volta a concentrar os melhores resultados, especialmente nos Cenários D e F, com revocação elevada e forte capacidade de ranqueamento. O \textit{Random Forest} também apresenta desempenho competitivo, sobretudo em \textit{F1-score} e \textit{Brier score}. Já a Regressão Logística exibe alta revocação, mas com precisão reduzida, enquanto o SVM permanece pouco adaptativo nessa configuração.
+
+\subsection{Melhores Resultados por Cenário nas Bases com Variáveis Derivadas}
+\label{subsec:melhores_resultados_por_cenario_com_feat}
+
+Com a incorporação das variáveis derivadas, torna-se possível consolidar, para cada cenário, as combinações de modelo e estratégia de maior destaque. A Tabela \ref{tab:melhores_por_cenario_com_feat} reúne os três melhores arranjos por base, considerando o $PR\text{-}AUC$ como critério principal e utilizando revocação, \textit{F1-score} e $ROC\text{-}AUC$ como medidas complementares de interpretação.
+
+\begin{table}[ht]
+\centering
+\caption{Três melhores combinações de modelo e estratégia para cada cenário nas bases com variáveis derivadas.}
+\label{tab:melhores_por_cenario_com_feat}
+\small
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Cenário} & \textbf{Modelo / Estratégia} & \textbf{PR-AUC} & \textbf{Recall} & \textbf{F1-Score} & \textbf{ROC-AUC} \\
+\midrule
+\multirow{3}{*}{Cenário A}
+& Random Forest / GridSearchCV + Pesos & 0,0444 & 0,6840 & 0,0611 & 0,8976 \\
+& XGBoost / GridSearchCV + Pesos & 0,0444 & 0,9120 & 0,0447 & 0,9006 \\
+& XGBoost / GridSearchCV + SMOTE & 0,0443 & 0,2791 & 0,0883 & 0,9003 \\
+\midrule
+\multirow{3}{*}{Cenário B}
+& Random Forest / GridSearchCV + Pesos & 0,0557 & 0,6013 & 0,0828 & 0,8699 \\
+& XGBoost / GridSearchCV + Pesos & 0,0550 & 0,8318 & 0,0578 & 0,8756 \\
+& XGBoost / GridSearchCV + SMOTE & 0,0544 & 0,2564 & 0,1088 & 0,8762 \\
+\midrule
+\multirow{3}{*}{Cenário C}
+& XGBoost / GridSearchCV + SMOTE & 0,0454 & 0,2806 & 0,0908 & 0,9042 \\
+& XGBoost / GridSearchCV + Pesos & 0,0422 & 0,9111 & 0,0438 & 0,9004 \\
+& Random Forest / GridSearchCV + SMOTE & 0,0431 & 0,1471 & 0,0916 & 0,8971 \\
+\midrule
+\multirow{3}{*}{Cenário D}
+& XGBoost / GridSearchCV + Pesos & 0,1088 & 0,8395 & 0,1041 & 0,8925 \\
+& XGBoost / GridSearchCV + SMOTE & 0,1054 & 0,2365 & 0,1779 & 0,8911 \\
+& Random Forest / GridSearchCV + SMOTE & 0,1031 & 0,1666 & 0,1593 & 0,8902 \\
+\midrule
+\multirow{3}{*}{Cenário E}
+& XGBoost / GridSearchCV + Pesos & 0,0921 & 0,8285 & 0,0734 & 0,9026 \\
+& XGBoost / GridSearchCV + SMOTE & 0,0831 & 0,3516 & 0,1437 & 0,9009 \\
+& Random Forest / GridSearchCV + Pesos & 0,0806 & 0,5517 & 0,1130 & 0,8942 \\
+\midrule
+\multirow{3}{*}{Cenário F}
+& XGBoost / GridSearchCV + Pesos & 0,1105 & 0,8422 & 0,1054 & 0,8925 \\
+& XGBoost / GridSearchCV + SMOTE & 0,1057 & 0,2370 & 0,1782 & 0,8908 \\
+& SVM (Linear) / GridSearchCV + SMOTE & 0,0893 & 0,1058 & 0,1301 & 0,8533 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A leitura da Tabela \ref{tab:melhores_por_cenario_com_feat} mostra que os melhores resultados passam a depender quase integralmente de estratégias com tratamento explícito do desbalanceamento. Além disso, \textit{XGBoost} e \textit{Random Forest} continuam predominando entre as combinações selecionadas, com vantagem mais clara do \textit{XGBoost} nos cenários com radiação global. Também se acentua a distinção entre dois perfis: soluções com balanceamento por peso, mais orientadas à revocação, e soluções com \textit{SMOTE}, em geral mais equilibradas entre revocação e \textit{F1-score}.
+
+\subsection{Melhores Combinações Gerais nas Bases com Variáveis Derivadas}
+\label{subsec:top3_geral_com_feat}
+
+Para concluir a análise das bases enriquecidas, a Tabela \ref{tab:top3_geral_com_feat} apresenta as três melhores combinações globais entre cenário, modelo e estratégia.
+
+\begin{table}[ht]
+\centering
+\caption{Três melhores combinações entre cenário, modelo e estratégia nas bases com variáveis derivadas.}
+\label{tab:top3_geral_com_feat}
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Cenário / Modelo / Estratégia} & \textbf{PR-AUC} & \textbf{Recall} & \textbf{F1-Score} & \textbf{ROC-AUC} \\
+\midrule
+Cenário F / XGBoost / GridSearchCV + Pesos & 0,1105 & 0,8422 & 0,1054 & 0,8925 \\
+Cenário D / XGBoost / GridSearchCV + Pesos & 0,1088 & 0,8395 & 0,1041 & 0,8925 \\
+Cenário F / XGBoost / GridSearchCV + SMOTE & 0,1057 & 0,2370 & 0,1782 & 0,8908 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A síntese geral torna mais nítido o padrão já observado nas subseções anteriores. As melhores combinações concentram-se exclusivamente nos Cenários D e F e são todas obtidas com \textit{XGBoost}. Em termos substantivos, isso indica que a engenharia de atributos fortaleceu ainda mais a competitividade desse algoritmo e ampliou o ganho associado aos cenários que preservam a variável de radiação global.
+
+\subsection{Síntese Comparativa entre Bases Originais e Bases com Variáveis Derivadas}
+\label{subsec:sintese_comparativa_originais_calculadas}
+
+Com base nas duas etapas de avaliação, a Tabela \ref{tab:comparativo_top6_geral} reúne as seis combinações de maior destaque do estudo, correspondentes aos três melhores resultados das bases originais e aos três melhores resultados das bases com variáveis derivadas.
+
+\begin{table}[ht]
+\centering
+\caption{Três melhores combinações de cada grupo, com e sem variáveis derivadas.}
+\label{tab:comparativo_top6_geral}
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Cenário / Modelo / Estratégia} & \textbf{PR-AUC} & \textbf{Recall} & \textbf{F1-Score} & \textbf{ROC-AUC} \\
+\midrule
+Cenário F Derivado / XGBoost / GridSearchCV + Pesos & 0,1105 & 0,8422 & 0,1054 & 0,8925 \\
+Cenário D Derivado / XGBoost / GridSearchCV + Pesos & 0,1088 & 0,8395 & 0,1041 & 0,8925 \\
+Cenário F Derivado / XGBoost / GridSearchCV + SMOTE & 0,1057 & 0,2370 & 0,1782 & 0,8908 \\
+Cenário F / XGBoost / GridSearchCV + Pesos & 0,0533 & 0,8280 & 0,0559 & 0,8914 \\
+Cenário D / Random Forest / GridSearchCV + SMOTE & 0,0528 & 0,1570 & 0,1044 & 0,8894 \\
+Cenário D / XGBoost / GridSearchCV + Pesos & 0,0527 & 0,8344 & 0,0557 & 0,8912 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A comparação direta entre os dois grupos mostra que a incorporação de variáveis derivadas elevou de forma expressiva o desempenho dos melhores modelos em termos de $PR\text{-}AUC$. Enquanto, nas bases originais, o melhor resultado foi 0,0533, nas bases com variáveis derivadas o melhor valor alcançou 0,1105, indicando ganho substancial na capacidade de separação no espaço precisão-revocação.
+
+No conjunto da análise, quatro regularidades se destacam. A primeira é a predominância do \textit{XGBoost}, que passa a liderar de forma inequívoca os melhores resultados globais após a engenharia de atributos. A segunda é a relevância do balanceamento por peso, responsável pelas combinações de maior revocação e pelos maiores valores de $PR\text{-}AUC$ entre os melhores modelos. A terceira é a importância persistente da variável de radiação global, já que os melhores resultados continuam concentrados nos Cenários D e F. A quarta é o papel metodológico do KNN: embora os cenários com imputação não liderem as bases originais, essa etapa foi estrutural para a construção das bases derivadas e, portanto, participou indiretamente da obtenção dos melhores resultados finais.
+
+Além da comparação tabular, a Figura \ref{fig:legendas_evolucao_estagios} apresenta a codificação visual adotada nas visualizações de evolução por estágio metodológico. Nessas figuras, as cores representam os grupos experimentais, os marcadores identificam os modelos e as letras no interior dos pontos indicam o cenário de base correspondente.
+
+\begin{figure}[!htbp]
+    \centering
+    \caption{Legendas utilizadas nas visualizações de evolução por estágio metodológico.}
+    \label{fig:legendas_evolucao_estagios}
+
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{imagens/legend_groups.png}
+        \caption{Grupos experimentais.}
+        \label{fig:legend_groups}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.34\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{imagens/legend_models.png}
+        \caption{Marcadores por modelo.}
+        \label{fig:legend_models}
+    \end{subfigure}
+
+    {\footnotesize \textbf{Fonte:} elaborado pelo autor.}
+\end{figure}
+
+Com base nessa legenda, a Figura \ref{fig:evolucao_auc_pr_estagios} sintetiza a evolução dos três melhores resultados em cada estágio metodológico para as métricas de discriminação, isto é, $ROC\text{-}AUC$ e $PR\text{-}AUC$.
+
+\begin{figure}[!htbp]
+    \centering
+    \caption{Evolução dos três melhores resultados por estágio metodológico nas métricas de discriminação.}
+    \label{fig:evolucao_auc_pr_estagios}
+
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{imagens/roc_auc_stage_progression.png}
+        \caption{$ROC\text{-}AUC$.}
+        \label{fig:roc_auc_stage_progression}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{imagens/pr_auc_stage_progression.png}
+        \caption{$PR\text{-}AUC$.}
+        \label{fig:pr_auc_stage_progression}
+    \end{subfigure}
+
+    {\footnotesize \textbf{Fonte:} elaborado pelo autor.}
+\end{figure}
+
+Essas visualizações reforçam um padrão já observado nas tabelas. De um lado, o $PR\text{-}AUC$ apresenta crescimento expressivo da Etapa 1 para a Etapa 2 e novo avanço na Etapa 3, indicando ganho consistente na capacidade de separação no espaço precisão-revocação à medida que o pipeline incorpora modelos supervisionados e, depois, variáveis derivadas. De outro, o $ROC\text{-}AUC$ já atinge valores elevados entre os melhores arranjos da Etapa 2 e permanece em patamar semelhante na Etapa 3, com variações relativamente pequenas. Isso sugere que a principal contribuição da engenharia de atributos não foi ampliar drasticamente a separabilidade global, mas refinar o desempenho nas métricas mais sensíveis à qualidade das predições positivas.
+
+Seguindo a mesma codificação visual, a Figura \ref{fig:evolucao_metricas_limiar_estagios} apresenta a evolução das métricas dependentes do limiar de decisão, isto é, precisão, revocação e \textit{F1-score}.
+
+\begin{figure}[!htbp]
+    \centering
+    \caption{Evolução dos três melhores resultados por estágio metodológico nas métricas dependentes do limiar de decisão.}
+    \label{fig:evolucao_metricas_limiar_estagios}
+
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{imagens/precision_stage_progression.png}
+        \caption{Precisão.}
+        \label{fig:precision_stage_progression}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{imagens/recall_stage_progression.png}
+        \caption{Revocação.}
+        \label{fig:recall_stage_progression}
+    \end{subfigure}
+
+    \vspace{0.6cm}
+
+    \begin{subfigure}[b]{0.62\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{imagens/f1_stage_progression.png}
+        \caption{\textit{F1-score}.}
+        \label{fig:f1_stage_progression}
+    \end{subfigure}
+
+\end{figure}
+
+Nessas métricas, o avanço também se torna claro. A precisão e o \textit{F1-score} aumentam de forma consistente ao longo dos estágios, o que indica melhora na qualidade das predições positivas e no equilíbrio entre precisão e revocação. Já a revocação, embora apresente salto acentuado em relação aos \textit{Dummies}, mantém-se em nível semelhante entre as Etapas 2 e 3 para os melhores arranjos. Em conjunto, essas figuras mostram que a passagem para as bases calculadas trouxe ganhos mais evidentes nas métricas associadas ao compromisso entre acerto positivo e estabilidade da decisão do que em sensibilidade bruta, que já se encontrava elevada entre os melhores modelos da etapa anterior.
+
+A leitura agregada das métricas é complementada, por fim, pelas matrizes de confusão da Figura \ref{fig:matrizes_confusao_top3_calculadas}, referentes aos três melhores modelos obtidos nas bases com variáveis derivadas.
+
+\begin{figure}[!htbp]
+    \centering
+    \caption{Matrizes de confusão dos três melhores modelos obtidos nas bases com variáveis derivadas: (a) XGBoost com \textit{GridSearchCV} e balanceamento por peso no Cenário F; (b) XGBoost com \textit{GridSearchCV} e balanceamento por peso no Cenário D; e (c) XGBoost com \textit{GridSearchCV} e \textit{SMOTE} no Cenário F.}
+    \label{fig:matrizes_confusao_top3_calculadas}
+
+    \begin{subfigure}[b]{0.46\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{imagens/cm_cenario_f_xgboost_gridsearchcv_balanceamento_por_peso.png}
+        \caption{}
+        \label{fig:cm_xgb_pesos_f}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.46\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{imagens/cm_cenario_d_xgboost_gridsearchcv_balanceamento_por_peso.png}
+        \caption{}
+        \label{fig:cm_xgb_pesos_d}
+    \end{subfigure}
+
+    \vspace{0.6cm}
+
+    \begin{subfigure}[b]{0.46\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{imagens/cm_cenario_f_xgboost_gridsearchcv_smote.png}
+        \caption{}
+        \label{fig:cm_xgb_smote_f}
+    \end{subfigure}
+
+    {\footnotesize \textbf{Fonte:} elaborado pelo autor.}
+\end{figure}
+
+As matrizes tornam mais concreta a diferença entre os perfis das estratégias de balanceamento. Nos dois casos de \textit{XGBoost} com balanceamento por peso, correspondentes aos Cenários F e D, observa-se maior número de verdadeiros positivos, coerente com os altos valores de revocação anteriormente discutidos, mas também aumento expressivo dos falsos positivos. Já o \textit{XGBoost} com \textit{SMOTE} no Cenário F apresenta perfil relativamente mais conservador, com menor número de verdadeiros positivos e maior presença de falsos negativos, porém com redução dos falsos positivos. Esse contraste confirma a leitura já extraída das tabelas e dos gráficos de evolução: o balanceamento por peso favorece soluções mais agressivas na recuperação da classe minoritária, enquanto o \textit{SMOTE} tende a produzir um compromisso mais equilibrado entre precisão e revocação, refletido também no \textit{F1-score}.
+
+Em síntese, os resultados indicam que o melhor desempenho do estudo foi obtido quando se combinaram três elementos: presença da variável de radiação global, engenharia de atributos e tratamento explícito do desbalanceamento, sobretudo por meio de balanceamento por peso. Nesse arranjo, o \textit{XGBoost} consolidou-se como o modelo mais promissor para a tarefa de predição de focos de incêndio no Cerrado brasileiro.

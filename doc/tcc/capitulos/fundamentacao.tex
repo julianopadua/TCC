@@ -1,0 +1,279 @@
+% !TEX root = ../main.tex
+
+\chapter{Fundamentação teórica}
+\label{cap:fundamentacao}
+
+\section{Inteligência Artificial e o problema proposto}
+\label{sec:ia-e-ml}
+
+De modo amplo, a Inteligência Artificial (IA) designa o campo científico e tecnológico que investiga como construir sistemas computacionais capazes de realizar tarefas associadas à inteligência, como raciocinar, aprender, resolver problemas e tomar decisões. Nessa perspectiva, a IA não se limita à imitação direta da cognição humana, mas envolve o desenvolvimento de métodos e artefatos capazes de produzir comportamento inteligente por meios computacionais \cite{mccarthy2007what,russell2021artificial}.
+
+Entre os principais paradigmas desse campo, destaca-se o Aprendizado de Máquina (\textit{Machine Learning}, ML), que desloca o foco de regras fixas para mecanismos de inferência a partir de dados. Em vez de especificar manualmente todas as relações entre entradas e saídas, busca-se ajustar modelos que aprendam padrões em exemplos históricos e aprimorem seu desempenho com a experiência \cite{mitchell1997machine}. Essa lógica é especialmente relevante em problemas como a previsão de focos de incêndio, nos quais a interação entre variáveis climáticas e contextuais é complexa, heterogênea e dificilmente capturada por formulações analíticas fechadas \cite{andrianarivony2024review}.
+
+A previsão de focos de incêndio no Cerrado a partir de variáveis climáticas se encaixa diretamente nesse enquadramento. Trata-se de um sistema multivariado, com relações não lineares e dependências espaço-temporais, para o qual existem séries históricas abundantes, mas não um conjunto de equações fechado que, sozinho, capte todas as interações relevantes. Assim, a abordagem orientada a dados é adequada: aprende-se, a partir de observações passadas, uma função que mapeia condições meteorológicas e contextuais para risco de ocorrência.
+
+Além disso, há evidência empírica de que o fogo no Cerrado não é aleatório. Sua distribuição apresenta sazonalidade marcada, com concentração na estação seca, dependência do tipo de cobertura e associação com vetores de desmatamento, indicando padrões reprodutíveis que podem ser aprendidos por modelos \cite{nascimento2011analise}.
+
+Quando esse problema é formulado em resolução espaço-temporal fina, entretanto, surge uma característica metodológica adicional de grande relevância: a ocorrência efetiva de fogo tende a constituir um evento relativamente raro em comparação ao grande volume de observações sem ocorrência. Em outras palavras, embora existam padrões ambientais e antrópicos associados ao fogo, a maior parte das instâncias observadas em séries históricas corresponde à classe negativa. Na literatura de predição de ocorrência de incêndios, esse comportamento aparece de modo recorrente e tem implicações diretas tanto para o treinamento quanto para a avaliação de classificadores, pois a assimetria entre as classes pode induzir viés em favor da classe majoritária \cite{phelps2021guidelines,perezporras2021wildfires}.
+
+A literatura sustenta a resolução do problema com aprendizado de máquina para classificação probabilística, em que estima-se $p(\text{FOCO}=1 \mid \mathbf{x})$ e define-se o limiar de decisão conforme os custos operacionais. Pretende-se, portanto, a comparação de modelos supervisionados clássicos e \textit{ensembles} de árvores, priorizando saídas calibráveis e interpretação alinhada ao domínio. Ao mesmo tempo, a natureza rara do evento positivo exige estratégias metodológicas adicionais para tratar o desbalanceamento de classes e selecionar adequadamente hiperparâmetros, aspectos que são discutidos nas seções posteriores.
+
+\section{Trabalhos relacionados}
+\label{sec:trabalhos_relacionados}
+
+O conteúdo acadêmico recente aponta um crescimento expressivo do uso de técnicas de aprendizado de máquina e inteligência artificial na previsão de ocorrência e comportamento de incêndios florestais. Os trabalhos variam quanto ao tipo de tarefa (ocorrência versus severidade ou área queimada), à resolução espacial e temporal e ao conjunto de variáveis preditoras utilizadas, como meteorologia, topografia, combustível, fatores antrópicos e índices espectrais \cite{andrianarivony2024review}.
+
+Do ponto de vista ecológico e climatológico, estudos clássicos sobre o bioma Cerrado mostram que a distribuição espacial e temporal dos focos de calor não é aleatória. Existe uma forte sazonalidade associada ao regime de chuvas e à fenologia da vegetação, bem como influência de gradientes de uso do solo e de desmatamento \cite{nascimento2011analise}. Essa evidência de estruturas determinísticas e multimodais no padrão de fogo fundamenta o uso de modelos de aprendizado de máquina, que são capazes de explorar relações não lineares entre múltiplas variáveis explicativas.
+
+No contexto brasileiro, Silva e White \cite{silva2016deteccao} utilizaram a série de focos do Programa Queimadas entre 1999 e 2015 para quantificar a incidência de fogo nos diferentes biomas. O estudo trabalha com agregações anuais e mensais e identifica diferenças marcantes na sazonalidade, com destaque para o Cerrado e o Pantanal. Jesus et al. \cite{jesus2020analise} avançaram nessa análise ao investigar a incidência temporal e espacial em biomas e unidades de conservação entre 2003 e 2017. A metodologia combinou estimativa de densidade Kernel para identificação de \textit{hotspots} com testes de tendência de Mann-Kendall, indicando concentrações persistentes em transições de biomas, como a região Amazônia-Cerrado.
+
+Já Alves et al. \cite{alves2021estudo} integraram focos de calor, reanálises climáticas e índices de grande escala para investigar a relação entre variáveis meteorológicas e a atividade de fogo. Embora esses trabalhos forneçam uma base sólida de caracterização do regime de fogo, eles se concentram em estatística descritiva ou correlações lineares, sem o emprego de algoritmos de aprendizado de máquina supervisionados para predição.
+
+A aplicação direta de ML para estimativa de suscetibilidade foi explorada por Freitas et al. \cite{freitas2025xingu} na Amazônia. O trabalho utilizou modelos Random Forest e XGBoost calibrados com variáveis topográficas, climáticas e de uso da terra, resultando em mapas de suscetibilidade com desempenho elevado. No âmbito algorítmico, Shu et al. \cite{shu2021towards} desenvolveram o método Double Weighted Naive Bayes with Compensation Coefficient (DWCNB) para predição de fogo. O diferencial dessa abordagem é a atribuição de pesos tanto aos atributos quanto aos seus valores, atenuando a suposição de independência condicional. O modelo utiliza um coeficiente de compensação ajustado por testes ortogonais para equilibrar as probabilidades a priori, alcançando ganhos de acurácia significativos em relação ao Naive Bayes convencional.
+
+Além da escolha do algoritmo, parte da literatura recente evidencia que tarefas de predição de ocorrência de incêndios também exigem atenção explícita à distribuição das classes. Em problemas nos quais os dias, áreas ou janelas espaço-temporais com fogo representam apenas uma pequena fração do conjunto total, a classe positiva torna-se minoritária, o que pode enviesar o processo de aprendizado em direção à não ocorrência. Nesse contexto, estratégias de rebalanceamento, geração sintética de exemplos e formulações sensíveis a custo têm sido empregadas como mecanismos para aumentar a capacidade de discriminação sobre a classe rara \cite{phelps2021guidelines,perezporras2021wildfires,ling2011costsensitive}.
+
+Globalmente, revisões como a de Andrianarivony e Akhloufi \cite{andrianarivony2024review} indicam que modelos baseados em árvores de decisão e \textit{ensembles} (Random Forest, Gradient Boosting e XGBoost) são os mais recorrentes para tarefas de risco de fogo devido à capacidade de lidar com variáveis heterogêneas. Métodos de boosting constroem sequências de modelos fracos de maneira iterativa para corrigir erros anteriores \cite{friedman2001greedy}. Outros estudos em regiões mediterrâneas e na China reforçam a importância de integrar variáveis climáticas com técnicas de explicabilidade (XAI) e estratégias de validação que respeitem a estrutura espacial e temporal dos dados \cite{cilli2022xai, pang2022china, ahajjam2025wildfire}.
+
+\section{Qualidade de dados e imputação em séries climáticas}
+\label{sec:imputacao_series_climaticas}
+
+Em séries temporais climáticas, a presença de valores ausentes constitui um problema recorrente, decorrente de falhas de sensores, interrupções de transmissão, inconsistências de integração entre bases e diferenças na frequência de coleta. Em dados meteorológicos de alta resolução temporal, essas lacunas comprometem não apenas a análise descritiva das variáveis, mas também a construção de atributos derivados e o treinamento de modelos preditivos. Por essa razão, a imputação de dados deve ser compreendida como uma etapa metodológica relevante de reconstrução da base, e não apenas como um procedimento de limpeza \cite{alejosanchez2025review,ribeiro2021imputation,afridayamoah2020imputation}.
+
+A literatura recente indica que a imputação em séries climáticas depende fortemente da variável analisada, da estrutura temporal dos dados, da região de estudo e do mecanismo gerador das ausências. Por conseguinte, não há um método universalmente ótimo para todos os cenários. Em séries de precipitação, por exemplo, trabalhos comparativos mostram que o desempenho relativo dos métodos varia entre regiões semiáridas e úmidas, bem como entre estações meteorológicas distintas, o que reforça a necessidade de justificar a escolha metodológica em função das características do problema estudado \cite{navarro2023precipitation,alejosanchez2025review}. No mesmo sentido, Ribeiro \cite{ribeiro2021imputation} destaca que a natureza da série temporal e o tipo de \textit{missingness} devem orientar a seleção do método de imputação, uma vez que escolhas inadequadas podem afetar negativamente a etapa posterior de modelagem.
+
+Entre os métodos multivariados de imputação, destaca-se o algoritmo \textit{k}-Nearest Neighbors (KNN), ou \textit{k}-vizinhos mais próximos. Sua lógica consiste em estimar um valor ausente a partir de observações consideradas semelhantes no espaço de atributos. Em vez de substituir a lacuna por uma estatística global, como média ou mediana, o KNN procura exemplos vizinhos à observação incompleta e utiliza os valores desses vizinhos para reconstruir a variável faltante. Essa estratégia preserva melhor a estrutura local dos dados, sendo particularmente útil quando há correlação entre variáveis meteorológicas, como temperatura, umidade relativa, precipitação e vento \cite{troyanskaya2001missing,alejosanchez2025review}.
+
+Formalmente, seja $\mathbf{x}^{(i)} = (x^{(i)}_1, \dots, x^{(i)}_p)$ a $i$-ésima observação, com valor ausente na variável $j$. Define-se um conjunto de vizinhos $\mathcal{N}_k(i,j)$ formado pelas $k$ observações mais próximas de $\mathbf{x}^{(i)}$ que possuem valor observado em $x_j$. Uma formulação geral para a imputação é dada por:
+
+\begin{equation}
+\hat{x}^{(i)}_j = \frac{1}{k} \sum_{m \in \mathcal{N}_k(i,j)} x^{(m)}_j,
+\end{equation}
+
+quando se utiliza média simples dos vizinhos. Em uma variante ponderada, pode-se atribuir maior influência aos vizinhos mais próximos:
+
+\begin{equation}
+\hat{x}^{(i)}_j =
+\frac{\sum_{m \in \mathcal{N}_k(i,j)} w_{im} \, x^{(m)}_j}
+{\sum_{m \in \mathcal{N}_k(i,j)} w_{im}},
+\qquad
+w_{im} = \frac{1}{d(\mathbf{x}^{(i)}, \mathbf{x}^{(m)}) + \varepsilon},
+\end{equation}
+
+em que $d(\mathbf{x}^{(i)}, \mathbf{x}^{(m)})$ representa uma medida de distância entre observações e $\varepsilon > 0$ é uma constante pequena introduzida para evitar divisão por zero. Em aplicações com atributos numéricos, é comum empregar distância euclidiana calculada apenas sobre as coordenadas observadas em comum entre as duas instâncias.
+
+Uma forma conveniente de representar essa distância, quando há valores ausentes, é:
+
+\begin{equation}
+d(i,m) =
+\sqrt{
+\frac{p}{|O_{im}|}
+\sum_{\ell \in O_{im}}
+\left(x^{(i)}_{\ell} - x^{(m)}_{\ell}\right)^2
+},
+\end{equation}
+
+em que $O_{im}$ é o conjunto de atributos observados simultaneamente nas observações $i$ e $m$, $|O_{im}|$ é sua cardinalidade e $p$ é o número total de atributos. Desse modo, a distância é ajustada para considerar apenas a informação efetivamente disponível em comum entre os pares de observações.
+
+Do ponto de vista conceitual, a principal vantagem do KNN é sua flexibilidade: trata-se de um método não paramétrico, capaz de explorar relações locais entre múltiplas variáveis sem impor uma forma funcional rígida para a reconstrução dos dados. Em bases meteorológicas multivariadas, isso é particularmente relevante porque as lacunas em uma variável podem ser informadas, ao menos parcialmente, pelo comportamento conjunto das demais. Além disso, o método é relativamente simples de implementar e tem sido amplamente empregado como referência comparativa em estudos de imputação de séries climáticas \cite{alejosanchez2025review,troyanskaya2001missing}.
+
+Entretanto, o método também apresenta limitações. Por ser baseado em distâncias, o KNN é sensível à escala dos atributos, o que torna recomendável a padronização prévia das variáveis numéricas. Além disso, embora possa capturar similaridades multivariadas, o algoritmo não modela explicitamente a dependência temporal da série, operando principalmente a partir da proximidade no espaço de atributos. Assim, seu desempenho depende de fatores como densidade amostral, escolha de $k$, padrão de ausências e grau de correlação entre as variáveis disponíveis \cite{ribeiro2021imputation,alejosanchez2025review}.
+
+No contexto deste trabalho, a imputação por KNN se mostra teoricamente justificável porque as variáveis climáticas utilizadas apresentam dependência conjunta e são empregadas como insumo para a construção de atributos e para o treinamento dos classificadores supervisionados. Desse modo, a reconstrução local de valores ausentes busca preservar a coerência multivariada da base antes da etapa de modelagem.
+
+\section{Engenharia de atributos orientada ao domínio}
+\label{sec:feature_engineering_dominio}
+
+Em problemas ambientais, variáveis meteorológicas observadas em alta resolução temporal nem sempre expressam, de forma direta, os mecanismos latentes que controlam a ignição e a manutenção de focos de fogo. Em particular, a propensão à queima depende não apenas do estado instantâneo da atmosfera, mas também do acúmulo de condições antecedentes de secura e do histórico recente de precipitação, que afetam o teor de umidade do combustível fino e, consequentemente, sua inflamabilidade. Assim, é comum adotar engenharia de atributos para condensar, em variáveis de entrada, informação temporal relevante, reduzindo ruído e oferecendo aos modelos uma representação mais aderente ao fenômeno.
+
+Um referencial técnico importante no contexto brasileiro é o método institucional do Programa Queimadas do INPE, no qual o risco de fogo é fundamentado no princípio de que sequências mais longas sem chuva elevam a probabilidade de ocorrência de fogo, mas essa dependência é tratada por meio de uma variável de memória de precipitação. O documento define o conceito de ``Dias de Secura'' (PSE), calculado a partir do histórico de precipitação antecedente, atribuindo maior peso às chuvas mais recentes e menor peso às mais antigas, de modo a representar o efeito cumulativo do regime hídrico sobre a secura do combustível ao longo do tempo. Além disso, o método considera ajustes por condições meteorológicas críticas, como temperatura máxima e umidade relativa mínima, e por fatores geofísicos e de cobertura, como vegetação, elevação e latitude, compondo um arcabouço físico-operacional para quantificação do risco \cite{setzer2019metodo}.
+
+Do ponto de vista de modelagem, a motivação para a engenharia de atributos é dupla. Primeiro, atributos derivados introduzem estrutura temporal e física que pode não emergir de forma eficiente a partir de variáveis instantâneas, especialmente em cenários com alta variabilidade meteorológica e forte heterogeneidade espacial. Segundo, ao fornecer aos modelos variáveis mais diretamente associadas a mecanismos do domínio, melhora-se a capacidade de discriminar padrões relevantes sem depender exclusivamente do poder de aproximação do algoritmo, o que é particularmente importante em dados ambientais com forte desbalanceamento de classes e com restrições operacionais de generalização espaço-temporal. Nesse sentido, a representação do fenômeno e a estratégia de treinamento não são aspectos dissociados: atributos mais informativos e mecanismos apropriados de tratamento do desbalanceamento atuam de forma complementar na construção de modelos mais sensíveis à ocorrência do evento raro.
+
+\section{Modelos de classificação supervisionada}
+
+No contexto deste trabalho, o problema de previsão de ocorrência de fogo é formulado como uma tarefa de classificação supervisionada binária: para cada instância representada por um vetor de atributos $\mathbf{x} \in \mathbb{R}^p$, associado a condições ambientais e antrópicas, busca-se estimar a probabilidade de ocorrência de um evento de interesse $y \in \{0,1\}$, como, por exemplo, a presença de focos de calor em uma dada região e período. Em termos gerais, um modelo de aprendizado de máquina supervisionado tenta aproximar uma função $f_\theta : \mathbb{R}^p \rightarrow [0,1]$ parametrizada por $\theta$, de modo que $f_\theta(\mathbf{x})$ represente uma estimativa de $P(Y=1 \mid \mathbf{x})$ \cite{mitchell1997machine,russell2016artificial}.
+
+Além das variáveis observadas, os modelos recebem atributos derivados construídos para representar memória de precipitação, secura antecedente e regimes meteorológicos críticos, inspirados no racional físico-operacional adotado pelo Programa Queimadas do INPE \cite{setzer2019metodo}. Com isso, busca-se alinhar a representação dos dados ao processo gerador do fenômeno antes da etapa de aprendizagem supervisionada. Diversos algoritmos podem ser empregados para construir essa aproximação a partir de um conjunto de treinamento rotulado. Neste trabalho são considerados modelos clássicos de classificação largamente utilizados em aplicações reais: Regressão Logística, Naive Bayes, Máquinas de Vetores de Suporte (SVM), Random Forest e XGBoost. Esta seção apresenta os fundamentos teóricos de cada um desses métodos, com ênfase em seus princípios de funcionamento, hipóteses subjacentes e implicações para tarefas de previsão em dados ambientais. Para além da escolha do classificador, contudo, o desempenho em problemas de evento raro também depende de estratégias de tratamento do desbalanceamento e de seleção criteriosa de hiperparâmetros, discutidas na seção seguinte.
+
+\subsection{Regressão Logística}
+
+A Regressão Logística é um modelo discriminativo que estima diretamente a probabilidade condicional de uma classe binária a partir de uma combinação linear dos preditores. Seja $\mathbf{x} = (x_1,\ldots,x_p)$ o vetor de atributos e $y \in \{0,1\}$ a variável resposta. O modelo assume que o logit da probabilidade de $Y=1$ é uma função linear de $\mathbf{x}$:
+
+\begin{equation}
+\label{eq:logistic_model}
+\text{logit}\bigl(P(Y=1 \mid \mathbf{x})\bigr)
+= \log \left( \frac{P(Y=1 \mid \mathbf{x})}{1 - P(Y=1 \mid \mathbf{x})} \right)
+= \beta_0 + \sum_{j=1}^p \beta_j x_j.
+\end{equation}
+
+Aplicando-se a função logística, obtém-se a probabilidade modelada:
+
+\begin{equation}
+P(Y=1 \mid \mathbf{x}) = \sigma(\beta_0 + \mathbf{x}^\top \boldsymbol{\beta})
+= \frac{1}{1 + e^{-(\beta_0 + \mathbf{x}^\top \boldsymbol{\beta})}}.
+\end{equation}
+
+Os parâmetros $\beta_0, \boldsymbol{\beta}$ são estimados geralmente por máxima verossimilhança, equivalente à minimização da perda logarítmica (entropia cruzada). Para um conjunto de dados $\{(\mathbf{x}^{(i)}, y^{(i)})\}_{i=1}^n$, a função de custo $\mathcal{L}$ é dada por:
+
+\begin{equation}
+\mathcal{L}(\beta_0, \boldsymbol{\beta})
+= - \sum_{i=1}^n \Bigl[ y^{(i)} \log \hat{p}^{(i)}
++ (1 - y^{(i)}) \log(1 - \hat{p}^{(i)}) \Bigr],
+\end{equation}
+
+em que $\hat{p}^{(i)} = P(Y=1 \mid \mathbf{x}^{(i)})$. A minimização é usualmente realizada por métodos numéricos iterativos, como gradiente descendente, Newton-Raphson ou variantes quasi-Newton.
+
+A Regressão Logística apresenta duas vantagens importantes em aplicações científicas: (i) fornece probabilidades calibradas de ocorrência do evento, o que permite avaliar incertezas e definir limiares de decisão dependentes de custo; e (ii) permite interpretação direta dos coeficientes em termos de razão de chances (\textit{odds ratio}): $e^{\beta_j}$ representa o fator de multiplicação na razão de chances associado a um incremento unitário em $x_j$, mantendo-se os demais atributos constantes. Em problemas ambientais, essa interpretabilidade é útil para quantificar o efeito relativo de variáveis climáticas ou de uso do solo sobre a probabilidade de fogo.
+
+Para evitar sobreajuste, é comum empregar regularização L2 (\textit{ridge}) ou L1 (\textit{lasso}), que introduzem penalizações sobre a magnitude dos coeficientes, favorecendo modelos mais simples e, no caso da regularização L1, promovendo seleção automática de variáveis.
+
+\subsection{Classificadores Naive Bayes}
+
+Modelos Naive Bayes são classificadores probabilísticos baseados no Teorema de Bayes. Dado um conjunto de atributos $\mathbf{x}$ e uma variável de classe $Y$, tem-se:
+
+\begin{equation}
+P(Y = c \mid \mathbf{x}) = \frac{P(\mathbf{x} \mid Y=c) P(Y=c)}{P(\mathbf{x})},
+\end{equation}
+
+em que $P(\mathbf{x})$ é o mesmo para todas as classes e pode ser tratado como constante no processo de classificação. A ideia central é modelar a distribuição dos atributos condicionada à classe, $P(\mathbf{x} \mid Y=c)$, e a distribuição a priori $P(Y=c)$.
+
+O adjetivo \emph{naive} decorre da hipótese de independência condicional entre os atributos dado o valor da classe:
+
+\begin{equation}
+P(\mathbf{x} \mid Y=c) = \prod_{j=1}^p P(x_j \mid Y=c).
+\end{equation}
+
+Essa suposição é frequentemente irrealista em dados reais, especialmente em domínios ambientais em que variáveis meteorológicas e de vegetação são fortemente correlacionadas. Ainda assim, o modelo apresenta bom desempenho em diversas aplicações, sobretudo quando o número de atributos é grande em relação ao tamanho da amostra e quando as dependências entre variáveis não são extremamente críticas para a discriminação entre as classes.
+
+Na prática, diferentes variantes são utilizadas conforme a natureza dos atributos: Naive Bayes gaussiano (atributos contínuos modelados como gaussianos condicionados à classe), multinomial (contagens) ou Bernoulli (atributos binários). A classificação consiste em escolher a classe que maximiza a probabilidade a posteriori $P(Y=c \mid \mathbf{x})$. Devido à sua formulação fechada, o treinamento é computacionalmente muito eficiente, o que o torna um bom modelo de referência (\textit{baseline}) em experimentos comparativos.
+
+\subsection{Máquinas de Vetores de Suporte (SVM)}
+
+Máquinas de Vetores de Suporte são modelos discriminativos que buscam encontrar um hiperplano de separação entre classes com margem máxima \cite{cortes1995svm}. No caso linearmente separável, considera-se um hiperplano definido por $(\mathbf{w}, b)$ tal que:
+
+\begin{equation}
+\mathbf{w}^\top \mathbf{x} + b = 0,
+\end{equation}
+
+e impõe-se que, para cada amostra rotulada $(\mathbf{x}^{(i)}, y^{(i)})$, com $y^{(i)} \in \{-1, +1\}$:
+
+\begin{equation}
+y^{(i)} \bigl(\mathbf{w}^\top \mathbf{x}^{(i)} + b\bigr) \geq 1.
+\end{equation}
+
+A SVM procura o hiperplano que maximiza a margem, isto é, a distância entre as fronteiras de decisão e os pontos mais próximos (vetores de suporte). Isso equivale a resolver o problema de otimização:
+
+\begin{equation}
+\min_{\mathbf{w}, b} \frac{1}{2} \lVert \mathbf{w} \rVert^2
+\quad \text{sujeito a} \quad
+y^{(i)} \bigl(\mathbf{w}^\top \mathbf{x}^{(i)} + b\bigr) \geq 1,\ \forall i.
+\end{equation}
+
+Em situações não separáveis, introduzem-se variáveis de folga $\xi_i$ e um parâmetro de penalização $C>0$ que controla o equilíbrio entre largura da margem e erros de classificação. A formulação dual do problema permite incorporar funções de \textit{kernel} $K(\mathbf{x},\mathbf{x}')$, o que viabiliza fronteiras de decisão não lineares sem necessidade de explicitar a transformação para espaços de alta dimensão (``truque do \textit{kernel}'').
+
+SVMs são particularmente úteis quando há fronteira de decisão complexa em um espaço de atributos moderadamente dimensionado e quando se deseja maximizar a margem entre classes, o que tende a melhorar a capacidade de generalização. Em contrapartida, o custo computacional pode se tornar elevado em bases muito grandes, e a interpretação dos modelos é menos direta quando \textit{kernels} não lineares são adotados.
+
+\subsection{Árvores de decisão e Random Forest}
+
+Árvores de decisão são modelos fundamentados em partições recursivas do espaço de atributos. O processo consiste em dividir o conjunto de dados em subconjuntos cada vez mais homogêneos em relação à variável alvo $y$. Para um nó $m$, representando um subconjunto dos dados $Q_m$ com $n_m$ observações, a proporção de instâncias da classe $k$ é definida como:
+
+\begin{equation}
+p_{mk} = \frac{1}{n_m} \sum_{\mathbf{x}^{(i)} \in Q_m} I(y^{(i)} = k),
+\end{equation}
+
+em que $I(\cdot)$ é a função indicadora. A escolha do melhor ponto de corte em cada nó baseia-se em medidas de impureza. A métrica mais utilizada em algoritmos de classificação é o índice de Gini ($G$), que quantifica a probabilidade de uma instância escolhida aleatoriamente ser rotulada incorretamente, sendo expresso por:
+
+\begin{equation}
+G(m) = \sum_{k=1}^K p_{mk} (1 - p_{mk}) = 1 - \sum_{k=1}^K p_{mk}^2.
+\end{equation}
+
+O algoritmo busca, para cada nó, a variável $j$ e o limiar $s$ que minimizam a impureza combinada dos nós filhos (esquerdo e direito), resolvendo o seguinte problema de otimização:
+
+\begin{equation}
+J(j, s) = \frac{n_{left}}{n_m} G(left) + \frac{n_{right}}{n_m} G(right).
+\end{equation}
+
+Embora árvores individuais sejam modelos interpretáveis, elas tendem a apresentar alta variância, pois pequenas variações nos dados de treinamento podem resultar em estruturas de decisão drasticamente diferentes. O Random Forest \cite{breiman2001randomForest} atenua essa limitação por meio de um método de comitê (\textit{ensemble}) baseado em \textit{bagging} (\textit{bootstrap aggregating}). O algoritmo constrói $B$ árvores independentes, cada uma treinada em uma amostra \textit{bootstrap} $Z^*$ obtida com reposição do conjunto original.
+
+O diferencial do Random Forest em relação ao \textit{bagging} convencional é a introdução do método de subespaços aleatórios: em cada divisão de cada árvore, o algoritmo seleciona apenas um subconjunto aleatório de $m \approx \sqrt{p}$ atributos para considerar como candidatos ao corte. Essa técnica reduz a correlação entre as árvores da floresta, garantindo que o erro médio do comitê seja menor que o erro médio de suas árvores individuais.
+
+A predição final para uma nova instância $\mathbf{x}$ é obtida por votação majoritária no caso de classificação:
+
+\begin{equation}
+\hat{y} = \text{moda} \{ \hat{C}_1(\mathbf{x}), \hat{C}_2(\mathbf{x}), \dots, \hat{C}_B(\mathbf{x}) \},
+\end{equation}
+
+em que $\hat{C}_b(\mathbf{x})$ é a classe prevista pela $b$-ésima árvore. Além da robustez preditiva, o modelo permite estimar a importância de cada atributo via \textit{Mean Decrease Gini}, que calcula a redução total na impureza dos nós trazida por uma variável específica ao longo de todas as árvores da floresta, fornecendo interpretação relevante para o domínio do problema \cite{russell2016artificial}.
+
+\subsection{Gradient Boosting e XGBoost}
+
+Ao passo que o \textit{bagging} reduz a variância ao combinar modelos treinados de forma independente, métodos de \textit{boosting} constroem sequências de modelos fracos de maneira iterativa, cada novo modelo focando em corrigir os erros cometidos pelos anteriores \cite{friedman2001greedy}. No Gradient Boosting, em particular, formula-se a tarefa de aprendizado como um problema de minimização de uma função de perda diferenciável $\mathcal{L}(y, F(\mathbf{x}))$. Parte-se de um modelo inicial $F_0$ e, a cada iteração $m$, ajusta-se um novo modelo fraco $h_m$ aos resíduos negativos do gradiente da perda em relação às previsões correntes, atualizando:
+
+\begin{equation}
+F_m(\mathbf{x}) = F_{m-1}(\mathbf{x}) + \nu \cdot h_m(\mathbf{x}),
+\end{equation}
+
+em que $\nu \in (0,1]$ é a taxa de aprendizado. Quando os modelos fracos $h_m$ são árvores de decisão de pequena profundidade, obtém-se um \textit{ensemble} capaz de capturar interações complexas entre atributos.
+
+O XGBoost (\emph{Extreme Gradient Boosting}) \cite{chen2016xgboost} é uma implementação otimizada de Gradient Boosting com árvores, amplamente utilizada em aplicações práticas pela combinação de alto desempenho preditivo e eficiência computacional. Entre suas principais características estão: (i) regularização explícita da complexidade das árvores na função objetivo, controlando profundidade e número de folhas; (ii) uso de aproximações de segunda ordem (gradiente e hessiano) para acelerar o processo de otimização; (iii) suporte nativo a paralelismo, amostragem de instâncias e de atributos; e (iv) tratamento eficiente de valores ausentes.
+
+Em tarefas de previsão de incêndios, XGBoost e métodos similares de Gradient Boosting têm se mostrado particularmente competitivos, pois conseguem explorar relações não lineares entre variáveis meteorológicas, de combustíveis e de uso do solo, ao mesmo tempo em que lidam bem com atributos heterogêneos e correlações complexas \cite{andrianarivony2024review}.
+
+\section{Desbalanceamento de classes e estratégias de treinamento}
+\label{sec:desbalanceamento_treinamento}
+
+\subsection{Desbalanceamento de classes em predição de focos de incêndio}
+
+Em problemas de classificação binária, diz-se que há desbalanceamento de classes quando a distribuição da variável resposta é marcadamente assimétrica, isto é, quando uma das classes ocorre com frequência muito superior à outra. Em tarefas de predição de ocorrência de focos de incêndio, essa situação é particularmente plausível porque o evento de interesse, embora relevante do ponto de vista operacional e ambiental, tende a ocorrer em uma fração reduzida das observações quando se considera uma malha espaço-temporal ampla. Como consequência, o conjunto de dados passa a ser dominado por exemplos da classe negativa, enquanto os exemplos positivos permanecem escassos \cite{phelps2021guidelines,perezporras2021wildfires}.
+
+Esse aspecto não é meramente descritivo, mas afeta diretamente o processo de aprendizagem. Em termos intuitivos, se a maioria das observações pertence à classe sem ocorrência, então um classificador pode reduzir sua perda empírica simplesmente favorecendo essa classe majoritária, mesmo que isso implique sensibilidade insuficiente para detectar o evento raro. Em termos estatísticos, a assimetria faz com que a função objetivo seja fortemente influenciada pelos exemplos majoritários, deslocando a fronteira de decisão e degradando o reconhecimento da classe minoritária. Em razão disso, a literatura sobre aprendizado em bases desbalanceadas enfatiza que o problema não deve ser tratado apenas na etapa de avaliação, mas também durante o treinamento do modelo \cite{ling2011costsensitive}.
+
+No contexto específico da predição de fogo, essa discussão é especialmente importante porque a classe positiva concentra justamente o fenômeno de maior interesse científico e prático. Um modelo que apresente bom desempenho agregado, mas baixa capacidade de identificar condições associadas à ocorrência de fogo, tende a ter utilidade limitada como ferramenta de suporte à decisão.
+
+\subsection{Sobreamostragem sintética com SMOTE}
+
+Uma das estratégias mais difundidas para lidar com bases desbalanceadas consiste em aumentar a representatividade da classe minoritária no conjunto de treinamento. Entre essas abordagens, destaca-se a técnica \textit{Synthetic Minority Over-sampling Technique} (SMOTE), que busca ampliar a presença da classe rara por meio da geração de exemplos sintéticos em vez de simplesmente replicar observações existentes. Em aplicações à predição de incêndios, esse tipo de estratégia tem sido empregado como forma de reduzir o viés em direção à classe majoritária e melhorar a capacidade discriminativa do modelo \cite{perezporras2021wildfires}.
+
+Do ponto de vista conceitual, o SMOTE opera no espaço de atributos. Para cada instância da classe minoritária, selecionam-se vizinhos próximos pertencentes à mesma classe e geram-se novas amostras sintéticas ao longo do segmento que conecta essas observações. O resultado é uma expansão local da região ocupada pela classe minoritária, de modo a tornar o padrão positivo mais representado durante o ajuste do classificador. Diferentemente da simples duplicação de casos, que preserva exatamente os mesmos pontos e pode favorecer sobreajuste, a sobreamostragem sintética introduz novas combinações plausíveis entre exemplos vizinhos, preservando a estrutura local da minoria.
+
+A motivação para o uso do SMOTE neste trabalho decorre de sua capacidade de atuar diretamente sobre a distribuição de treinamento, oferecendo ao algoritmo mais evidência sobre o evento raro sem modificar o conjunto de teste. Em termos práticos, isso pode tornar o modelo mais sensível às condições associadas à ocorrência de fogo e favorecer a aprendizagem de fronteiras de decisão menos enviesadas em direção à classe negativa. Essa estratégia é particularmente pertinente quando se deseja comparar algoritmos sob uma configuração em que a assimetria de frequência seja mitigada pela própria composição do conjunto de treinamento.
+
+\subsection{Aprendizado sensível a custo e balanceamento por peso}
+
+Uma segunda família de abordagens para tratamento do desbalanceamento parte da ideia de que nem todos os erros de classificação devem receber a mesma penalização. Em muitos problemas reais, classificar incorretamente um exemplo da classe minoritária pode ter impacto operacional mais relevante do que cometer o erro oposto. Essa é a lógica do aprendizado sensível a custo (\textit{cost-sensitive learning}), no qual a função de perda do modelo é modificada para refletir custos distintos entre classes ou entre tipos de erro \cite{ling2011costsensitive}.
+
+No caso particular de classificação binária com forte assimetria entre classes, uma forma comum de implementar essa ideia é o balanceamento por peso (\textit{class weighting}). Nessa formulação, observações da classe minoritária recebem peso maior durante o treinamento, fazendo com que erros sobre essa classe contribuam mais intensamente para a função objetivo. Em modelos probabilísticos baseados em perda logarítmica, por exemplo, a função de custo pode ser escrita de forma ponderada como:
+
+\begin{equation}
+\mathcal{L}_w
+= - \sum_{i=1}^n w_{y^{(i)}} \Bigl[ y^{(i)} \log \hat{p}^{(i)}
++ (1-y^{(i)}) \log(1-\hat{p}^{(i)}) \Bigr],
+\end{equation}
+
+em que $w_{y^{(i)}}$ representa o peso associado à classe da $i$-ésima observação. Quando a classe positiva recebe peso maior, o algoritmo é induzido a prestar maior atenção aos exemplos raros, reduzindo a tendência de privilegiar a classe majoritária apenas por sua maior frequência.
+
+Essa estratégia apresenta uma diferença importante em relação ao SMOTE. Enquanto a sobreamostragem sintética altera a composição do conjunto de treinamento, o balanceamento por peso preserva a distribuição observada dos exemplos, atuando diretamente sobre o critério de otimização. Em termos metodológicos, essa distinção é relevante porque permite comparar duas lógicas complementares de mitigação do desbalanceamento: uma baseada na reconfiguração da amostra de treinamento e outra baseada na reponderação do erro durante o ajuste do modelo. Por essa razão, o balanceamento por peso é incorporado neste estudo como alternativa teórica e experimentalmente justificável para o tratamento de classes raras \cite{ling2011costsensitive}.
+
+\subsection{Seleção de hiperparâmetros com validação cruzada e Grid Search}
+
+Além do tratamento do desbalanceamento, o desempenho de modelos supervisionados depende da escolha adequada de hiperparâmetros, isto é, configurações definidas antes do treinamento propriamente dito e que controlam aspectos estruturais do algoritmo. Exemplos incluem a intensidade da regularização na Regressão Logística, o parâmetro $C$ em SVMs, a profundidade máxima de árvores, o número de estimadores em \textit{ensembles} e a taxa de aprendizado em métodos de \textit{boosting}. A escolha desses valores influencia a capacidade de generalização do modelo e, por isso, não deve ser feita de forma arbitrária \cite{bergstra2012random}.
+
+Uma estratégia tradicional para essa tarefa é o \textit{Grid Search}, no qual se define previamente uma grade discreta de valores candidatos para cada hiperparâmetro e se avaliam sistematicamente todas as combinações possíveis. Embora nem sempre seja a abordagem mais eficiente do ponto de vista computacional, trata-se de um procedimento simples, reprodutível e amplamente empregado como referência para seleção de hiperparâmetros \cite{bergstra2012random}. Quando associado à validação cruzada, esse processo permite estimar, para cada combinação testada, o desempenho médio do modelo em subconjuntos distintos dos dados de treinamento.
+
+Na validação cruzada, o conjunto de treinamento é particionado em subconjuntos, ou \textit{folds}. Em uma configuração do tipo $k$-\textit{fold}, o modelo é treinado sucessivamente em $k-1$ partições e validado na partição remanescente, repetindo-se o processo até que todos os \textit{folds} tenham atuado como validação. A média do desempenho obtido ao longo dessas iterações fornece uma estimativa mais robusta da capacidade de generalização associada a determinada configuração de hiperparâmetros. No caso do \textit{GridSearchCV}, esse mecanismo é combinado a uma busca exaustiva sobre a grade de parâmetros especificada, automatizando a seleção do arranjo mais promissor segundo uma métrica previamente definida \cite{sklearn2026gridsearchcv}.
+
+Portanto, a seleção de hiperparâmetros por validação cruzada com \textit{Grid Search} se justifica, primeiro, pois reduz a arbitrariedade na comparação entre modelos, uma vez que as configurações são escolhidas por um procedimento sistemático. Segundo, melhora a reprodutibilidade experimental, pois a grade de busca e o critério de seleção podem ser explicitamente documentados. Terceiro, permite que o ajuste de hiperparâmetros seja realizado no interior do processo de treinamento, sem contaminar o conjunto de teste final, que deve permanecer reservado para a estimativa de desempenho fora da amostra. Desse modo, a comparação entre configurações com base original, SMOTE e balanceamento por peso torna-se metodologicamente mais consistente.
+
+\section{Avaliação de modelos de classificação}
+\label{sec:avaliacao_modelos}
+
+A avaliação de classificadores binários parte da comparação entre rótulos preditos e rótulos observados, o que permite construir a matriz de confusão e derivar métricas como precisão, revocação, especificidade, acurácia e $F_1$-score. Essas medidas descrevem diferentes aspectos do desempenho do modelo e são particularmente úteis quando interpretadas em conjunto, pois evidenciam o compromisso entre detecção de eventos positivos e incidência de erros de classificação.
+
+No problema estudado, a ocorrência de focos constitui um evento raro, de modo que a acurácia, isoladamente, tem utilidade limitada. Em cenários fortemente desbalanceados, um classificador pode atingir acurácia elevada mesmo sem identificar adequadamente a classe positiva. Por essa razão, tornam-se mais relevantes métricas que enfatizam o desempenho sobre os casos de interesse, especialmente precisão e revocação, bem como medidas derivadas dessas quantidades.
+
+Para classificadores que produzem escores ou probabilidades, duas famílias de medidas são particularmente importantes: a área sob a curva ROC (ROC-AUC) e a área sob a curva Precisão-Revocação (PR-AUC). A ROC-AUC resume a capacidade global de discriminação entre as classes \cite{fawcett2006roc}. Contudo, em bases muito desbalanceadas, a curva ROC pode sugerir desempenho excessivamente otimista, pois a taxa de falsos positivos pode permanecer numericamente baixa mesmo quando o número absoluto de falsos positivos é elevado. Nesses casos, a curva Precisão-Revocação tende a ser mais informativa, por enfatizar diretamente o comportamento do modelo sobre a classe positiva rara \cite{saito2015prc,davis2006relationship}.
+
+Assim, neste trabalho, a PR-AUC recebe maior ênfase interpretativa como principal métrica de comparação entre modelos, por ser mais aderente à natureza desbalanceada do problema e à necessidade de avaliar a qualidade da identificação de focos. A ROC-AUC é reportada como medida complementar de separabilidade global, enquanto precisão, revocação, $F_1$-score, especificidade e matriz de confusão são utilizadas para qualificar o desempenho em termos operacionais, em limiares específicos de decisão.
+
+Como os dados possuem estrutura temporal, a avaliação também deve respeitar essa característica, de modo que as estimativas de desempenho reflitam, de forma mais realista, a capacidade de generalização dos modelos em observações futuras \cite{andrianarivony2024review}.
