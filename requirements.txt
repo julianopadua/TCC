@@ -30,3 +30,11 @@ netCDF4>=1.6.5      # Engine necessária para o xarray ler arquivos NetCDF
 scikit-learn>=1.5.0
 imbalanced-learn>=0.12.3
 xgboost>=2.1.0
+
+# Fusão temporal / séries temporais (artigo)
+statsmodels>=0.14.0
+sktime>=0.30.0
+pmdarima>=2.0.4
+prophet>=1.1.5
+tslearn>=0.6.3
+aeon>=0.9.0                 # MiniROCKET (aeon.transformations.collection.convolution_based)

@@ -51,6 +51,9 @@ modeling_scenarios:
   base_D_calculated: "base_D_with_rad_drop_rows_calculated"
   base_E_calculated: "base_E_with_rad_knn_calculated"
   base_F_calculated: "base_F_full_original_calculated"
+  # Temporal fusion enriched (artigo)
+  base_D_calculated_tsfusion: "base_D_with_rad_drop_rows_calculated_tsfusion"
+  base_F_calculated_tsfusion: "base_F_full_original_calculated_tsfusion"
 logging:
   level: "INFO"
   file: "./logs/app.log"

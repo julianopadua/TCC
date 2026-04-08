@@ -342,8 +342,7 @@ class TrainingOrchestrator:
 
         self.random_seed = int(self.cfg.get("project", {}).get("random_seed", 42))
 
-        # Mantem a mesma lista que voce ja usa
-        self.features = [
+        self._base_features = [
             "PRECIPITACAO TOTAL, HORARIO (mm)".replace("PRECIPITACAO", "PRECIPITAÇÃO").replace("HORARIO", "HORÁRIO"),
             "RADIACAO GLOBAL (KJ/m²)",
             "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)",
@@ -359,8 +358,35 @@ class TrainingOrchestrator:
             "fator_propagacao",
         ]
 
+        # For tsfusion scenarios, auto-detect tsf_* columns from the first
+        # parquet so they enter the feature set without hard-coding every name.
+        self.features = list(self._base_features)
+        if "tsfusion" in (self.scenario_folder or "").lower():
+            self._extend_with_tsf_columns()
+
         self.target = "HAS_FOCO"
         self.year_col = "ANO"
+
+    def _extend_with_tsf_columns(self) -> None:
+        """Auto-detect tsf_* columns from the first parquet in the scenario."""
+        try:
+            import pyarrow.parquet as pq
+
+            base_path = Path(self.cfg["paths"]["data"]["modeling"])
+            path = base_path / self.scenario_folder
+            first = next(path.glob("*.parquet"), None)
+            if first is None:
+                return
+            schema_names = set(pq.read_schema(first).names)
+            tsf_cols = sorted(c for c in schema_names if c.startswith("tsf_"))
+            if tsf_cols:
+                self.features.extend(tsf_cols)
+                self.log.info(
+                    f"[TSF] Auto-detected {len(tsf_cols)} temporal fusion "
+                    f"columns from {first.name}"
+                )
+        except Exception as e:
+            self.log.warning(f"[TSF] Could not auto-detect tsf_* columns: {e}")
 
     def _discover_files(self) -> List[Path]:
         base_path = Path(self.cfg["paths"]["data"]["modeling"])
