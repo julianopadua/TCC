@@ -1,15 +1,32 @@
-# Planejamento de Construção do Dataset Consolidado
+# Follow-up e planejamento (dataset + fusão temporal)
+
+## Atualização 2026-04-07 — branch `article-temporal-fusion`
+
+**Plano executado (diagramas, artefatos, checklist de validação):** [Fusão temporal para o artigo](../planos/fusao_temporal_artigo_2026-04-07.md)
+
+**Próximos passos imediatos (validação):**
+
+1. Smoke test de `python src/feature_engineering_temporal.py --years <ano> --methods ewma_lags` e conferir pastas `*_tsfusion`.
+2. Comparar métricas Camada A em `data/eda/temporal_fusion/layer_a_summary.csv`.
+3. Rodar `train_runner` em par (`base_F_calculated` vs `base_F_calculated_tsfusion`) com a mesma variação de menu.
+4. Registrar no TCC/artigo: ablação de métodos e limitações de dependências opcionais.
+
+**Decisões de engenharia contínuas:** [followup_decisions.md](./followup_decisions.md)
+
+---
+
+## Histórico — planejamento de construção do dataset consolidado
+
+*Texto abaixo descreve etapas iniciais planejadas; parte delas evoluiu para os scripts atuais (`bdqueimadas_consolidated.py`, `inmet_consolidated.py`, `build_dataset.py`, etc.).*
 
 Este documento descreve as etapas necessárias para a criação de um dataset final unindo dados do BDQueimadas e do INMET, a ser utilizado em modelos de previsão de focos de queimadas.
 
 ## Coleta e Organização Inicial
-- Criar script `consolidated_bdqueimadas.py` para:
-  - Automatizar scraping do BDQueimadas.
-  - Garantir que cada foco possua identificadores únicos (`id_bdq` e `foco_id`).
-  - Salvar dados coletados em `data/consolidated/BDQUEIMADAS/`.
+- ~~Criar script `consolidated_bdqueimadas.py`~~ **Implementado como** `src/bdqueimadas_consolidated.py` (merge manual × processado; saídas em `data/consolidated/BDQUEIMADAS/` conforme `config.yaml`).
+- Scraping de zips COIDS: `src/bdqueimadas_scraper.py`.
 
 ## Processamento INMET
-- Utilizar e ajustar o script existente `consolidated_inmet.py` para:
+- Utilizar e ajustar o script existente `src/inmet_consolidated.py` (evolução do nome `consolidated_inmet.py`) para:
   - Padronizar tipos de dados (`numeric`, `datetime`, `categorical`).
   - Remover valores inválidos ou sentinelas (`-9999`).
   - Salvar dados limpos em `data/processed/INMET/`.

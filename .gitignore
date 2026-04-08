@@ -12,7 +12,7 @@ doc/tcc/output/*
 doc/templates/*
 *.nc
 *.joblib
-*.png
+# Imagens (.png) versionadas em images/, doc/ etc. para figuras de pipeline e README/TCC.
 # artefatos de modelagem
 data/modeling/results/
 *.pyc
