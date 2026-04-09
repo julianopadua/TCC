@@ -126,14 +126,18 @@ flowchart LR
 
 ## Branch `article-temporal-fusion`
 
-Entregas principais (commits `981e46b`, `8bc1c53`):
+Entregas principais:
 
-* Script **`feature_engineering_temporal.py`**: features `tsf_*` (EWMA/lags, ARIMA, SARIMA, Prophet, MiniROCKET, TSKMeans) sobre parquets `*_calculated`, por padrão cenários **D** e **F**.
-* Novas pastas de saída mapeadas em **`config.yaml`**: `base_D_calculated_tsfusion`, `base_F_calculated_tsfusion`.
-* **`train_runner.py`**: inclui automaticamente colunas `tsf_*` quando o cenário contém `tsfusion`.
+* Script **`feature_engineering_temporal.py`**: features `tsf_*` (EWMA/lags, ARIMA, SARIMA, Prophet, MiniROCKET, TSKMeans) sobre parquets `*_calculated`, por padrão cenários **D** e **F**. Suporta dois layouts de saída:
+  * `split` (padrão): uma pasta por método em `data/temporal_fusion/{base}/{método}/` — cenários `tf_D_*` / `tf_F_*` no `config.yaml`.
+  * `merged` (legado): todos os métodos num único parquet em `data/modeling/…_tsfusion/`.
+* Script **`build_champion_temporal_bases.py`**: lê o ranking de métodos (`method_ranking_train.csv`) e mescla as colunas `tsf_*` dos top-k em bases "campeãs" (`tf_D_champion` / `tf_F_champion`).
+* Métricas de **Camada A** em `data/eda/temporal_fusion/`: `layer_a_summary.csv`, `layer_a_summary_train.csv`, `method_ranking_train.csv` (só anos de treino, sem vazamento para seleção de métodos).
+* **`train_runner.py`**: detecta e inclui `tsf_*` automaticamente para todos os cenários `tf_*` (via `_is_temporal_fusion_scenario`).
+* **`config.yaml`**: chaves `tf_D_*` / `tf_F_*` (12 por método + 2 campeãs); seção `temporal_fusion_paths` mapeia cada chave ao subcaminho real em `data/temporal_fusion/`.
 * **`requirements.txt`**: bloco opcional (`statsmodels`, `prophet`, `aeon`, `tslearn`, etc.).
 
-Detalhamento com diagramas e checklist de validação: [doc/planos/fusao_temporal_artigo_2026-04-07.md](doc/planos/fusao_temporal_artigo_2026-04-07.md).
+Detalhamento: [doc/planos/fusao_temporal_artigo_2026-04-07.md](doc/planos/fusao_temporal_artigo_2026-04-07.md).
 
 ---
 
@@ -155,8 +159,9 @@ Caminhos centrais vêm de **`config.yaml`** (`paths.data.*`). Hoje `paths.data.e
 │   │   ├── INMET/inmet_{ANO}_{bioma}.csv
 │   │   └── BDQUEIMADAS/bdq_targets_{ANO}_{bioma}.csv
 │   ├── dataset/               # inmet_bdq_{ANO}_{bioma}.csv + all_years
-│   ├── modeling/              # cenários A–F, calculated, tsfusion (parquet)
-│   └── eda/                   # auditorias, temporal_fusion, etc.
+│   ├── modeling/              # cenários A–F, calculated (parquet)
+│   ├── temporal_fusion/       # fusão temporal por método: {base}/{método}/ e bases campeãs
+│   └── eda/                   # auditorias, temporal_fusion/layer_a_*, etc.
 ├── logs/
 └── src/                       # scripts Python (ver doc/_src)
 ```
@@ -173,8 +178,9 @@ Caminhos centrais vêm de **`config.yaml`** (`paths.data.*`). Hoje `paths.data.e
 6. **Auditoria missing:** `dataset_missing_audit.py` → `data/eda/dataset/{ANO}/`.
 7. **Parquets A–F:** `modeling_build_datasets.py`.
 8. **Features físicas:** `feature_engineering_physics.py` → pastas `*_calculated`.
-9. **Fusão temporal (artigo):** `feature_engineering_temporal.py` → `*_tsfusion` + `data/eda/temporal_fusion/`.
-10. **Treino:** `train_runner.py`.
+9. **Fusão temporal — por método:** `feature_engineering_temporal.py --output-layout split` → `data/temporal_fusion/{base}/{método}/` + `data/eda/temporal_fusion/`.
+10. **Bases campeãs:** `build_champion_temporal_bases.py [--top-k N]` → lê `method_ranking_train.csv` e grava `tf_D_champion` / `tf_F_champion`.
+11. **Treino:** `train_runner.py` (selecionar cenários `tf_D_*`, `tf_F_*` ou `tf_D_champion` no menu).
 11. **Pós-processamento:** `run_results_consolidator.py` / `run_results_visualization.py` / `plot_confusion.py`.
 
 ---

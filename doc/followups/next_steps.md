@@ -1,15 +1,54 @@
 # Follow-up e planejamento (dataset + fusão temporal)
 
-## Atualização 2026-04-07 — branch `article-temporal-fusion`
+## Atualização 2026-04-09 — fusão temporal por método
 
-**Plano executado (diagramas, artefatos, checklist de validação):** [Fusão temporal para o artigo](../planos/fusao_temporal_artigo_2026-04-07.md)
+**Plano executado:** [Fusão temporal para o artigo](../planos/fusao_temporal_artigo_2026-04-07.md)
 
-**Próximos passos imediatos (validação):**
+### Checklist de execução (ordem recomendada)
 
-1. Smoke test de `python src/feature_engineering_temporal.py --years <ano> --methods ewma_lags` e conferir pastas `*_tsfusion`.
-2. Comparar métricas Camada A em `data/eda/temporal_fusion/layer_a_summary.csv`.
-3. Rodar `train_runner` em par (`base_F_calculated` vs `base_F_calculated_tsfusion`) com a mesma variação de menu.
-4. Registrar no TCC/artigo: ablação de métodos e limitações de dependências opcionais.
+1. **Smoke test — método leve, um ano:**
+   ```
+   python src/feature_engineering_temporal.py --years 2020 --methods ewma_lags
+   ```
+   Conferir pasta `data/temporal_fusion/base_D_with_rad_drop_rows_calculated/ewma_lags/`.
+
+2. **Rodagem completa — todos os métodos (pode ser lenta):**
+   ```
+   python src/feature_engineering_temporal.py --output-layout split
+   ```
+   Ou método a método para controlar tempo:
+   ```
+   python src/feature_engineering_temporal.py --output-layout split --methods arima
+   python src/feature_engineering_temporal.py --output-layout split --methods sarima
+   python src/feature_engineering_temporal.py --output-layout split --methods prophet
+   python src/feature_engineering_temporal.py --output-layout split --methods minirocket
+   python src/feature_engineering_temporal.py --output-layout split --methods tskmeans
+   ```
+
+3. **Conferir Camada A (ranking de métodos — apenas anos de treino):**
+   ```
+   data/eda/temporal_fusion/method_ranking_train.csv
+   ```
+   Colunas: `method`, `mae_mean`, `r2_mean`, `n_obs_total`.
+
+4. **Construir bases campeãs (top-k métodos por MAE):**
+   ```
+   python src/build_champion_temporal_bases.py --top-k 2
+   ```
+   Ou com métodos explícitos após análise do ranking:
+   ```
+   python src/build_champion_temporal_bases.py --methods arima prophet
+   ```
+
+5. **Treinar XGBoost/RF em cada cenário:**
+   - Rodar `train_runner.py` selecionando os cenários `tf_D_*` / `tf_F_*` (aparecem no menu automaticamente).
+   - Para comparação controlada: mesma variação de hiperparâmetros entre cenários.
+   - Cenários a comparar: `base_D_calculated` (sem tsf) vs `tf_D_ewma_lags` vs `tf_D_arima` … vs `tf_D_champion`.
+
+6. **Registrar no TCC/artigo:**
+   - Ganho por método (PR-AUC Camada B) vs proxy de ajuste (MAE Camada A).
+   - Ablação de métodos e limitações de dependências opcionais.
+   - Avisar que seleção do campeão usa anos de treino para evitar viés.
 
 **Decisões de engenharia contínuas:** [followup_decisions.md](./followup_decisions.md)
 

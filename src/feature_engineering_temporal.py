@@ -10,6 +10,13 @@
 #   Layer B: improvement in HAS_FOCO classification (measured later in
 #            train_runner via PR-AUC etc.).
 #
+# Output layouts:
+#   split  (default): one folder per method under paths.data.temporal_fusion,
+#          e.g. data/temporal_fusion/base_D_.../ewma_lags/
+#          Registered in config.yaml as tf_D_ewma_lags etc.
+#   merged (legacy):  all methods merged into a single parquet under
+#          paths.data.modeling/{folder}_tsfusion (backward compatible).
+#
 # Reference: Balduino & Valente, "Implementation of IoT Data Fusion
 # Architectures for Precipitation Forecasting", Preprints 2025.
 # =============================================================================
@@ -43,13 +50,34 @@ except ImportError:
     print("[ERRO] Falha ao importar src.utils")
     sys.exit(1)
 
+# Memory monitoring (psutil optional)
+try:
+    from src.ml.core import MemoryMonitor  # type: ignore
+except Exception:
+    class MemoryMonitor:  # type: ignore
+        @staticmethod
+        def get_usage() -> str:
+            try:
+                import psutil, os
+                p = psutil.Process(os.getpid())
+                vm = psutil.virtual_memory()
+                rss_gb = p.memory_info().rss / (1024 ** 3)
+                avail_gb = vm.available / (1024 ** 3)
+                return f"rss={rss_gb:.2f}GB avail={avail_gb:.2f}GB used={vm.percent}%"
+            except Exception:
+                return "psutil_not_installed"
+
+        @staticmethod
+        def log_usage(log, ctx: str = "") -> None:
+            log.info(f"[MEMORIA] {ctx}: {MemoryMonitor.get_usage()}")
+
 # ---------------------------------------------------------------------------
 # Column constants (must match feature_engineering_physics.py / parquets)
 # ---------------------------------------------------------------------------
-COL_PRECIP = "PRECIPITAÇÃO TOTAL, HORÁRIO (mm)"
-COL_TEMP = "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)"
-COL_UMID = "UMIDADE RELATIVA DO AR, HORARIA (%)"
-COL_VENTO = "VENTO, VELOCIDADE HORARIA (m/s)"
+COL_PRECIP  = "PRECIPITAÇÃO TOTAL, HORÁRIO (mm)"
+COL_TEMP    = "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)"
+COL_UMID    = "UMIDADE RELATIVA DO AR, HORARIA (%)"
+COL_VENTO   = "VENTO, VELOCIDADE HORARIA (m/s)"
 COL_PRESSAO = "PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)"
 
 Z_PRIMARY = COL_PRECIP  # official series z for Layer A
@@ -100,13 +128,18 @@ except ImportError:
 # ============================================================================
 class LayerATracker:
     """Accumulates per-city, per-method (y_true, y_pred) and computes
-    MAE / MSE / R² for the temporal model on the continuous series z."""
+    MAE / MSE / R² for the temporal model on the continuous series z.
+
+    The ``is_train`` flag lets us export a training-only summary that can be
+    used to rank methods without leaking information from test years.
+    """
 
     def __init__(self):
         self.records: List[Dict] = []
 
     def add(self, method: str, city: str, year: int,
-            y_true: np.ndarray, y_pred: np.ndarray) -> None:
+            y_true: np.ndarray, y_pred: np.ndarray,
+            is_train: bool = False) -> None:
         mask = np.isfinite(y_true) & np.isfinite(y_pred)
         yt, yp = y_true[mask], y_pred[mask]
         if len(yt) == 0:
@@ -119,13 +152,11 @@ class LayerATracker:
         self.records.append({
             "method": method, "city": city, "year": year,
             "n": int(len(yt)), "mae": mae, "mse": mse, "r2": r2,
+            "is_train": bool(is_train),
         })
 
-    def summary_df(self) -> pd.DataFrame:
-        if not self.records:
-            return pd.DataFrame()
-        df = pd.DataFrame(self.records)
-        agg = (
+    def _aggregate(self, df: pd.DataFrame) -> pd.DataFrame:
+        return (
             df.groupby(["method", "year"])
             .agg(
                 n_cities=("city", "nunique"),
@@ -136,16 +167,58 @@ class LayerATracker:
             )
             .reset_index()
         )
-        return agg
+
+    def summary_df(self) -> pd.DataFrame:
+        if not self.records:
+            return pd.DataFrame()
+        return self._aggregate(pd.DataFrame(self.records))
+
+    def summary_train_df(self) -> pd.DataFrame:
+        """Aggregate only over training years (is_train=True)."""
+        if not self.records:
+            return pd.DataFrame()
+        df = pd.DataFrame(self.records)
+        train = df[df["is_train"] == True]  # noqa: E712
+        if train.empty:
+            return pd.DataFrame()
+        return self._aggregate(train)
+
+    def method_ranking_df(self) -> pd.DataFrame:
+        """One row per method ranked by mae_mean ascending (train years only)."""
+        summ = self.summary_train_df()
+        if summ.empty:
+            return pd.DataFrame()
+        return (
+            summ.groupby("method")
+            .agg(
+                n_cities_total=("n_cities", "sum"),
+                n_obs_total=("n_total", "sum"),
+                mae_mean=("mae_mean", "mean"),
+                mse_mean=("mse_mean", "mean"),
+                r2_mean=("r2_mean", "mean"),
+            )
+            .reset_index()
+            .sort_values("mae_mean")
+            .reset_index(drop=True)
+        )
 
     def save(self, path: Path) -> None:
         utils.ensure_dir(path.parent)
         detail = pd.DataFrame(self.records)
         if len(detail):
             detail.to_csv(path.parent / "layer_a_detail.csv", index=False)
+
         summary = self.summary_df()
         if len(summary):
             summary.to_csv(path, index=False)
+
+        summary_train = self.summary_train_df()
+        if len(summary_train):
+            summary_train.to_csv(path.parent / "layer_a_summary_train.csv", index=False)
+
+        ranking = self.method_ranking_df()
+        if len(ranking):
+            ranking.to_csv(path.parent / "method_ranking_train.csv", index=False)
 
 
 # ============================================================================
@@ -168,12 +241,14 @@ class TemporalFusionEngineer:
         test_size_years: int = 2,
         overwrite: bool = False,
         filter_years: Optional[List[int]] = None,
+        output_layout: str = "split",
     ):
         self.cfg = utils.loadConfig()
         self.log = utils.get_logger(
             "feature_eng.temporal", kind="temporal", per_run_file=True
         )
         self.modeling_dir = Path(self.cfg["paths"]["data"]["modeling"])
+        self.temporal_fusion_dir = Path(self.cfg["paths"]["data"]["temporal_fusion"])
 
         self.scenarios = scenarios or DEFAULT_SCENARIOS
         self.methods = methods if methods is not None else ALL_METHODS
@@ -188,16 +263,41 @@ class TemporalFusionEngineer:
         self.test_size_years = test_size_years
         self.overwrite = overwrite
         self.filter_years = filter_years
+        self.output_layout = output_layout.lower().strip()
+
+        if self.output_layout not in ("split", "merged"):
+            self.log.warning(
+                f"[INIT] output_layout='{output_layout}' desconhecido; usando 'split'"
+            )
+            self.output_layout = "split"
 
         self.layer_a = LayerATracker()
 
-        # Fitted transform objects (fit on training years, reuse on test)
-        self._minirocket_model = None
-        self._tskmeans_model = None
+        # Fitted transform objects keyed by (scenario_key, method) so that
+        # per-method output directories get their own independent model state.
+        self._minirocket_models: Dict[str, object] = {}
+        self._tskmeans_models: Dict[str, object] = {}
 
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
+    def _model_key(self, scenario_key: str, method: str) -> str:
+        return f"{scenario_key}__{method}"
+
+    def _log_memory(self, ctx: str) -> None:
+        try:
+            import psutil, os
+            p = psutil.Process(os.getpid())
+            vm = psutil.virtual_memory()
+            rss_gb = p.memory_info().rss / (1024 ** 3)
+            avail_gb = vm.available / (1024 ** 3)
+            self.log.info(
+                f"[MEMORIA] {ctx} | rss={rss_gb:.2f}GB "
+                f"avail={avail_gb:.2f}GB used={vm.percent}%"
+            )
+        except Exception:
+            pass
+
     def _discover_years(self, folder: str) -> List[Tuple[int, Path]]:
         d = self.modeling_dir / folder
         files = sorted(d.glob("inmet_bdq_*_cerrado.parquet"))
@@ -236,8 +336,8 @@ class TemporalFusionEngineer:
         alphas = {"a01": 0.1, "a03": 0.3, "a08": 0.8}
         targets = {
             "precip": COL_PRECIP,
-            "temp": COL_TEMP,
-            "umid": COL_UMID,
+            "temp":   COL_TEMP,
+            "umid":   COL_UMID,
         }
 
         for tname, col in targets.items():
@@ -251,7 +351,6 @@ class TemporalFusionEngineer:
                     lambda x: x.ewm(alpha=alpha, adjust=False).mean()
                 )
 
-            # Lags (causal: shift within each city)
             for lag_h in [1, 24, 168]:
                 colname = f"tsf_lag_{tname}_{lag_h}h"
                 result[colname] = series.transform(
@@ -279,13 +378,13 @@ class TemporalFusionEngineer:
             return np.full(len(series), np.nan)
 
     def _generate_arima(self, df_agg: pd.DataFrame,
-                        year: int) -> pd.DataFrame:
+                        year: int, is_train: bool) -> pd.DataFrame:
         if not statsmodels_available:
-            self.log.warning("[ARIMA] statsmodels not installed, skipping.")
+            self.log.warning("[ARIMA] statsmodels não instalado, pulando.")
             return pd.DataFrame()
 
         result = df_agg[["cidade_norm", "_ts"]].copy()
-        result["tsf_arima_precip_pred"] = np.nan
+        result["tsf_arima_precip_pred"]  = np.nan
         result["tsf_arima_precip_resid"] = np.nan
 
         cities = df_agg["cidade_norm"].unique()
@@ -295,7 +394,7 @@ class TemporalFusionEngineer:
         ok, fail = 0, 0
 
         for city in tqdm(cities, desc=f"ARIMA {year}", leave=False):
-            mask = df_agg["cidade_norm"] == city
+            mask    = df_agg["cidade_norm"] == city
             city_df = df_agg.loc[mask].copy()
             z = city_df[Z_PRIMARY].values.astype(float)
             n = len(z)
@@ -303,19 +402,13 @@ class TemporalFusionEngineer:
             preds = np.full(n, np.nan)
 
             for start in range(0, n, H):
-                end = min(start + H, n)
+                end        = min(start + H, n)
                 train_start = max(0, start - W)
-                train_z = z[train_start:start]
+                train_z    = z[train_start:start]
 
                 if len(train_z) < max(order[0], order[2]) + order[1] + 10:
                     continue
 
-                fitted = self._fit_predict_arima(train_z, order)
-                if np.all(np.isnan(fitted)):
-                    fail += 1
-                    continue
-
-                n_forecast = end - start
                 try:
                     model = SM_ARIMA(train_z, order=order,
                                      enforce_stationarity=False,
@@ -325,52 +418,57 @@ class TemporalFusionEngineer:
                         res = model.fit(
                             method_kwargs={"maxiter": 100}, disp=False
                         )
-                    fc = res.forecast(steps=n_forecast)
+                    fc = res.forecast(steps=end - start)
                     preds[start:end] = fc
                     ok += 1
-                except Exception:
+                except Exception as exc:
                     fail += 1
+                    if fail <= 5:
+                        self.log.debug(
+                            f"[ARIMA] city={city} year={year} "
+                            f"bloco=[{start}:{end}] erro: {exc}"
+                        )
 
             idx = city_df.index
-            result.loc[idx, "tsf_arima_precip_pred"] = preds
+            result.loc[idx, "tsf_arima_precip_pred"]  = preds
             result.loc[idx, "tsf_arima_precip_resid"] = z - preds
 
-            self.layer_a.add("arima", city, year, z, preds)
+            self.layer_a.add("arima", city, year, z, preds, is_train=is_train)
 
-        self.log.info(f"[ARIMA {year}] blocks ok={ok} fail={fail}")
+        self.log.info(f"[ARIMA {year}] blocos ok={ok} fail={fail}")
         return result
 
     # ==================================================================
     # METHOD 3: SARIMA  (per-city, refit every H hours, seasonal m)
     # ==================================================================
     def _generate_sarima(self, df_agg: pd.DataFrame,
-                         year: int) -> pd.DataFrame:
+                         year: int, is_train: bool) -> pd.DataFrame:
         if not statsmodels_available:
-            self.log.warning("[SARIMA] statsmodels not installed, skipping.")
+            self.log.warning("[SARIMA] statsmodels não instalado, pulando.")
             return pd.DataFrame()
 
         result = df_agg[["cidade_norm", "_ts"]].copy()
-        result["tsf_sarima_precip_pred"] = np.nan
+        result["tsf_sarima_precip_pred"]  = np.nan
         result["tsf_sarima_precip_resid"] = np.nan
 
-        cities = df_agg["cidade_norm"].unique()
-        H = self.refit_hours
-        W = self.window_hours
-        order = self.arima_order
+        cities   = df_agg["cidade_norm"].unique()
+        H        = self.refit_hours
+        W        = self.window_hours
+        order    = self.arima_order
         seasonal = (1, 1, 1, self.sarima_m)
         ok, fail = 0, 0
 
         for city in tqdm(cities, desc=f"SARIMA {year}", leave=False):
-            mask = df_agg["cidade_norm"] == city
+            mask    = df_agg["cidade_norm"] == city
             city_df = df_agg.loc[mask].copy()
             z = city_df[Z_PRIMARY].values.astype(float)
             n = len(z)
             preds = np.full(n, np.nan)
 
             for start in range(0, n, H):
-                end = min(start + H, n)
+                end        = min(start + H, n)
                 train_start = max(0, start - W)
-                train_z = z[train_start:start]
+                train_z    = z[train_start:start]
 
                 min_obs = self.sarima_m * 2 + 10
                 if len(train_z) < min_obs:
@@ -389,56 +487,63 @@ class TemporalFusionEngineer:
                     fc = res.forecast(steps=end - start)
                     preds[start:end] = fc
                     ok += 1
-                except Exception:
+                except Exception as exc:
                     fail += 1
+                    if fail <= 5:
+                        self.log.debug(
+                            f"[SARIMA] city={city} year={year} "
+                            f"bloco=[{start}:{end}] erro: {exc}"
+                        )
 
             idx = city_df.index
-            result.loc[idx, "tsf_sarima_precip_pred"] = preds
+            result.loc[idx, "tsf_sarima_precip_pred"]  = preds
             result.loc[idx, "tsf_sarima_precip_resid"] = z - preds
 
-            self.layer_a.add("sarima", city, year, z, preds)
+            self.layer_a.add("sarima", city, year, z, preds, is_train=is_train)
 
-        self.log.info(f"[SARIMA {year}] blocks ok={ok} fail={fail}")
+        self.log.info(f"[SARIMA {year}] blocos ok={ok} fail={fail}")
         return result
 
     # ==================================================================
     # METHOD 4: Prophet  (per-city, refit every H hours)
+    # Note: Prophet is a classical additive time-series model using
+    # Fourier seasonalities and changepoint regression — NOT an LLM.
     # ==================================================================
     def _generate_prophet(self, df_agg: pd.DataFrame,
-                          year: int) -> pd.DataFrame:
+                          year: int, is_train: bool) -> pd.DataFrame:
         if not prophet_available:
-            self.log.warning("[Prophet] prophet not installed, skipping.")
+            self.log.warning("[Prophet] prophet não instalado, pulando.")
             return pd.DataFrame()
 
         result = df_agg[["cidade_norm", "_ts"]].copy()
-        result["tsf_prophet_precip_pred"] = np.nan
+        result["tsf_prophet_precip_pred"]  = np.nan
         result["tsf_prophet_precip_resid"] = np.nan
 
-        cities = df_agg["cidade_norm"].unique()
-        H = self.refit_hours
-        W = self.window_hours
+        cities   = df_agg["cidade_norm"].unique()
+        H        = self.refit_hours
+        W        = self.window_hours
         ok, fail = 0, 0
 
         for city in tqdm(cities, desc=f"Prophet {year}", leave=False):
-            mask = df_agg["cidade_norm"] == city
+            mask    = df_agg["cidade_norm"] == city
             city_df = df_agg.loc[mask].copy()
-            z = city_df[Z_PRIMARY].values.astype(float)
+            z  = city_df[Z_PRIMARY].values.astype(float)
             ts = city_df["_ts"].values
-            n = len(z)
+            n  = len(z)
             preds = np.full(n, np.nan)
 
             for start in range(0, n, H):
-                end = min(start + H, n)
+                end        = min(start + H, n)
                 train_start = max(0, start - W)
-                train_ts = ts[train_start:start]
-                train_z = z[train_start:start]
+                train_ts   = ts[train_start:start]
+                train_z    = z[train_start:start]
 
                 if len(train_z) < 48:
                     continue
 
                 try:
                     pdf = pd.DataFrame({"ds": train_ts, "y": train_z})
-                    m = FBProphet(
+                    m   = FBProphet(
                         yearly_seasonality=False,
                         weekly_seasonality=True,
                         daily_seasonality=True,
@@ -447,20 +552,25 @@ class TemporalFusionEngineer:
                     m.fit(pdf)
 
                     future_ts = ts[start:end]
-                    future = pd.DataFrame({"ds": future_ts})
-                    fc = m.predict(future)
+                    future    = pd.DataFrame({"ds": future_ts})
+                    fc        = m.predict(future)
                     preds[start:end] = fc["yhat"].values
                     ok += 1
-                except Exception:
+                except Exception as exc:
                     fail += 1
+                    if fail <= 5:
+                        self.log.debug(
+                            f"[Prophet] city={city} year={year} "
+                            f"bloco=[{start}:{end}] erro: {exc}"
+                        )
 
             idx = city_df.index
-            result.loc[idx, "tsf_prophet_precip_pred"] = preds
+            result.loc[idx, "tsf_prophet_precip_pred"]  = preds
             result.loc[idx, "tsf_prophet_precip_resid"] = z - preds
 
-            self.layer_a.add("prophet", city, year, z, preds)
+            self.layer_a.add("prophet", city, year, z, preds, is_train=is_train)
 
-        self.log.info(f"[Prophet {year}] blocks ok={ok} fail={fail}")
+        self.log.info(f"[Prophet {year}] blocos ok={ok} fail={fail}")
         return result
 
     # ==================================================================
@@ -478,7 +588,7 @@ class TemporalFusionEngineer:
         valid = np.zeros(n, dtype=bool)
 
         cities = df_agg["cidade_norm"].values
-        vals = df_agg[cols].values.astype(np.float32)
+        vals   = df_agg[cols].values.astype(np.float32)
 
         city_starts: Dict[str, int] = {}
         prev_city = None
@@ -489,24 +599,25 @@ class TemporalFusionEngineer:
                 prev_city = c
 
         for i in range(n):
-            c = cities[i]
-            cs = city_starts[c]
+            c        = cities[i]
+            cs       = city_starts[c]
             local_idx = i - cs
             if local_idx < L:
                 continue
             window = vals[i - L: i]
             if np.any(np.isnan(window)):
                 continue
-            X[i] = window.T
+            X[i]    = window.T
             valid[i] = True
 
         return X, valid
 
     def _generate_minirocket(
-        self, df_agg: pd.DataFrame, year: int, is_train: bool
+        self, df_agg: pd.DataFrame, year: int, is_train: bool,
+        model_key: str,
     ) -> pd.DataFrame:
         if not minirocket_available:
-            self.log.warning("[MiniROCKET] aeon not installed, skipping.")
+            self.log.warning("[MiniROCKET] aeon não instalado, pulando.")
             return pd.DataFrame()
 
         L = self.minirocket_window
@@ -516,69 +627,75 @@ class TemporalFusionEngineer:
             return pd.DataFrame()
 
         self.log.info(
-            f"[MiniROCKET {year}] Building windows L={L}, "
-            f"channels={len(cols_for_window)}..."
+            f"[MiniROCKET {year}] Construindo janelas L={L}, "
+            f"canais={len(cols_for_window)}..."
         )
+        self._log_memory(f"MiniROCKET {year} pre-janelas")
         X_3d, valid = self._build_windows(df_agg, cols_for_window, L)
         n_valid = int(valid.sum())
-        self.log.info(f"[MiniROCKET {year}] {n_valid}/{len(valid)} valid windows")
+        self.log.info(f"[MiniROCKET {year}] {n_valid}/{len(valid)} janelas válidas")
 
         if n_valid == 0:
             return pd.DataFrame()
 
         X_valid = X_3d[valid]
 
-        if is_train and self._minirocket_model is None:
+        if is_train and model_key not in self._minirocket_models:
             self.log.info(
-                f"[MiniROCKET] Fitting on {n_valid} training windows, "
+                f"[MiniROCKET] Fitting em {n_valid} janelas de treino, "
                 f"num_kernels={self.minirocket_kernels}..."
             )
-            self._minirocket_model = MiniRocket(
-                n_kernels=self.minirocket_kernels, random_state=42
-            )
-            self._minirocket_model.fit(X_valid)
+            mr = MiniRocket(n_kernels=self.minirocket_kernels, random_state=42)
+            mr.fit(X_valid)
+            self._minirocket_models[model_key] = mr
 
-        if self._minirocket_model is None:
-            self.log.warning("[MiniROCKET] No fitted model yet (test year before train?)")
+        if model_key not in self._minirocket_models:
+            self.log.warning(
+                "[MiniROCKET] Modelo ainda não treinado para esta chave "
+                f"({model_key}). Pulando ano de teste."
+            )
             return pd.DataFrame()
 
-        self.log.info(f"[MiniROCKET {year}] Transforming {n_valid} windows...")
-        feats = self._minirocket_model.transform(X_valid)
+        self.log.info(f"[MiniROCKET {year}] Transformando {n_valid} janelas...")
+        self._log_memory(f"MiniROCKET {year} pre-transform")
+        feats  = self._minirocket_models[model_key].transform(X_valid)
         n_feat = feats.shape[1]
 
-        result = df_agg[["cidade_norm", "_ts"]].copy()
+        result    = df_agg[["cidade_norm", "_ts"]].copy()
         feat_cols = [f"tsf_minirocket_f{i:03d}" for i in range(n_feat)]
         for col in feat_cols:
             result[col] = np.nan
         result.loc[valid, feat_cols] = feats.astype(np.float32)
 
-        self.log.info(f"[MiniROCKET {year}] Generated {n_feat} features")
+        self.log.info(f"[MiniROCKET {year}] {n_feat} features geradas")
+        self._log_memory(f"MiniROCKET {year} pos-transform")
         return result
 
     # ==================================================================
     # METHOD 6: TS K-Means  (cluster weekly/daily patterns, fit on train)
     # ==================================================================
     def _generate_tskmeans(
-        self, df_agg: pd.DataFrame, year: int, is_train: bool
+        self, df_agg: pd.DataFrame, year: int, is_train: bool,
+        model_key: str,
     ) -> pd.DataFrame:
         if not tskmeans_available:
-            self.log.warning("[TSKMeans] tslearn not installed, skipping.")
+            self.log.warning("[TSKMeans] tslearn não instalado, pulando.")
             return pd.DataFrame()
 
-        P = self.tskmeans_period
+        P      = self.tskmeans_period
         result = df_agg[["cidade_norm", "_ts"]].copy()
         result["tsf_tskmeans_cluster"] = np.nan
 
         if Z_PRIMARY not in df_agg.columns:
             return result
 
-        cities = df_agg["cidade_norm"].unique()
+        cities        = df_agg["cidade_norm"].unique()
         all_segments: List[np.ndarray] = []
         segment_keys: List[Tuple[str, int]] = []
 
         for city in cities:
             mask = df_agg["cidade_norm"] == city
-            z = df_agg.loc[mask, Z_PRIMARY].values.astype(float)
+            z    = df_agg.loc[mask, Z_PRIMARY].values.astype(float)
             n_seg = len(z) // P
             for s in range(n_seg):
                 seg = z[s * P: (s + 1) * P]
@@ -593,46 +710,174 @@ class TemporalFusionEngineer:
 
         X_seg = np.array(all_segments)[:, :, np.newaxis]
 
-        if is_train and self._tskmeans_model is None:
+        if is_train and model_key not in self._tskmeans_models:
             self.log.info(
-                f"[TSKMeans] Fitting k={self.tskmeans_k} on "
-                f"{len(X_seg)} segments..."
+                f"[TSKMeans] Fitting k={self.tskmeans_k} em "
+                f"{len(X_seg)} segmentos..."
             )
-            self._tskmeans_model = TimeSeriesKMeans(
+            km = TimeSeriesKMeans(
                 n_clusters=self.tskmeans_k,
                 metric="euclidean",
                 max_iter=50,
                 random_state=42,
                 n_jobs=-1,
             )
-            self._tskmeans_model.fit(X_seg)
+            km.fit(X_seg)
+            self._tskmeans_models[model_key] = km
 
-        if self._tskmeans_model is None:
+        if model_key not in self._tskmeans_models:
             return result
 
-        labels = self._tskmeans_model.predict(X_seg)
+        labels = self._tskmeans_models[model_key].predict(X_seg)
 
         for idx, (city, seg_idx) in enumerate(segment_keys):
-            mask = df_agg["cidade_norm"] == city
+            mask         = df_agg["cidade_norm"] == city
             city_indices = df_agg.index[mask]
-            start = seg_idx * P
-            end = min(start + P, len(city_indices))
-            if end > len(city_indices):
+            start        = seg_idx * P
+            end_idx      = min(start + P, len(city_indices))
+            if end_idx > len(city_indices):
                 continue
-            result.loc[city_indices[start:end], "tsf_tskmeans_cluster"] = float(
+            result.loc[city_indices[start:end_idx], "tsf_tskmeans_cluster"] = float(
                 labels[idx]
             )
 
         n_assigned = result["tsf_tskmeans_cluster"].notna().sum()
         self.log.info(
-            f"[TSKMeans {year}] Assigned clusters to {n_assigned}/{len(result)} rows"
+            f"[TSKMeans {year}] Clusters atribuídos a {n_assigned}/{len(result)} linhas"
         )
         return result
 
     # ==================================================================
-    # Year-level orchestration
+    # Year-level: generate features for a single method
     # ==================================================================
-    def _process_year(
+    def _generate_method_features(
+        self,
+        method: str,
+        df_agg: pd.DataFrame,
+        year: int,
+        is_train: bool,
+        model_key: str,
+    ) -> pd.DataFrame:
+        if method == "ewma_lags":
+            return self._generate_ewma_lags(df_agg)
+        if method == "arima":
+            return self._generate_arima(df_agg, year, is_train)
+        if method == "sarima":
+            return self._generate_sarima(df_agg, year, is_train)
+        if method == "prophet":
+            return self._generate_prophet(df_agg, year, is_train)
+        if method == "minirocket":
+            return self._generate_minirocket(df_agg, year, is_train, model_key)
+        if method == "tskmeans":
+            return self._generate_tskmeans(df_agg, year, is_train, model_key)
+        self.log.warning(f"[UNKNOWN METHOD] {method}")
+        return pd.DataFrame()
+
+    def _merge_features_back(
+        self,
+        df: pd.DataFrame,
+        df_agg: pd.DataFrame,
+        feature_dfs: List[pd.DataFrame],
+    ) -> pd.DataFrame:
+        """Merge feature columns back to the original (possibly duplicated) rows."""
+        if not feature_dfs:
+            return df.drop(columns=["_ts"], errors="ignore")
+
+        merged = feature_dfs[0]
+        for extra in feature_dfs[1:]:
+            new_cols = [c for c in extra.columns if c not in ("cidade_norm", "_ts")]
+            if new_cols:
+                merged = merged.merge(
+                    extra[["cidade_norm", "_ts"] + new_cols],
+                    on=["cidade_norm", "_ts"],
+                    how="left",
+                )
+
+        df["_ts"] = pd.to_datetime(df["ts_hour"])
+        tsf_cols  = [c for c in merged.columns if c not in ("cidade_norm", "_ts")]
+        df_out    = df.merge(
+            merged[["cidade_norm", "_ts"] + tsf_cols],
+            on=["cidade_norm", "_ts"],
+            how="left",
+        )
+        df_out.drop(columns=["_ts"], inplace=True, errors="ignore")
+        return df_out
+
+    # ==================================================================
+    # Process one year — SPLIT layout (one folder per method)
+    # ==================================================================
+    def _process_year_split(
+        self,
+        scenario_key: str,
+        folder_name: str,
+        year: int,
+        src_path: Path,
+        is_train: bool,
+    ) -> None:
+        t0 = time.time()
+
+        df_raw = pd.read_parquet(src_path)
+        n_raw  = len(df_raw)
+        self._log_memory(f"pos-read {scenario_key}/{year}")
+
+        df = self._parse_ts(df_raw)
+
+        numeric_cols = [
+            c for c in [COL_PRECIP, COL_TEMP, COL_UMID, COL_VENTO, COL_PRESSAO]
+            if c in df.columns
+        ]
+        df_agg = self._aggregate_series(df, numeric_cols)
+        self.log.info(
+            f"[AGG] {n_raw} linhas raw -> {len(df_agg)} agregadas "
+            f"({df_agg['cidade_norm'].nunique()} cidades)"
+        )
+
+        for method in sorted(self.methods):
+            out_dir  = self.temporal_fusion_dir / folder_name / method
+            out_path = out_dir / src_path.name
+
+            if out_path.exists() and not self.overwrite:
+                self.log.info(f"[SKIP] {method}/{out_path.name} já existe")
+                continue
+
+            t1 = time.time()
+            model_key = self._model_key(scenario_key, method)
+            feat = self._generate_method_features(
+                method, df_agg, year, is_train, model_key
+            )
+            elapsed_method = time.time() - t1
+
+            if feat.empty:
+                self.log.info(
+                    f"[{method} {year}] sem features geradas em {elapsed_method:.1f}s"
+                )
+                continue
+
+            df_enriched = self._merge_features_back(df.copy(), df_agg, [feat])
+            utils.ensure_dir(out_dir)
+            df_enriched.to_parquet(out_path, index=False)
+
+            self.log.info(
+                f"[SAVED] {method}/{out_path.name} | {len(df_enriched)} linhas "
+                f"| método {elapsed_method:.1f}s"
+            )
+            self._log_memory(f"pos-save {method}/{year}")
+
+            del df_enriched, feat
+            gc.collect()
+
+        elapsed = time.time() - t0
+        self.log.info(
+            f"[DONE] {scenario_key}/{year} | train={is_train} | total {elapsed:.0f}s"
+        )
+
+        del df_raw, df, df_agg
+        gc.collect()
+
+    # ==================================================================
+    # Process one year — MERGED layout (legacy)
+    # ==================================================================
+    def _process_year_merged(
         self,
         scenario_key: str,
         folder_name: str,
@@ -643,7 +888,7 @@ class TemporalFusionEngineer:
     ) -> None:
         out_path = out_dir / src_path.name
         if out_path.exists() and not self.overwrite:
-            self.log.info(f"[SKIP] {out_path.name} already exists")
+            self.log.info(f"[SKIP] {out_path.name} já existe")
             return
 
         t0 = time.time()
@@ -653,7 +898,9 @@ class TemporalFusionEngineer:
         )
 
         df_raw = pd.read_parquet(src_path)
-        n_raw = len(df_raw)
+        n_raw  = len(df_raw)
+        self._log_memory(f"pos-read {scenario_key}/{year}")
+
         df = self._parse_ts(df_raw)
 
         numeric_cols = [
@@ -662,90 +909,34 @@ class TemporalFusionEngineer:
         ]
         df_agg = self._aggregate_series(df, numeric_cols)
         self.log.info(
-            f"[AGG] {n_raw} raw rows -> {len(df_agg)} aggregated "
-            f"({df_agg['cidade_norm'].nunique()} cities)"
+            f"[AGG] {n_raw} linhas raw -> {len(df_agg)} agregadas "
+            f"({df_agg['cidade_norm'].nunique()} cidades)"
         )
 
         feature_dfs: List[pd.DataFrame] = []
+        model_key = self._model_key(scenario_key, "merged")
 
-        if "ewma_lags" in self.methods:
+        for method in sorted(self.methods):
             t1 = time.time()
-            feat = self._generate_ewma_lags(df_agg)
-            feature_dfs.append(feat)
-            self.log.info(f"[EWMA/lags {year}] done in {time.time()-t1:.1f}s")
-
-        if "arima" in self.methods:
-            t1 = time.time()
-            feat = self._generate_arima(df_agg, year)
-            if len(feat):
-                feature_dfs.append(feat)
-            self.log.info(f"[ARIMA {year}] done in {time.time()-t1:.1f}s")
-
-        if "sarima" in self.methods:
-            t1 = time.time()
-            feat = self._generate_sarima(df_agg, year)
-            if len(feat):
-                feature_dfs.append(feat)
-            self.log.info(f"[SARIMA {year}] done in {time.time()-t1:.1f}s")
-
-        if "prophet" in self.methods:
-            t1 = time.time()
-            feat = self._generate_prophet(df_agg, year)
-            if len(feat):
-                feature_dfs.append(feat)
-            self.log.info(f"[Prophet {year}] done in {time.time()-t1:.1f}s")
-
-        if "minirocket" in self.methods:
-            t1 = time.time()
-            feat = self._generate_minirocket(df_agg, year, is_train)
-            if len(feat):
-                feature_dfs.append(feat)
-            self.log.info(f"[MiniROCKET {year}] done in {time.time()-t1:.1f}s")
-
-        if "tskmeans" in self.methods:
-            t1 = time.time()
-            feat = self._generate_tskmeans(df_agg, year, is_train)
-            if len(feat):
-                feature_dfs.append(feat)
-            self.log.info(f"[TSKMeans {year}] done in {time.time()-t1:.1f}s")
-
-        # Merge all feature DataFrames on (cidade_norm, _ts)
-        if feature_dfs:
-            merged_feats = feature_dfs[0]
-            for extra in feature_dfs[1:]:
-                new_cols = [
-                    c for c in extra.columns
-                    if c not in ("cidade_norm", "_ts")
-                ]
-                if new_cols:
-                    merged_feats = merged_feats.merge(
-                        extra[["cidade_norm", "_ts"] + new_cols],
-                        on=["cidade_norm", "_ts"],
-                        how="left",
-                    )
-
-            # Merge features back to ALL original rows (including duplicates)
-            df["_ts"] = pd.to_datetime(df["ts_hour"])
-            tsf_cols = [
-                c for c in merged_feats.columns
-                if c not in ("cidade_norm", "_ts")
-            ]
-            df_enriched = df.merge(
-                merged_feats[["cidade_norm", "_ts"] + tsf_cols],
-                on=["cidade_norm", "_ts"],
-                how="left",
+            mk = self._model_key(scenario_key, method)
+            feat = self._generate_method_features(
+                method, df_agg, year, is_train, mk
             )
-            df_enriched.drop(columns=["_ts"], inplace=True)
-        else:
-            df_enriched = df_raw
+            if len(feat):
+                feature_dfs.append(feat)
+            self.log.info(
+                f"[{method} {year}] concluído em {time.time()-t1:.1f}s"
+            )
+
+        df_enriched = self._merge_features_back(df.copy(), df_agg, feature_dfs)
 
         utils.ensure_dir(out_dir)
         df_enriched.to_parquet(out_path, index=False)
         elapsed = time.time() - t0
         self.log.info(
-            f"[SAVED] {out_path.name} | {len(df_enriched)} rows "
-            f"| {elapsed:.0f}s"
+            f"[SAVED] {out_path.name} | {len(df_enriched)} linhas | {elapsed:.0f}s"
         )
+        self._log_memory(f"pos-save merged/{year}")
 
         del df_raw, df, df_agg, df_enriched, feature_dfs
         gc.collect()
@@ -756,41 +947,56 @@ class TemporalFusionEngineer:
     def run(self) -> None:
         self.log.info("=" * 70)
         self.log.info("TEMPORAL FUSION FEATURE ENGINEERING")
-        self.log.info(f"Methods: {sorted(self.methods)}")
-        self.log.info(f"Scenarios: {list(self.scenarios.keys())}")
+        self.log.info(f"Layout:    {self.output_layout}")
+        self.log.info(f"Métodos:   {sorted(self.methods)}")
+        self.log.info(f"Cenários:  {list(self.scenarios.keys())}")
         self.log.info(f"Refit H={self.refit_hours}h, Window W={self.window_hours}h")
         self.log.info("=" * 70)
+        self._log_memory("inicio run")
 
         for scenario_key, folder_name in self.scenarios.items():
             year_files = self._discover_years(folder_name)
             if not year_files:
-                self.log.warning(f"[{scenario_key}] No parquets found in {folder_name}")
+                self.log.warning(
+                    f"[{scenario_key}] Nenhum parquet encontrado em "
+                    f"{self.modeling_dir / folder_name}"
+                )
                 continue
 
-            years = [y for y, _ in year_files]
+            years    = [y for y, _ in year_files]
             cut_year = sorted(years)[-self.test_size_years]
             self.log.info(
-                f"[{scenario_key}] {len(year_files)} years: "
-                f"{years[0]}..{years[-1]} | test >= {cut_year}"
+                f"[{scenario_key}] {len(year_files)} anos: "
+                f"{years[0]}..{years[-1]} | teste >= {cut_year}"
             )
 
-            out_folder = f"{folder_name}_tsfusion"
-            out_dir = self.modeling_dir / out_folder
+            if self.output_layout == "split":
+                for year, src_path in tqdm(year_files, desc=scenario_key):
+                    is_train = year < cut_year
+                    self._process_year_split(
+                        scenario_key, folder_name, year, src_path, is_train
+                    )
+            else:
+                # merged (legacy)
+                out_folder = f"{folder_name}_tsfusion"
+                out_dir    = self.modeling_dir / out_folder
+                for year, src_path in tqdm(year_files, desc=scenario_key):
+                    is_train = year < cut_year
+                    self._process_year_merged(
+                        scenario_key, folder_name, year,
+                        src_path, out_dir, is_train,
+                    )
 
-            for year, src_path in tqdm(year_files, desc=scenario_key):
-                is_train = year < cut_year
-                self._process_year(
-                    scenario_key, folder_name, year,
-                    src_path, out_dir, is_train,
-                )
-
-        # Save Layer A metrics
+        # Save Layer A metrics (all years + train-only + method ranking)
         eda_dir = Path(self.cfg["paths"]["data"].get("dataset", "data/dataset"))
-        layer_a_path = eda_dir.parent / "eda" / "temporal_fusion" / "layer_a_summary.csv"
+        layer_a_path = (
+            eda_dir.parent / "eda" / "temporal_fusion" / "layer_a_summary.csv"
+        )
         self.layer_a.save(layer_a_path)
-        self.log.info(f"[Layer A] Saved to {layer_a_path}")
+        self.log.info(f"[Layer A] Salvo em {layer_a_path.parent}/")
 
-        self.log.info("TEMPORAL FUSION COMPLETE")
+        self.log.info("TEMPORAL FUSION COMPLETO")
+        self._log_memory("fim run")
 
 
 # ============================================================================
@@ -798,45 +1004,61 @@ class TemporalFusionEngineer:
 # ============================================================================
 def main():
     parser = argparse.ArgumentParser(
-        description="Temporal Fusion Feature Engineering for calculated bases"
+        description=(
+            "Temporal Fusion Feature Engineering — gera features tsf_* "
+            "por método (split) ou todas juntas (merged) para bases calculated."
+        )
     )
     parser.add_argument(
         "--methods", nargs="+",
         choices=sorted(ALL_METHODS),
         default=None,
-        help="Which method families to run (default: all)",
+        help="Famílias de método (padrão: todas)",
     )
     parser.add_argument(
         "--scenarios", nargs="+",
         default=None,
-        help="Scenario keys from config.yaml (default: base_D_calculated base_F_calculated)",
+        help=(
+            "Chaves de cenário do config.yaml "
+            "(padrão: base_D_calculated base_F_calculated)"
+        ),
     )
-    parser.add_argument("--years", nargs="+", type=int, default=None)
-    parser.add_argument("--refit-hours", type=int, default=168)
-    parser.add_argument("--window-hours", type=int, default=720)
-    parser.add_argument("--sarima-m", type=int, default=24)
+    parser.add_argument(
+        "--output-layout",
+        choices=["split", "merged"],
+        default="split",
+        help=(
+            "split: uma pasta por método em data/temporal_fusion/ (padrão). "
+            "merged: todos os métodos num único parquet em data/modeling/ (legado)."
+        ),
+    )
+    parser.add_argument("--years",           nargs="+", type=int, default=None)
+    parser.add_argument("--refit-hours",     type=int,  default=168)
+    parser.add_argument("--window-hours",    type=int,  default=720)
+    parser.add_argument("--sarima-m",        type=int,  default=24)
     parser.add_argument(
         "--arima-order", nargs=3, type=int, default=[2, 1, 2],
         metavar=("P", "D", "Q"),
     )
-    parser.add_argument("--minirocket-window", type=int, default=24)
+    parser.add_argument("--minirocket-window",  type=int, default=24)
     parser.add_argument("--minirocket-kernels", type=int, default=84)
-    parser.add_argument("--tskmeans-k", type=int, default=8)
-    parser.add_argument("--tskmeans-period", type=int, default=168)
-    parser.add_argument("--test-years", type=int, default=2)
+    parser.add_argument("--tskmeans-k",         type=int, default=8)
+    parser.add_argument("--tskmeans-period",    type=int, default=168)
+    parser.add_argument("--test-years",         type=int, default=2)
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
+    cfg = utils.loadConfig()
+
     scenarios = None
     if args.scenarios:
-        cfg = utils.loadConfig()
         scenarios = {}
         for k in args.scenarios:
             folder = cfg["modeling_scenarios"].get(k)
             if folder:
                 scenarios[k] = folder
             else:
-                print(f"[WARN] Scenario '{k}' not found in config.yaml")
+                print(f"[WARN] Cenário '{k}' não encontrado em config.yaml")
 
     methods = set(args.methods) if args.methods else None
 
@@ -854,6 +1076,7 @@ def main():
         test_size_years=args.test_years,
         overwrite=args.overwrite,
         filter_years=args.years,
+        output_layout=args.output_layout,
     )
     eng.run()
 
