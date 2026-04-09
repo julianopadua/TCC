@@ -117,6 +117,10 @@ DEFAULT_SCENARIOS: Dict[str, str] = {
     "base_F_calculated": "base_F_full_original_calculated",
 }
 
+# Primeiras N falhas por método/ano: WARNING com mensagem completa da exceção
+# (logging em INFO não exibe linhas DEBUG). A primeira falha inclui traceback.
+TSF_FAIL_DETAIL_LOG_CAP = 25
+
 # ---------------------------------------------------------------------------
 # Optional heavy imports (guarded so the script loads even without them)
 # ---------------------------------------------------------------------------
@@ -330,9 +334,35 @@ class TemporalFusionEngineer:
         self._eda_tsf_dir    = eda_dir.parent / "eda" / "temporal_fusion"
         self._run_metrics_path = self._eda_tsf_dir / "tsf_run_metrics.csv"
 
+        # Orçamento de falhas com detalhe em WARNING (ver TSF_FAIL_DETAIL_LOG_CAP)
+        self._fail_detail_log_remaining = 0
+
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
+    def _reset_fail_detail_budget(self) -> None:
+        """Reinicia contador de falhas logadas em WARNING para este método/ano."""
+        self._fail_detail_log_remaining = TSF_FAIL_DETAIL_LOG_CAP
+
+    def _log_tsf_block_failure(
+        self,
+        method_tag: str,
+        year: int,
+        detail: str,
+        exc: BaseException,
+    ) -> None:
+        """DEBUG: toda falha. WARNING: primeiras N com texto completo; 1ª com traceback."""
+        msg_body = f"{detail} | {exc.__class__.__name__}: {exc}"
+        self.log.debug(f"[{method_tag}] {msg_body}")
+        if self._fail_detail_log_remaining <= 0:
+            return
+        idx = TSF_FAIL_DETAIL_LOG_CAP - self._fail_detail_log_remaining + 1
+        self._fail_detail_log_remaining -= 1
+        self.log.warning(
+            f"[{method_tag}] falha {idx}/{TSF_FAIL_DETAIL_LOG_CAP} (year={year}) {msg_body}",
+            exc_info=(idx == 1),
+        )
+
     def _model_key(self, scenario_key: str, method: str) -> str:
         return f"{scenario_key}__{method}"
 
@@ -483,12 +513,11 @@ class TemporalFusionEngineer:
                 fail += 1
                 fail_types[exc.__class__.__name__] += 1
                 nan_in_train = int(np.isnan(train_z).sum())
-                self.log.debug(
-                    f"[{method_tag}] city={city} year={year} slug={slug} "
-                    f"bloco=[{start}:{end}] train_n={len(train_z)} "
-                    f"train_nan={nan_in_train} "
-                    f"{exc.__class__.__name__}: {exc}"
+                detail = (
+                    f"city={city} slug={slug} bloco=[{start}:{end}] "
+                    f"train_n={len(train_z)} train_nan={nan_in_train}"
                 )
+                self._log_tsf_block_failure(method_tag, year, detail, exc)
 
         return preds, ok, fail, skipped, fail_types
 
@@ -559,6 +588,8 @@ class TemporalFusionEngineer:
             self.log.warning("[ARIMA] Nenhuma variável de interesse disponível no df_agg.")
             return pd.DataFrame(), {}
 
+        self._reset_fail_detail_budget()
+
         result = df_agg[["cidade_norm", "_ts"]].copy()
         for slug in active:
             result[f"tsf_arima_{slug}_pred"]  = np.nan
@@ -577,7 +608,7 @@ class TemporalFusionEngineer:
             )
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                res = model.fit(method_kwargs={"maxiter": 100}, disp=False)
+                res = model.fit(method_kwargs={"maxiter": 100})
             return res.forecast(steps=steps)
 
         total_ok = total_fail = total_skipped = 0
@@ -629,6 +660,8 @@ class TemporalFusionEngineer:
         if not active:
             self.log.warning("[SARIMA] Nenhuma variável de interesse disponível no df_agg.")
             return pd.DataFrame(), {}
+
+        self._reset_fail_detail_budget()
 
         result = df_agg[["cidade_norm", "_ts"]].copy()
         for slug in active:
@@ -727,6 +760,8 @@ class TemporalFusionEngineer:
             f"exog_future=last_row_repeated"
         )
 
+        self._reset_fail_detail_budget()
+
         pred_col  = f"tsf_arimax_{endog_slug}_pred"
         resid_col = f"tsf_arimax_{endog_slug}_resid"
         result    = df_agg[["cidade_norm", "_ts"]].copy()
@@ -789,12 +824,11 @@ class TemporalFusionEngineer:
                 except Exception as exc:
                     fail += 1
                     fail_types[exc.__class__.__name__] += 1
-                    self.log.debug(
-                        f"[ARIMAX] city={city} year={year} endog={endog_slug} "
-                        f"exog={exog_slugs} bloco=[{start}:{end}] "
-                        f"train_n={len(tr_endog_c)} "
-                        f"{exc.__class__.__name__}: {exc}"
+                    detail = (
+                        f"city={city} endog={endog_slug} exog={exog_slugs} "
+                        f"bloco=[{start}:{end}] train_n={len(tr_endog_c)}"
                     )
+                    self._log_tsf_block_failure("ARIMAX", year, detail, exc)
 
             result.loc[idx, pred_col]  = preds
             result.loc[idx, resid_col] = z_endog - preds
@@ -847,6 +881,8 @@ class TemporalFusionEngineer:
             f"[SARIMAX_exog {year}] endog={endog_slug} exog={exog_slugs} "
             f"seasonal={seasonal} exog_future=last_row_repeated"
         )
+
+        self._reset_fail_detail_budget()
 
         pred_col  = f"tsf_sarimax_exog_{endog_slug}_pred"
         resid_col = f"tsf_sarimax_exog_{endog_slug}_resid"
@@ -909,12 +945,11 @@ class TemporalFusionEngineer:
                 except Exception as exc:
                     fail += 1
                     fail_types[exc.__class__.__name__] += 1
-                    self.log.debug(
-                        f"[SARIMAX_exog] city={city} year={year} endog={endog_slug} "
-                        f"exog={exog_slugs} bloco=[{start}:{end}] "
-                        f"train_n={len(tr_endog_c)} "
-                        f"{exc.__class__.__name__}: {exc}"
+                    detail = (
+                        f"city={city} endog={endog_slug} exog={exog_slugs} "
+                        f"bloco=[{start}:{end}] train_n={len(tr_endog_c)}"
                     )
+                    self._log_tsf_block_failure("SARIMAX_exog", year, detail, exc)
 
             result.loc[idx, pred_col]  = preds
             result.loc[idx, resid_col] = z_endog - preds
@@ -946,6 +981,8 @@ class TemporalFusionEngineer:
         result = df_agg[["cidade_norm", "_ts"]].copy()
         result["tsf_prophet_precip_pred"]  = np.nan
         result["tsf_prophet_precip_resid"] = np.nan
+
+        self._reset_fail_detail_budget()
 
         cities = df_agg["cidade_norm"].unique()
         H, W   = self.refit_hours, self.window_hours
@@ -989,12 +1026,11 @@ class TemporalFusionEngineer:
                     fail += 1
                     fail_types[exc.__class__.__name__] += 1
                     nan_in_train = int(np.isnan(train_z).sum())
-                    self.log.debug(
-                        f"[Prophet] city={city} year={year} slug=precip "
-                        f"bloco=[{start}:{end}] train_n={len(train_z)} "
-                        f"train_nan={nan_in_train} "
-                        f"{exc.__class__.__name__}: {exc}"
+                    detail = (
+                        f"city={city} slug=precip bloco=[{start}:{end}] "
+                        f"train_n={len(train_z)} train_nan={nan_in_train}"
                     )
+                    self._log_tsf_block_failure("Prophet", year, detail, exc)
 
             idx = city_df.index
             result.loc[idx, "tsf_prophet_precip_pred"]  = preds
@@ -1403,8 +1439,9 @@ class TemporalFusionEngineer:
         self.log.info(f"ARIMAX endog: {self.arimax_endog}")
         self.log.info(f"Refit H={self.refit_hours}h, Window W={self.window_hours}h")
         self.log.info(
-            "NOTA: Para diagnóstico de falhas individuais, suba logging.level "
-            "para DEBUG em config.yaml"
+            f"NOTA: As primeiras {TSF_FAIL_DETAIL_LOG_CAP} falhas por método/ano "
+            "são logadas em WARNING com mensagem completa (a 1ª inclui traceback). "
+            "Todas as falhas em DEBUG se logging.level=DEBUG em config.yaml."
         )
         self.log.info("=" * 70)
         self._log_memory("inicio run")

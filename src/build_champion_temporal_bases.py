@@ -120,6 +120,15 @@ def _select_methods(
             f"{ranking_path}. Colunas presentes: {list(rank_df.columns)}"
         )
 
+    # If ranking has a 'target' column (multi-variable Layer A), dedup by method
+    # keeping the row with the lowest mae_mean per method (best-performing target).
+    if "target" in rank_df.columns:
+        rank_df = (
+            rank_df.sort_values("mae_mean")
+            .drop_duplicates(subset=["method"], keep="first")
+            .reset_index(drop=True)
+        )
+
     rank_df = rank_df.sort_values("mae_mean").reset_index(drop=True)
     log.info(
         f"[SELECT] Ranking de métodos (treino, MAE crescente):\n"

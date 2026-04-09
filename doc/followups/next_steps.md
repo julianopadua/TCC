@@ -6,47 +6,72 @@
 
 ### Checklist de execução (ordem recomendada)
 
-1. **Smoke test — método leve, um ano:**
+1. **Smoke test — método leve, um ano, só base D:**
    ```
-   python src/feature_engineering_temporal.py --years 2020 --methods ewma_lags
+   python src/feature_engineering_temporal.py --years 2020 --methods ewma_lags --scenarios base_D_calculated
    ```
    Conferir pasta `data/temporal_fusion/base_D_with_rad_drop_rows_calculated/ewma_lags/`.
 
-2. **Rodagem completa — todos os métodos (pode ser lenta):**
-   ```
-   python src/feature_engineering_temporal.py --output-layout split
-   ```
-   Ou método a método para controlar tempo:
+2. **Diagnóstico de NaN antes de rodar a sério:** os logs INFO já imprimem `[NAN]` com % de NaN
+   por coluna (precip, temp, umid, rad, vento, pressão) para cada base/ano antes dos métodos.
+   Para ver exceções individuais dos blocos ARIMA/ARIMAX, subir nível de log para `DEBUG` em
+   `config.yaml` (`logging.level: "DEBUG"`).
+
+3. **Rodagem completa — por método para controlar tempo:**
    ```
    python src/feature_engineering_temporal.py --output-layout split --methods arima
    python src/feature_engineering_temporal.py --output-layout split --methods sarima
+   python src/feature_engineering_temporal.py --output-layout split --methods arimax
+   python src/feature_engineering_temporal.py --output-layout split --methods sarimax_exog
    python src/feature_engineering_temporal.py --output-layout split --methods prophet
    python src/feature_engineering_temporal.py --output-layout split --methods minirocket
    python src/feature_engineering_temporal.py --output-layout split --methods tskmeans
    ```
+   Por padrão processa bases D, E e F. Usar `--scenarios base_D_calculated base_F_calculated`
+   para restringir a D e F somente.
 
-3. **Conferir Camada A (ranking de métodos — apenas anos de treino):**
+4. **Testar ordens ARIMA diferentes (uma rodada por ordem):**
    ```
-   data/eda/temporal_fusion/method_ranking_train.csv
+   python src/feature_engineering_temporal.py --methods arima --arima-order 1 0 0 --scenarios base_D_calculated --years 2018 2019
+   python src/feature_engineering_temporal.py --methods arima --arima-order 2 1 2 --scenarios base_D_calculated --years 2018 2019
    ```
-   Colunas: `method`, `mae_mean`, `r2_mean`, `n_obs_total`.
 
-4. **Construir bases campeãs (top-k métodos por MAE):**
+5. **ARIMA/SARIMA só em variáveis de risco específicas:**
+   ```
+   python src/feature_engineering_temporal.py --methods arima sarima --arima-vars precip temp umid
+   ```
+   ARIMAX com endog diferente de precip:
+   ```
+   python src/feature_engineering_temporal.py --methods arimax sarimax_exog --arimax-endog temp
+   ```
+
+6. **Conferir Camada A e run metrics:**
+   ```
+   data/eda/temporal_fusion/method_ranking_train.csv   # (method, target, mae_mean, r2_mean)
+   data/eda/temporal_fusion/tsf_run_metrics.csv        # (scenario, year, method, ok, fail, skipped, fail_types)
+   data/eda/temporal_fusion/layer_a_detail.csv
+   ```
+
+7. **Construir bases campeãs (top-k métodos por MAE, bases D/E/F):**
    ```
    python src/build_champion_temporal_bases.py --top-k 2
    ```
    Ou com métodos explícitos após análise do ranking:
    ```
-   python src/build_champion_temporal_bases.py --methods arima prophet
+   python src/build_champion_temporal_bases.py --methods arima arimax prophet --bases D E F
    ```
 
-5. **Treinar XGBoost/RF em cada cenário:**
-   - Rodar `train_runner.py` selecionando os cenários `tf_D_*` / `tf_F_*` (aparecem no menu automaticamente).
+8. **Treinar XGBoost/RF em cada cenário:**
+   - Rodar `train_runner.py` selecionando os cenários `tf_D_*` / `tf_E_*` / `tf_F_*`
+     (aparecem no menu automaticamente via `temporal_fusion_paths` no config.yaml).
    - Para comparação controlada: mesma variação de hiperparâmetros entre cenários.
-   - Cenários a comparar: `base_D_calculated` (sem tsf) vs `tf_D_ewma_lags` vs `tf_D_arima` … vs `tf_D_champion`.
+   - Cenários a comparar: `base_D_calculated` (sem tsf) vs `tf_D_ewma_lags` vs
+     `tf_D_arima` … vs `tf_D_arimax` … vs `tf_D_champion`.
 
-6. **Registrar no TCC/artigo:**
-   - Ganho por método (PR-AUC Camada B) vs proxy de ajuste (MAE Camada A).
+9. **Registrar no TCC/artigo:**
+   - Ganho por método (PR-AUC Camada B) vs proxy de ajuste (MAE Camada A por variável).
+   - ARIMAX/SARIMAX_exog: documentar que `exog_future = última linha repetida` é convenção
+     de feature engineering operacional, não previsão meteorológica literal.
    - Ablação de métodos e limitações de dependências opcionais.
    - Avisar que seleção do campeão usa anos de treino para evitar viés.
 
