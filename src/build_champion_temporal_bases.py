@@ -51,11 +51,15 @@ try:
 except ImportError:
     _PSUTIL = False
 
-ALL_METHODS = {"ewma_lags", "arima", "sarima", "prophet", "minirocket", "tskmeans"}
+ALL_METHODS = {
+    "ewma_lags", "arima", "sarima", "arimax", "sarimax_exog",
+    "prophet", "minirocket", "tskmeans",
+}
 
 # Mapping from base-source key to the long folder name under temporal_fusion/
 BASE_SOURCES: Dict[str, str] = {
     "D": "base_D_with_rad_drop_rows_calculated",
+    "E": "base_E_with_rad_knn_calculated",
     "F": "base_F_full_original_calculated",
 }
 
@@ -301,9 +305,9 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--bases", nargs="+", default=["D", "F"],
-        choices=["D", "F"],
-        help="Bases a processar (padrão: D F)",
+        "--bases", nargs="+", default=["D", "E", "F"],
+        choices=["D", "E", "F"],
+        help="Bases a processar (padrão: D E F)",
     )
     parser.add_argument(
         "--overwrite", action="store_true",
