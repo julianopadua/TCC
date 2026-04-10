@@ -21,6 +21,7 @@ paths:
     dataset: "./data/dataset"
     modeling: "./data/modeling"
     temporal_fusion: "./data/temporal_fusion"
+    integrations_inmet_gee: "./data/integrations/inmet_gee"
   providers:
     bdqueimadas:
       raw: "./data/raw/BDQUEIMADAS"
@@ -144,3 +145,105 @@ inmet:
   dataset: "estacoes_automaticas_diarias"     # placeholder para referência
   years: [] # opcional; pode ser sobrescrito no código
   filename_template: "inmet_{year}.csv"
+
+# =============================================================================
+# PIPELINE INMET-GEE — bloco de configuração
+# Módulo: src/integrations/inmet_gee/
+# =============================================================================
+inmet_gee_pipeline:
+
+  # --- Entrada e identificação de estações ---
+  # Cenário base para extrair metadados de lat/lon e detectar deriva espacial.
+  # Usar variante "_calculated" para garantir presença de precip_ewma / dias_sem_chuva.
+  station_source_scenario: "base_E_calculated"
+  # Coluna(s) que compõem o station_uid. Se "cidade_norm" for ambígua (homônimos),
+  # trocar por ["CD_ESTACAO"] quando disponível nos CSVs brutos.
+  station_id_columns: ["cidade_norm"]
+  # Anos a processar. Vazio = descoberta automática por glob nos parquets.
+  years: []
+
+  # --- Deriva espacial ---
+  # Distância haversine abaixo da qual a mudança de coordenada é ruído de arredondamento.
+  coordinate_jitter_max_m: 50
+  # Distância acima da qual a mudança é registrada como evento de deriva real.
+  drift_alert_min_m: 500
+
+  # --- Resiliência e retry ---
+  retry_max_attempts: 3
+  retry_base_delay_s: 5      # espera inicial; dobra a cada tentativa (exponential backoff)
+  retry_max_delay_s: 120
+
+  # --- Google Earth Engine ---
+  gee:
+    # ID do projeto GEE (Cloud Project). Pode ser sobrescrito pela variável GEE_PROJECT.
+    project_id: ""
+    # Coleção de imagem usada na validação de ponto (fase 1 = apenas validação).
+    # Fase 2 substituirá por coleção NDVI/LAI com janela temporal ajustada.
+    reference_image_collection: "COPERNICUS/S2_SR_HARMONIZED"
+    scale_m: 10
+    # Modo de região de interesse por estação.
+    # "point"        — apenas o ponto (fase 1)
+    # "point_buffer" — ponto + buffer (fase 2, usa buffer_radius_km)
+    roi_mode: "point"
+    # PHASE-2 HOOK: raio do buffer (km) ao redor da estação para extração de índices.
+    buffer_radius_km: 5.0
+    # Limite de chamadas por minuto (evitar quota exceeded). 0 = sem limite explícito.
+    calls_per_minute_cap: 20
+    # Estratégia de validação na fase 1: "per_geo_version" (recomendado, economiza cota)
+    # ou "per_year" (mais granular, mais chamadas).
+    validation_strategy: "per_geo_version"
+
+  # --- Séries temporais E vs F ---
+  timeseries:
+    enabled: true
+    # Cenários a comparar. Chaves em modeling_scenarios acima.
+    scenarios:
+      E: "base_E_calculated"
+      F: "base_F_calculated"
+    # Variáveis a extrair das séries. Devem corresponder exatamente aos nomes de coluna
+    # dos parquets da variante *_calculated (gerados por feature_engineering_physics.py).
+    variables:
+      - "PRECIPITAÇÃO TOTAL, HORÁRIO (mm)"
+      - "PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)"
+      - "RADIACAO GLOBAL (KJ/m²)"
+      - "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)"
+      - "TEMPERATURA DO PONTO DE ORVALHO (°C)"
+      - "UMIDADE RELATIVA DO AR, HORARIA (%)"
+      - "VENTO, DIREÇÃO HORARIA (gr) (° (gr))"
+      - "VENTO, RAJADA MAXIMA (m/s)"
+      - "VENTO, VELOCIDADE HORARIA (m/s)"
+      - "precip_ewma"
+      - "dias_sem_chuva"
+    # Seleção de cidades para gráficos.
+    # Se sample_cities estiver vazio, usa top-N por menor % NaN na interseção E∩F.
+    sample_cities: []
+    auto_sample_n: 5
+    # Ano de referência para escolher as cidades automáticas.
+    # "last" = último ano com dados em ambas as bases; ou número fixo (ex. 2019).
+    reference_year_for_city_pick: "last"
+    # Calcular cumsum de precipitação (acumulado intra-ano civil por padrão).
+    cumsum_precip: true
+    # "false" = só intra-ano; "true" = acumulado contínuo multi-anual (mantém estado entre anos).
+    cumsum_multiyear: false
+    # Método de downsample para a visão "todo o dataset" nos gráficos globais.
+    # "daily_mean" | "weekly_mean" | "none"
+    downsample_for_global_plot: "daily_mean"
+    # Formato de export tabular por ano.
+    # "parquet" (recomendado) ou "csv"
+    export_format: "parquet"
+    # Gerar também CSV resumido (apenas cidades amostra, média diária) além do parquet.
+    export_sample_csv: true
+
+  # --- Cores dos gráficos ---
+  # Base F (original enriquecida): azul; Base E (imputada KNN): laranja-terroso
+  plot_color_F: "#1f77b4"
+  plot_color_E: "#d62728"
+
+  # --- PHASE-2 HOOKS: integração futura com focos de calor ---
+  # Raio de influência da estação (km) para análise de distância geodésica até focos.
+  # Usado futuramente em módulo de distância euclidiana/geodésica e sweep de otimização.
+  station_influence_radius_km: 50.0
+  # Parâmetros de interpolação espacial (IDW/Krigagem) — reservados para fase 3.
+  spatial_interpolation:
+    roi_size_km: 10.0
+    resolution_m: 1000
