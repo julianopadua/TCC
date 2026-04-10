@@ -22,6 +22,7 @@ paths:
     modeling: "./data/modeling"
     temporal_fusion: "./data/temporal_fusion"
     integrations_inmet_gee: "./data/integrations/inmet_gee"
+    article: "./data/_article"
   providers:
     bdqueimadas:
       raw: "./data/raw/BDQUEIMADAS"
@@ -253,3 +254,37 @@ inmet_gee_pipeline:
   spatial_interpolation:
     roi_size_km: 10.0
     resolution_m: 1000
+
+# =============================================================================
+# PIPELINE DO ARTIGO — enriquecimento espacial, GEE e EDA
+# Módulo: src/article/
+# =============================================================================
+article_pipeline:
+  # Raiz dos artefatos do artigo (isolada de data/modeling).
+  output_root: "./data/_article"
+
+  # Cenários a processar (chaves em modeling_scenarios).
+  scenarios:
+    D: "base_D_with_rad_drop_rows_calculated"
+    E: "base_E_with_rad_knn_calculated"
+    F: "base_F_full_original_calculated"
+
+  # Anos. Vazio = descoberta automática por glob nos parquets.
+  years: []
+
+  # Chave de join entre Parquet e station_year_locations.
+  station_id_columns: ["cidade_norm"]
+
+  # GEE — extração de biomassa semanal
+  gee:
+    canonical_scenario: "base_E_with_rad_knn_calculated"
+    image_collection: "MODIS/061/MOD13Q1"
+    scale_m: 250
+    buffer_radius_km: 50
+    composite_period_days: 16
+    bands: ["NDVI", "EVI"]
+
+  # EDA — cidades benchmark (lista explícita para reprodutibilidade).
+  # Se vazio, herda de inmet_gee_pipeline.timeseries.sample_cities.
+  eda:
+    benchmark_cities: []
