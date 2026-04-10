@@ -22,6 +22,8 @@ import src.utils as utils
 @dataclass
 class GeeConfig:
     project_id: str
+    # Caminho absoluto do JSON da conta de serviço (vazio = OAuth / ADC padrão).
+    service_account_key_path: str
     reference_image_collection: str
     scale_m: int
     roi_mode: str
@@ -111,9 +113,26 @@ def load_pipeline_config() -> PipelineConfig:
 
     gee_raw = raw.get("gee", {})
     # project_id pode vir da variável de ambiente GEE_PROJECT
-    project_id = os.getenv("GEE_PROJECT", gee_raw.get("project_id", ""))
+    project_id = (os.getenv("GEE_PROJECT") or gee_raw.get("project_id") or "").strip()
+    # JSON da conta de serviço: env GEE_SERVICE_ACCOUNT_JSON tem prioridade sobre YAML
+    sa_key_raw = (
+        os.getenv("GEE_SERVICE_ACCOUNT_JSON", "")
+        or gee_raw.get("service_account_key_path", "")
+        or ""
+    ).strip()
+    sa_resolved = ""
+    if sa_key_raw:
+        p = Path(sa_key_raw)
+        if not p.is_absolute():
+            p = (root_dir / p).resolve()
+        else:
+            p = p.resolve()
+        if p.is_file():
+            sa_resolved = str(p)
+
     gee_cfg = GeeConfig(
         project_id=project_id,
+        service_account_key_path=sa_resolved,
         reference_image_collection=gee_raw.get(
             "reference_image_collection", "COPERNICUS/S2_SR_HARMONIZED"
         ),

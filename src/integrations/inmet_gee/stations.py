@@ -87,13 +87,33 @@ def aggregate_station_year(
         log.warning("Ano %d: DataFrame vazio após sanitização de coordenadas.", year)
         return pd.DataFrame()
 
+    # Parquets podem trazer nomes de coluna duplicados; groupby exige chaves 1-D.
+    if df.columns.duplicated().any():
+        dup = df.columns[df.columns.duplicated(keep=False)].unique().tolist()
+        log.warning(
+            "Ano %d: colunas duplicadas no schema (%s). Mantendo a primeira ocorrência de cada nome.",
+            year,
+            dup[:10],
+        )
+        df = df.loc[:, ~df.columns.duplicated(keep="first")].copy()
+
     # Garante coluna de ano
     if COL_ANO not in df.columns:
         df = df.copy()
         df[COL_ANO] = year
 
+    gb_keys = [c for c in id_columns if c in df.columns]
+    if not gb_keys:
+        log.error(
+            "Ano %d: nenhuma coluna de id válida entre %s. Colunas disponíveis: %s.",
+            year,
+            id_columns,
+            list(df.columns)[:30],
+        )
+        return pd.DataFrame()
+
     records = []
-    for key, group in df.groupby(id_columns):
+    for key, group in df.groupby(gb_keys, sort=False):
         uid_base = "|".join(str(k) for k in (key if isinstance(key, tuple) else [key]))
 
         lat_med = float(np.median(group[COL_LAT].dropna()))

@@ -17,3 +17,6 @@ doc/templates/*
 data/modeling/results/
 *.pyc
 *.dll
+*.bak
+/credentials/
+/data/integrations

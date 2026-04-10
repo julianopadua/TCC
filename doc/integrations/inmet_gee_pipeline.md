@@ -37,6 +37,17 @@ earthengine-api
    ```
    Se preferir configuração estática, preencha `inmet_gee_pipeline.gee.project_id` no `config.yaml`.
 
+### Conta de serviço (JSON do Google Cloud)
+
+Recomendado para servidores e para evitar depender só do `earthengine authenticate`:
+
+1. No Google Cloud Console, crie uma conta de serviço, baixe a chave JSON e coloque-a em `credentials/` (pasta ignorada pelo Git).
+2. No `config.yaml`, defina `inmet_gee_pipeline.gee.service_account_key_path` com o caminho relativo à raiz do projeto (ex.: `./credentials/service_account_gee.json`) **ou** defina a variável de ambiente `GEE_SERVICE_ACCOUNT_JSON` com o caminho absoluto.
+3. O campo `project_id` no YAML ou `GEE_PROJECT` deve ser o **mesmo projeto** onde a API Earth Engine está habilitada. Se `project_id` estiver vazio, o pipeline usa o `project_id` lido do próprio JSON.
+4. No IAM do projeto, conceda à conta de serviço permissões adequadas (em erros **403**, o Console costuma pedir `roles/serviceusage.serviceUsageConsumer` ou equivalente). Registre a conta no Earth Engine conforme a política do seu laboratório/projeto.
+
+O código usa `ee.ServiceAccountCredentials(key_file=...)` e `ee.Initialize(credentials=..., project=...)`.
+
 ### Sem credenciais GEE
 
 O pipeline funciona sem GEE usando a flag `--skip-gee`. Nesse caso, apenas metadados de estações, deriva espacial e séries temporais são gerados.
@@ -49,6 +60,16 @@ O pipeline funciona sem GEE usando a flag `--skip-gee`. Nesse caso, apenas metad
 ```
 python -m src.integrations.inmet_gee.run_pipeline
 ```
+
+### Apenas metadados + deriva + GEE (sem séries nem gráficos)
+
+Útil quando Parquets e plots já foram gerados e você só quer validar estações no Earth Engine (ou refazer CSVs de metadados):
+
+```
+python -m src.integrations.inmet_gee.run_pipeline --only-metadata-gee
+```
+
+Equivalente a `--skip-timeseries --skip-plots` sem pular o GEE.
 
 ### Apenas séries temporais E vs F (sem GEE)
 ```
@@ -175,7 +196,8 @@ inmet_gee_pipeline:
   retry_max_attempts: 3
   retry_base_delay_s: 5
   gee:
-    project_id: ""           # ou variável GEE_PROJECT
+    project_id: ""           # ou GEE_PROJECT; vazio com SA usa project_id do JSON
+    service_account_key_path: "./credentials/service_account_gee.json"
     roi_mode: "point"        # fase 1
     buffer_radius_km: 5.0    # fase 2
     validation_strategy: "per_geo_version"

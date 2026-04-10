@@ -11,6 +11,7 @@
 #   --skip-plots          Pula geração de gráficos
 #   --only-timeseries     Executa apenas séries + gráficos (pula metadados GEE)
 #   --only-plots          Gera apenas gráficos a partir de Parquets já existentes
+#   --only-metadata-gee   Apenas metadados + deriva + GEE (sem séries temporais nem plots)
 #   --force-year YYYY     Reprocessa o ano indicado mesmo que já esteja no checkpoint
 #   --retry-failed        Reprocessa anos que falharam anteriormente
 #   --years Y1 Y2 ...     Limita o processamento aos anos listados
@@ -53,6 +54,11 @@ def _parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--skip-plots", action="store_true", help="Pular geração de gráficos")
     p.add_argument("--only-timeseries", action="store_true", help="Apenas séries + gráficos")
     p.add_argument("--only-plots", action="store_true", help="Apenas gráficos (Parquets já existentes)")
+    p.add_argument(
+        "--only-metadata-gee",
+        action="store_true",
+        help="Apenas metadados, deriva espacial e validação GEE (pula séries E×F e gráficos).",
+    )
     p.add_argument("--force-year", type=int, default=None, metavar="YYYY",
                    help="Reprocessar ano específico mesmo que concluído")
     p.add_argument("--retry-failed", action="store_true",
@@ -295,6 +301,9 @@ def run_metadata_pipeline(cfg, args, log) -> None:
 
 def main(argv=None) -> None:
     args = _parse_args(argv)
+    if args.only_metadata_gee:
+        args.skip_timeseries = True
+        args.skip_plots = True
 
     cfg = load_pipeline_config()
     utils.ensure_dir(cfg.output_dir)
@@ -309,6 +318,10 @@ def main(argv=None) -> None:
         "Output: '%s'.",
         cfg.station_source_scenario, cfg.output_dir,
     )
+    if args.only_metadata_gee:
+        log.info(
+            "Modo --only-metadata-gee: séries temporais e gráficos desativados para esta execução."
+        )
 
     if args.only_plots:
         log.info("Modo --only-plots: gerando apenas gráficos.")

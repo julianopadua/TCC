@@ -5,10 +5,12 @@
 # =============================================================================
 from __future__ import annotations
 
+import json
 import logging
 import math
 import random
 import time
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .config import GeeConfig
@@ -44,12 +46,63 @@ class GeeSampler:
     def initialize(self) -> bool:
         """
         Inicializa o SDK do Earth Engine.
-        Retorna False sem lançar exceção se as credenciais estiverem ausentes
-        (pipeline continua sem validação GEE nesse caso, com WARNING).
+
+        Ordem de autenticação:
+          1) Se `service_account_key_path` estiver definido (JSON da conta de serviço),
+             usa `ee.ServiceAccountCredentials(key_file=...)` e `project` do YAML/env
+             ou `project_id` dentro do JSON.
+          2) Caso contrário, OAuth / ADC: `ee.Initialize(project=...)` se houver project_id,
+             senão `ee.Initialize()` (exige projeto default ou credencial de usuário).
+
+        Retorna False sem lançar exceção se a inicialização falhar (pipeline segue sem GEE).
         """
         try:
             import ee as _ee
-            project = self.cfg.project_id or None
+
+            key_path = (self.cfg.service_account_key_path or "").strip()
+            project = (self.cfg.project_id or "").strip() or None
+
+            if key_path:
+                kp = Path(key_path)
+                if not kp.is_file():
+                    self.log.warning(
+                        "Arquivo de conta de serviço GEE não encontrado: '%s'. "
+                        "Verifique inmet_gee_pipeline.gee.service_account_key_path ou "
+                        "GEE_SERVICE_ACCOUNT_JSON.",
+                        key_path,
+                    )
+                    return False
+                credentials = _ee.ServiceAccountCredentials(key_file=str(kp.resolve()))
+                try:
+                    with kp.open("r", encoding="utf-8") as fh:
+                        sa_meta = json.load(fh)
+                except (OSError, json.JSONDecodeError):
+                    sa_meta = {}
+                if not project:
+                    project = (sa_meta.get("project_id") or "").strip() or None
+                if not project:
+                    self.log.warning(
+                        "Conta de serviço configurada em '%s', mas project_id está vazio. "
+                        "Defina inmet_gee_pipeline.gee.project_id ou a variável GEE_PROJECT.",
+                        kp.name,
+                    )
+                    return False
+                sa_email = getattr(credentials, "service_account_email", None) or sa_meta.get(
+                    "client_email", "(desconhecido)"
+                )
+                _ee.Initialize(credentials=credentials, project=project)
+                self._ee = _ee
+                self._initialized = True
+                self.log.info(
+                    "Google Earth Engine inicializado com conta de serviço. "
+                    "E-mail: %s | Projeto: %s | Key: %s | Coleção: %s.",
+                    sa_email,
+                    project,
+                    kp.name,
+                    self.cfg.reference_image_collection,
+                )
+                return True
+
             if project:
                 _ee.Initialize(project=project)
             else:
@@ -57,15 +110,19 @@ class GeeSampler:
             self._ee = _ee
             self._initialized = True
             self.log.info(
-                "Google Earth Engine inicializado. Projeto: '%s'. "
+                "Google Earth Engine inicializado (OAuth/ADC). Projeto: '%s'. "
                 "Coleção de referência: '%s'.",
-                project or "(padrão)", self.cfg.reference_image_collection,
+                project or "(padrão)",
+                self.cfg.reference_image_collection,
             )
             return True
         except Exception as exc:
             self.log.warning(
                 "Falha ao inicializar Google Earth Engine: %s. "
-                "Validação GEE será ignorada nesta execução.",
+                "Validação GEE será ignorada nesta execução. "
+                "Se usar conta de serviço, confira IAM no Cloud Console "
+                "(ex.: roles/serviceusage.serviceUsageConsumer no projeto) e "
+                "registro da conta no Earth Engine.",
                 exc,
             )
             return False
