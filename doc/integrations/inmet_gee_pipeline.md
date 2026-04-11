@@ -228,6 +228,16 @@ Os arquivos são escritos **atomicamente** (`write → .tmp → os.replace`) e t
 
 ---
 
+## Pipeline do artigo — biomassa GEE (`src/article/gee_biomass.py`)
+
+Após `enrich_coords`, o comando `python -m src.article.run_pipeline` (etapa GEE) extrai NDVI/EVI da coleção configurada em `article_pipeline.gee.image_collection` (padrão `MODIS/061/MOD13Q1`), por **cada foco distinto** (`gee_site_key`: `FOCO_ID` quando disponível, senão coordenadas do foco arredondadas). Buffer e ponto usam o centro **`(lat_foco, lon_foco)`** com `buffer_radius_km` e `scale_m` do mesmo bloco.
+
+**Credenciais** seguem a mesma ordem do pipeline INMET-GEE: `GEE_SERVICE_ACCOUNT_JSON` e `GEE_PROJECT` têm prioridade; em `article_pipeline.gee` use `service_account_key_path` e `project_id`, ou deixe vazio para **herdar** `inmet_gee_pipeline.gee` (incluindo `./credentials/service_account_gee.json`).
+
+A extração é intensiva em quota (muitas imagens × muitos sites); ajuste `sites_chunk_size`, `tile_scale` e `pause_between_chunks_s` em `article_pipeline.gee` se necessário.
+
+---
+
 ## Limitações conhecidas
 
 1. **Homônimos de cidade:** o `station_uid` padrão é `cidade_norm`. Duas estações em cidades com o mesmo nome normalizado serão tratadas como uma única. Mitigação futura: configurar `station_id_columns: ["CD_ESTACAO"]` quando o código INMET estiver disponível nos CSVs brutos, ou adicionar coordenadas ao UID via `enrich_uid_with_coords()` em `stations.py`.

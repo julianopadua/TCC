@@ -275,7 +275,7 @@ article_pipeline:
   # Chave de join entre Parquet e station_year_locations.
   station_id_columns: ["cidade_norm"]
 
-  # GEE — extração de biomassa semanal
+  # GEE — extração de biomassa semanal (MOD13Q1)
   gee:
     canonical_scenario: "base_E_with_rad_knn_calculated"
     image_collection: "MODIS/061/MOD13Q1"
@@ -283,6 +283,14 @@ article_pipeline:
     buffer_radius_km: 50
     composite_period_days: 16
     bands: ["NDVI", "EVI"]
+    # Credenciais: GEE_SERVICE_ACCOUNT_JSON / GEE_PROJECT têm prioridade.
+    # Se vazio, herdam de inmet_gee_pipeline.gee (mesmo JSON).
+    project_id: ""
+    service_account_key_path: ""
+    sites_chunk_size: 400
+    tile_scale: 2
+    pause_between_chunks_s: 0.5
+    gee_retry_max_attempts: 3
 
   # EDA — cidades benchmark (lista explícita para reprodutibilidade).
   # Se vazio, herda de inmet_gee_pipeline.timeseries.sample_cities.

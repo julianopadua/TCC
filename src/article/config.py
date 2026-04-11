@@ -5,8 +5,9 @@
 # =============================================================================
 from __future__ import annotations
 
+import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List
 
@@ -25,6 +26,13 @@ class GeeArticleConfig:
     buffer_radius_km: float
     composite_period_days: int
     bands: List[str]
+    # Caminho absoluto do JSON da conta de serviço (vazio = tentar OAuth/ADC).
+    service_account_key_path: str
+    project_id: str
+    sites_chunk_size: int
+    tile_scale: int
+    pause_between_chunks_s: float
+    gee_retry_max_attempts: int
 
 
 @dataclass
@@ -65,6 +73,27 @@ def load_article_config() -> ArticlePipelineConfig:
     output_root = Path(cfg["paths"]["data"]["article"])
 
     gee_raw = raw.get("gee", {})
+    inmet_gee = cfg.get("inmet_gee_pipeline", {}).get("gee", {})
+
+    project_id = (os.getenv("GEE_PROJECT") or gee_raw.get("project_id") or "").strip()
+    if not project_id:
+        project_id = (inmet_gee.get("project_id") or "").strip()
+
+    sa_key_raw = (
+        (os.getenv("GEE_SERVICE_ACCOUNT_JSON") or "").strip()
+        or (gee_raw.get("service_account_key_path") or "").strip()
+        or (inmet_gee.get("service_account_key_path") or "").strip()
+    )
+    sa_resolved = ""
+    if sa_key_raw:
+        p = Path(sa_key_raw)
+        if not p.is_absolute():
+            p = (root_dir / p).resolve()
+        else:
+            p = p.resolve()
+        if p.is_file():
+            sa_resolved = str(p)
+
     gee_cfg = GeeArticleConfig(
         canonical_scenario=gee_raw.get("canonical_scenario", "base_E_with_rad_knn_calculated"),
         image_collection=gee_raw.get("image_collection", "MODIS/061/MOD13Q1"),
@@ -72,6 +101,12 @@ def load_article_config() -> ArticlePipelineConfig:
         buffer_radius_km=float(gee_raw.get("buffer_radius_km", 50)),
         composite_period_days=int(gee_raw.get("composite_period_days", 16)),
         bands=gee_raw.get("bands", ["NDVI", "EVI"]),
+        service_account_key_path=sa_resolved,
+        project_id=project_id,
+        sites_chunk_size=int(gee_raw.get("sites_chunk_size", 400)),
+        tile_scale=int(gee_raw.get("tile_scale", 2)),
+        pause_between_chunks_s=float(gee_raw.get("pause_between_chunks_s", 0.5)),
+        gee_retry_max_attempts=int(gee_raw.get("gee_retry_max_attempts", 3)),
     )
 
     eda_raw = raw.get("eda", {})
