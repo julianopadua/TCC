@@ -48,11 +48,15 @@ def load_benchmark_data(
     benchmark_cities: List[str],
     years: Optional[List[int]] = None,
     log: Optional[logging.Logger] = None,
+    skip_years: Optional[List[int]] = None,
 ) -> pd.DataFrame:
     """Carrega e concatena dados filtrados pelas cidades benchmark."""
     available = _discover_years(scenario_dir)
     if years:
         available = [y for y in available if y in years]
+    if skip_years:
+        sk = set(skip_years)
+        available = [y for y in available if y not in sk]
 
     frames: List[pd.DataFrame] = []
     for year in sorted(available):
@@ -222,6 +226,7 @@ def compute_correlations(
 def run_eda(
     scenario_key: Optional[str] = None,
     years: Optional[List[int]] = None,
+    skip_years: Optional[List[int]] = None,
 ) -> None:
     """Executa EDA para cidades benchmark: plots + correlações."""
     acfg = load_article_config()
@@ -264,7 +269,9 @@ def run_eda(
             log.warning("Diretório não existe: %s", scenario_dir)
             continue
 
-        df = load_benchmark_data(scenario_dir, benchmark, years, log)
+        df = load_benchmark_data(
+            scenario_dir, benchmark, years, log, skip_years=skip_years,
+        )
         if df.empty:
             issues.log(
                 STAGE, "CITY_NOT_IN_DATA",

@@ -29,6 +29,11 @@ def main() -> None:
         help="Anos a processar (vazio = todos).",
     )
     parser.add_argument(
+        "--skip-years", type=int, nargs="+", default=None,
+        metavar="YEAR",
+        help="Anos a ignorar em todas as etapas (ex.: já processados com GEE).",
+    )
+    parser.add_argument(
         "--skip-coords", action="store_true",
         help="Pular etapa 0 (enriquecimento de coordenadas).",
     )
@@ -65,19 +70,21 @@ def main() -> None:
     log.info("ARTICLE PIPELINE — Início")
     log.info("  Etapas: coords=%s, gee=%s, eda=%s", run_coords, run_gee, run_eda)
     log.info("  Anos: %s", args.years or "todos")
+    if args.skip_years:
+        log.info("  Pular anos: %s", args.skip_years)
     log.info("=" * 72)
 
     if run_coords:
         from src.article.enrich_coords import run_all as run_coords_fn
-        run_coords_fn(years=args.years)
+        run_coords_fn(years=args.years, skip_years=args.skip_years)
 
     if run_gee:
         from src.article.gee_biomass import run_gee_pipeline
-        run_gee_pipeline(years=args.years)
+        run_gee_pipeline(years=args.years, skip_years=args.skip_years)
 
     if run_eda:
         from src.article.eda import run_eda as run_eda_fn
-        run_eda_fn(years=args.years)
+        run_eda_fn(years=args.years, skip_years=args.skip_years)
 
     log.info("ARTICLE PIPELINE — Concluído.")
 

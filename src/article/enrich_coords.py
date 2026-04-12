@@ -263,6 +263,7 @@ def enrich_scenario(
     issues: IssueLogger,
     log: logging.Logger,
     years: Optional[List[int]] = None,
+    skip_years: Optional[List[int]] = None,
 ) -> List[Path]:
     """Enriquece todos os anos de um cenário. Retorna paths dos Parquets gerados."""
     source_dir = acfg.modeling_dir / scenario_folder
@@ -275,6 +276,9 @@ def enrich_scenario(
     available_years = _discover_years(source_dir)
     if years:
         available_years = [y for y in available_years if y in years]
+    if skip_years:
+        sk = set(skip_years)
+        available_years = [y for y in available_years if y not in sk]
     if not available_years:
         log.warning("Nenhum ano a processar para cenário %s", scenario_key)
         return []
@@ -310,7 +314,10 @@ def enrich_scenario(
 # ---------------------------------------------------------------------------
 # Ponto de entrada
 # ---------------------------------------------------------------------------
-def run_all(years: Optional[List[int]] = None) -> Dict[str, List[Path]]:
+def run_all(
+    years: Optional[List[int]] = None,
+    skip_years: Optional[List[int]] = None,
+) -> Dict[str, List[Path]]:
     """Executa enriquecimento para todos os cenários configurados."""
     acfg = load_article_config()
     log = get_logger("article.enrich_coords", kind="article", per_run_file=True)
@@ -325,7 +332,9 @@ def run_all(years: Optional[List[int]] = None) -> Dict[str, List[Path]]:
     results: Dict[str, List[Path]] = {}
     for key, folder in acfg.scenarios.items():
         log.info("--- Cenário %s (%s) ---", key, folder)
-        paths = enrich_scenario(key, folder, acfg, issues, log, effective_years)
+        paths = enrich_scenario(
+            key, folder, acfg, issues, log, effective_years, skip_years=skip_years,
+        )
         results[key] = paths
         log.info("Cenário %s concluído: %d arquivos gerados.\n", key, len(paths))
 

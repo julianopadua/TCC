@@ -287,34 +287,47 @@ def align_weekly_to_hourly(
     """
     Alinha valores semanais de biomassa às linhas horárias.
 
-    Usa merge_asof backward por (station_col, site_key_col) e ffill no mesmo grupo.
+    merge_asof backward por (station_col, site_key_col). Com `by=`, o pandas exige
+    que a coluna `on` seja monotonicamente crescente no left inteiro; com vários
+    sites isso falha. Aplicamos merge_asof por grupo e restauramos a ordem original.
     """
     df = df_hourly.copy()
+    for c in biomass_cols:
+        if c in df.columns:
+            df = df.drop(columns=[c])
+
     df["_ts"] = pd.to_datetime(df[ts_col])
+    df["_align_order"] = np.arange(len(df), dtype=np.int64)
 
     weekly = df_weekly.copy()
     weekly["_ts"] = pd.to_datetime(weekly["composite_start"])
 
-    # merge_asof exige o mesmo dtype nas colunas `by`; parquet costuma ser StringDtype
-    # e o weekly vindo do GEE pode ser object.
     for col in (station_col, site_key_col):
         df[col] = df[col].astype("string")
         weekly[col] = weekly[col].astype("string")
 
-    weekly = weekly.sort_values([station_col, site_key_col, "_ts"])
-
-    df = df.sort_values([station_col, site_key_col, "_ts"])
-
     merge_cols = [station_col, site_key_col, "_ts"] + biomass_cols
     weekly_sub = weekly[[c for c in merge_cols if c in weekly.columns]]
 
-    merged = pd.merge_asof(
-        df,
-        weekly_sub,
-        on="_ts",
-        by=[station_col, site_key_col],
-        direction="backward",
-    )
+    parts: List[pd.DataFrame] = []
+    for (_cid, _sk), g_left in df.groupby([station_col, site_key_col], sort=False):
+        g_left = g_left.sort_values("_ts")
+        mask = (weekly_sub[station_col] == _cid) & (weekly_sub[site_key_col] == _sk)
+        g_right = weekly_sub.loc[mask]
+        if g_right.empty:
+            g_out = g_left.copy()
+            for col in biomass_cols:
+                g_out[col] = np.nan
+            parts.append(g_out)
+            continue
+        g_right = g_right.sort_values("_ts")
+        right_take = ["_ts"] + [c for c in biomass_cols if c in g_right.columns]
+        g_right_m = g_right[right_take].drop_duplicates(subset=["_ts"], keep="last")
+        m = pd.merge_asof(g_left, g_right_m, on="_ts", direction="backward")
+        parts.append(m)
+
+    merged = pd.concat(parts, axis=0).sort_values("_align_order")
+    merged = merged.drop(columns=["_align_order"])
 
     for col in biomass_cols:
         merged[col] = merged.groupby([station_col, site_key_col], sort=False)[col].ffill()
@@ -389,9 +402,14 @@ def _discover_years(directory: Path) -> List[int]:
     return years
 
 
-def run_gee_pipeline(years: Optional[List[int]] = None) -> None:
+def run_gee_pipeline(
+    years: Optional[List[int]] = None,
+    skip_years: Optional[List[int]] = None,
+) -> None:
     """
     Orquestra: extração GEE semanal na canônica → ffill → propagação para D/E/F.
+
+    skip_years: anos a ignorar (útil após já ter processado um ano pesado).
     """
     acfg = load_article_config()
     log = get_logger("article.gee_biomass", kind="article", per_run_file=True)
@@ -423,6 +441,15 @@ def run_gee_pipeline(years: Optional[List[int]] = None) -> None:
     available = _discover_years(canonical_dir)
     if years:
         available = [y for y in available if y in years]
+    if skip_years:
+        sk = set(skip_years)
+        available = [y for y in available if y not in sk]
+        log.info("  Ignorando anos (skip_years): %s", sorted(sk))
+
+    if not available:
+        log.warning("Nenhum ano a processar após --years / --skip-years.")
+        issues.flush()
+        return
 
     bands = acfg.gee.bands
     biomass_cols = [f"{b}_buffer" for b in bands] + [f"{b}_point" for b in bands]
