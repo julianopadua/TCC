@@ -18,12 +18,14 @@ Windows (PowerShell):
 
 ## Secções
 
+Navegação por **tabs** no corpo da app («Um ano» / «Vários anos»). O código das secções está em `src/article/viz/sections/` (evita o nome `pages/`, reservado ao multipage automático do Streamlit).
+
 - **Um ano**: um Parquet por execução; filtros de cidades e variáveis; gráfico Plotly (painéis por cidade se várias).
 - **Vários anos**: até 5 anos concatenados; aviso se o volume de linhas for grande; opção de tabela de correlações biomassa × focos (mesma lógica do EDA em batch).
 
 ## Dependências
 
-`streamlit` e `plotly` (listados em `requirements.txt`).
+`streamlit` e `plotly` (entre outras, em [`pyproject.toml`](../../../pyproject.toml) na raiz).
 
 ## Validação manual sugerida
 

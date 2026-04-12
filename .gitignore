@@ -1,4 +1,11 @@
 /venv/
+.venv/
+**/.ipynb_checkpoints/
+.ipynb_checkpoints/
+__pycache__/
+*.egg-info/
+dist/
+build/
 *.zip
 *.csv
 *.json

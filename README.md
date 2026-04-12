@@ -135,7 +135,7 @@ Entregas principais:
 * Métricas de **Camada A** em `data/eda/temporal_fusion/`: `layer_a_summary.csv`, `layer_a_summary_train.csv`, `method_ranking_train.csv` (só anos de treino, sem vazamento para seleção de métodos).
 * **`train_runner.py`**: detecta e inclui `tsf_*` automaticamente para todos os cenários `tf_*` (via `_is_temporal_fusion_scenario`).
 * **`config.yaml`**: chaves `tf_D_*` / `tf_F_*` (12 por método + 2 campeãs); seção `temporal_fusion_paths` mapeia cada chave ao subcaminho real em `data/temporal_fusion/`.
-* **`requirements.txt`**: bloco opcional (`statsmodels`, `prophet`, `aeon`, `tslearn`, etc.).
+* **`pyproject.toml`**: dependências incluindo fusão temporal (`statsmodels`, `prophet`, `aeon`, `tslearn`, etc.).
 
 Detalhamento: [doc/planos/fusao_temporal_artigo_2026-04-07.md](doc/planos/fusao_temporal_artigo_2026-04-07.md).
 
@@ -148,7 +148,9 @@ Caminhos centrais vêm de **`config.yaml`** (`paths.data.*`). Hoje `paths.data.e
 ```text
 .
 ├── config.yaml
-├── requirements.txt
+├── config.py                 # constantes e raiz do projeto (dashboard / paths)
+├── pyproject.toml             # dependências Python (fonte principal)
+├── requirements.txt          # nota de instalação; dependências em pyproject.toml
 ├── README.md
 ├── images/                    # figuras para README / TCC (png permitido no git)
 ├── doc/                       # documentação, TCC LaTeX, planos, followups, _src
@@ -213,8 +215,8 @@ Documentação alinhada ao código: [doc/_src/README.md](doc/_src/README.md).
 ## Pré-requisitos e ambiente
 
 * Python **3.10+** (recomendado 3.11).
-* **Obrigatório:** `pip install -r requirements.txt` na raiz (com venv).
-* **Fusão temporal:** pacotes extras no `requirements.txt`; se algum método não importar, o script segue com os demais.
+* **Obrigatório:** na raiz, com venv ativo, `pip install -e .` (dependências em [`pyproject.toml`](pyproject.toml)).
+* **Fusão temporal:** pacotes listados no `pyproject.toml`; se algum método não importar, o script segue com os demais.
 
 ### Windows (PowerShell)
 
@@ -223,7 +225,7 @@ cd D:\Projetos\TCC
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -upgrade pip
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ### Linux / macOS
@@ -233,7 +235,7 @@ cd /caminho/TCC
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -upgrade pip
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ---

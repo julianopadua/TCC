@@ -8,6 +8,9 @@ Executar a partir da raiz do repositório:
 
 Requer: config.yaml com bloco article_pipeline e dados em
 ``data/_article/0_datasets_with_coords/<cenário>/``.
+
+A navegação «Um ano» / «Vários anos» está no corpo principal (tabs).
+A pasta de secções chama-se ``sections/`` para não ativar o multipage automático do Streamlit (``pages/``).
 """
 from __future__ import annotations
 
@@ -22,26 +25,19 @@ if str(_ROOT) not in sys.path:
 import streamlit as st
 
 from src.article.viz.config_paths import get_config
-from src.article.viz.pages.multi_year import render_multi_year_page
-from src.article.viz.pages.single_year import render_single_year_page
+from src.article.viz.sections.multi_year import render_multi_year_page
+from src.article.viz.sections.single_year import render_single_year_page
 
 
 def main() -> None:
     st.set_page_config(
         page_title="Artigo — Visualização",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="collapsed",
     )
 
     st.sidebar.title("Artigo — dados")
     st.sidebar.markdown("Exploração dos Parquets com coordenadas e biomassa (GEE).")
-
-    mode = st.sidebar.radio(
-        "Secção",
-        ["Um ano", "Vários anos"],
-        index=0,
-        help="«Um ano» é mais leve. «Vários anos» concatena vários Parquets — use menos cidades se necessário.",
-    )
 
     try:
         cfg = get_config()
@@ -49,9 +45,10 @@ def main() -> None:
         st.error(f"Erro ao carregar config: {e}")
         st.stop()
 
-    if mode == "Um ano":
+    tab_one, tab_multi = st.tabs(["Um ano", "Vários anos"])
+    with tab_one:
         render_single_year_page(cfg)
-    else:
+    with tab_multi:
         render_multi_year_page(cfg)
 
 

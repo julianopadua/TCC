@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
+
+from config import PARQUET_TEMPLATE
 
 from src.article.config import ArticlePipelineConfig, load_article_config
-
-PARQUET_TEMPLATE = "inmet_bdq_{year}_cerrado.parquet"
 _YEAR_RE = re.compile(r"inmet_bdq_(\d{4})_cerrado\.parquet$")
 
 

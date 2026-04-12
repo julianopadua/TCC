@@ -1,4 +1,4 @@
-# src/article/viz/pages/multi_year.py
+# src/article/viz/sections/multi_year.py
 """Secção: vários anos (análise mais pesada; limite de anos)."""
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ from typing import List
 
 import pandas as pd
 import streamlit as st
+
+from config import MAX_MULTI_YEARS, SYNTH_PRECIP_CUM_COL
 
 from src.article.config import ArticlePipelineConfig
 from src.article.eda import compute_correlations
@@ -19,6 +21,7 @@ from src.article.viz.data_loader import (
     load_parquet_columns,
     parquet_column_names,
 )
+from src.article.viz.foco_details import build_foco_events_table, count_focos
 from src.article.viz.plots import build_timeseries_figure, labels_for_selected
 from src.article.viz.variables import (
     CITY_COL,
@@ -27,9 +30,9 @@ from src.article.viz.variables import (
     biomass_columns_in_df,
     meteo_slugs,
     resolve_columns_to_load,
+    apply_precip_cumulative,
 )
 
-MAX_MULTI_YEARS = 5
 _LOG = logging.getLogger("article.viz")
 
 
@@ -72,7 +75,6 @@ def render_multi_year_page(cfg: ArticlePipelineConfig) -> None:
         st.info("Escolha pelo menos um ano.")
         return
 
-    # Schema do primeiro ano (assume mesmo schema entre anos)
     pq0 = parquet_path(cfg, scenario_key, sel_years[0])
     pq0_str = str(pq0.resolve())
     if not pq0.is_file():
@@ -99,7 +101,7 @@ def render_multi_year_page(cfg: ArticlePipelineConfig) -> None:
             key="multi_bio",
         )
 
-    incl_foco = st.checkbox("Incluir HAS_FOCO", value=True, key="multi_foco_cb")
+    incl_foco = st.checkbox("Incluir HAS_FOCO no gráfico", value=True, key="multi_foco_cb")
     foco_mode = st.radio(
         "Modo HAS_FOCO",
         options=["markers", "secondary", "none"],
@@ -115,6 +117,10 @@ def render_multi_year_page(cfg: ArticlePipelineConfig) -> None:
         st.warning("Coluna HAS_FOCO ausente.")
         incl_foco = False
         foco_mode = "none"
+
+    show_foco_meta = False
+    if LABEL_COL in all_cols:
+        show_foco_meta = st.checkbox("Metadados de focos (total + tabela)", value=True, key="multi_foco_meta")
 
     use_all_cities = st.checkbox("Todas as cidades", value=False, key="multi_allc")
     city_list = list_cities_in_parquet(pq0_str)
@@ -132,13 +138,15 @@ def render_multi_year_page(cfg: ArticlePipelineConfig) -> None:
             st.info("Escolha cidades ou «Todas».")
             return
 
-    need_foco = incl_foco and foco_mode != "none"
+    need_foco_chart = incl_foco and foco_mode != "none"
+    include_has_foco = need_foco_chart or show_foco_meta
+
     col_tuple = tuple(
         sorted(
             resolve_columns_to_load(
                 meteo_sel,
                 bio_sel,
-                need_foco,
+                include_has_foco,
                 all_cols,
             )
         )
@@ -170,8 +178,14 @@ def render_multi_year_page(cfg: ArticlePipelineConfig) -> None:
     if warn:
         st.warning(warn)
 
+    df = apply_precip_cumulative(df, meteo_sel, multi_year=True)
+
     cont_cols: List[str] = []
     for slug in meteo_sel:
+        if slug == "precip_cum":
+            if SYNTH_PRECIP_CUM_COL in df.columns:
+                cont_cols.append(SYNTH_PRECIP_CUM_COL)
+            continue
         if slug in METEO_REGISTRY:
             c = METEO_REGISTRY[slug][1]
             if c in df.columns:
@@ -189,9 +203,21 @@ def render_multi_year_page(cfg: ArticlePipelineConfig) -> None:
         year_label=span,
         continuous_cols=cont_cols,
         col_labels=labels,
-        has_foco_mode=("none" if not need_foco else foco_mode),  # type: ignore[arg-type]
+        has_foco_mode=("none" if not need_foco_chart else foco_mode),  # type: ignore[arg-type]
     )
     st.plotly_chart(fig, use_container_width=True)
+
+    if show_foco_meta and LABEL_COL in df.columns:
+        st.subheader("Focos de incêndio (seleção atual)")
+        n = count_focos(df)
+        st.metric("Total de registos com foco (HAS_FOCO=1)", n)
+        tbl = build_foco_events_table(df, max_rows=2000)
+        if tbl.empty:
+            st.caption("Nenhum evento com foco nos dados filtrados.")
+        else:
+            if use_all_cities:
+                st.caption("«Todas as cidades»: tabela limitada às primeiras 2000 linhas; filtre cidades para o detalhe completo.")
+            st.dataframe(tbl, use_container_width=True, height=320)
 
     st.subheader("Correlações (estilo EDA)")
     show_corr = st.checkbox(
