@@ -5,6 +5,8 @@ numpy>=2.1.1
 # Visualização
 matplotlib==3.8.4
 seaborn>=0.13.2
+streamlit>=1.40.0
+plotly>=5.24.0
 
 # Serialização / Formatos
 pyarrow>=17.0.0
