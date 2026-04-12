@@ -293,6 +293,11 @@ article_pipeline:
     gee_retry_max_attempts: 3
 
   # EDA — cidades benchmark (lista explícita para reprodutibilidade).
-  # Se vazio, herda de inmet_gee_pipeline.timeseries.sample_cities.
+  # Deve coincidir com valores em cidade_norm nos Parquets.
   eda:
-    benchmark_cities: []
+    benchmark_cities:
+      - "brasilia"
+      - "campo grande"
+      - "uberlandia"
+      - "ponta pora"
+      - "tangara da serra"
