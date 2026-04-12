@@ -132,6 +132,24 @@ def get_path(*keys: str) -> Path:
     return Path(node)
 
 
+def resolve_parquet_dir(cfg: Dict[str, Any], scenario_folder: str) -> Path:
+    """
+    Resolve o diretório de parquets de um cenário.
+
+    - Se o scenario_folder aparecer em cfg['temporal_fusion_paths'], o parquet
+      está em paths.data.temporal_fusion / subcaminho mapeado.
+    - Caso contrário usa o comportamento legado: paths.data.modeling / scenario_folder.
+
+    Isso separa os cenários tf_* (data/temporal_fusion/…) dos cenários clássicos
+    (data/modeling/…) sem precisar armazenar caminhos absolutos no YAML.
+    """
+    tf_paths: Dict[str, str] = cfg.get("temporal_fusion_paths", {}) or {}
+    if scenario_folder in tf_paths:
+        base = Path(cfg["paths"]["data"]["temporal_fusion"])
+        return base / tf_paths[scenario_folder]
+    return Path(cfg["paths"]["data"]["modeling"]) / scenario_folder
+
+
 def _create_all_paths(cfg: Dict[str, Any]) -> None:
     """
     Cria todos os diretórios presentes em cfg['paths'] e o diretório do arquivo de log.

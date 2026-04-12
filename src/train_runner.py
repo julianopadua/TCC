@@ -29,6 +29,7 @@ if str(project_root) not in sys.path:
 # Core deps (obrigatorios)
 try:
     import src.utils as utils
+    from src.utils import resolve_parquet_dir
     from src.ml.core import MemoryMonitor, TemporalSplitter
     from src.models.dummy import DummyTrainer
     from src.models.logistic import LogisticTrainer
@@ -342,8 +343,7 @@ class TrainingOrchestrator:
 
         self.random_seed = int(self.cfg.get("project", {}).get("random_seed", 42))
 
-        # Mantem a mesma lista que voce ja usa
-        self.features = [
+        self._base_features = [
             "PRECIPITACAO TOTAL, HORARIO (mm)".replace("PRECIPITACAO", "PRECIPITAÇÃO").replace("HORARIO", "HORÁRIO"),
             "RADIACAO GLOBAL (KJ/m²)",
             "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)",
@@ -359,12 +359,49 @@ class TrainingOrchestrator:
             "fator_propagacao",
         ]
 
+        # For tsfusion / tf_* scenarios, auto-detect tsf_* columns from the
+        # first parquet so they enter the feature set without hard-coding names.
+        self.features = list(self._base_features)
+        if self._is_temporal_fusion_scenario():
+            self._extend_with_tsf_columns()
+
         self.target = "HAS_FOCO"
         self.year_col = "ANO"
 
+    def _is_temporal_fusion_scenario(self) -> bool:
+        """True if this scenario carries temporal fusion (tsf_*) features."""
+        folder = self.scenario_folder or ""
+        if "tsfusion" in folder.lower():
+            return True
+        if folder.startswith("tf_"):
+            return True
+        tf_paths: dict = self.cfg.get("temporal_fusion_paths", {}) or {}
+        if folder in tf_paths:
+            return True
+        return False
+
+    def _extend_with_tsf_columns(self) -> None:
+        """Auto-detect tsf_* columns from the first parquet in the scenario."""
+        try:
+            import pyarrow.parquet as pq
+
+            path = resolve_parquet_dir(self.cfg, self.scenario_folder)
+            first = next(path.glob("*.parquet"), None)
+            if first is None:
+                return
+            schema_names = set(pq.read_schema(first).names)
+            tsf_cols = sorted(c for c in schema_names if c.startswith("tsf_"))
+            if tsf_cols:
+                self.features.extend(tsf_cols)
+                self.log.info(
+                    f"[TSF] Auto-detected {len(tsf_cols)} temporal fusion "
+                    f"columns from {first.name}"
+                )
+        except Exception as e:
+            self.log.warning(f"[TSF] Could not auto-detect tsf_* columns: {e}")
+
     def _discover_files(self) -> List[Path]:
-        base_path = Path(self.cfg["paths"]["data"]["modeling"])
-        path = base_path / self.scenario_folder
+        path = resolve_parquet_dir(self.cfg, self.scenario_folder)
         self.log.info(f"[LOAD] scenario_folder={self.scenario_folder} | path={path}")
         files = sorted(path.glob("*.parquet"))
         if not files:
@@ -594,7 +631,11 @@ class TrainingOrchestrator:
         skip_all:
           - True: nao pergunta, pula se existir.
         """
-        is_calculated = "calculated" in (self.scenario_folder or "").lower()
+        # tf_* and tsfusion scenarios are always derived from *_calculated bases
+        is_calculated = (
+            "calculated" in (self.scenario_folder or "").lower()
+            or self._is_temporal_fusion_scenario()
+        )
 
         try:
             train_df, test_df, valid = self.load_split_batched(

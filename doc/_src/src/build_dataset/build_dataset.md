@@ -1,4 +1,6 @@
-# build_dataset_hourly.py – Documentação Técnica Interna  
+# `src/build_dataset.py` — dataset horário INMET × BDQueimadas  
+
+> O cabeçalho do arquivo-fonte ainda cita `build_dataset_hourly.py` por histórico; o módulo versionado é **`build_dataset.py`**.
 
 ---  
 

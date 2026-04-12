@@ -20,6 +20,9 @@ paths:
     dictionarys: "./data/dictionarys"
     dataset: "./data/dataset"
     modeling: "./data/modeling"
+    temporal_fusion: "./data/temporal_fusion"
+    integrations_inmet_gee: "./data/integrations/inmet_gee"
+    article: "./data/_article"
   providers:
     bdqueimadas:
       raw: "./data/raw/BDQUEIMADAS"
@@ -51,6 +54,74 @@ modeling_scenarios:
   base_D_calculated: "base_D_with_rad_drop_rows_calculated"
   base_E_calculated: "base_E_with_rad_knn_calculated"
   base_F_calculated: "base_F_full_original_calculated"
+  # Temporal fusion enriched — legado (layout merged, mantido para compatibilidade)
+  base_D_calculated_tsfusion: "base_D_with_rad_drop_rows_calculated_tsfusion"
+  base_F_calculated_tsfusion: "base_F_full_original_calculated_tsfusion"
+  # Temporal fusion — por método, base D
+  tf_D_ewma_lags:   "tf_D_ewma_lags"
+  tf_D_arima:       "tf_D_arima"
+  tf_D_sarima:      "tf_D_sarima"
+  tf_D_arimax:      "tf_D_arimax"
+  tf_D_sarimax_exog: "tf_D_sarimax_exog"
+  tf_D_prophet:     "tf_D_prophet"
+  tf_D_minirocket:  "tf_D_minirocket"
+  tf_D_tskmeans:    "tf_D_tskmeans"
+  tf_D_champion:    "tf_D_champion"
+  # Temporal fusion — por método, base E
+  tf_E_ewma_lags:   "tf_E_ewma_lags"
+  tf_E_arima:       "tf_E_arima"
+  tf_E_sarima:      "tf_E_sarima"
+  tf_E_arimax:      "tf_E_arimax"
+  tf_E_sarimax_exog: "tf_E_sarimax_exog"
+  tf_E_prophet:     "tf_E_prophet"
+  tf_E_minirocket:  "tf_E_minirocket"
+  tf_E_tskmeans:    "tf_E_tskmeans"
+  tf_E_champion:    "tf_E_champion"
+  # Temporal fusion — por método, base F
+  tf_F_ewma_lags:   "tf_F_ewma_lags"
+  tf_F_arima:       "tf_F_arima"
+  tf_F_sarima:      "tf_F_sarima"
+  tf_F_arimax:      "tf_F_arimax"
+  tf_F_sarimax_exog: "tf_F_sarimax_exog"
+  tf_F_prophet:     "tf_F_prophet"
+  tf_F_minirocket:  "tf_F_minirocket"
+  tf_F_tskmeans:    "tf_F_tskmeans"
+  tf_F_champion:    "tf_F_champion"
+
+# Mapeamento de scenario_folder -> subcaminho dentro de paths.data.temporal_fusion
+# Strings com "/" aqui NÃO são resolvidas pelo _resolve_paths (apenas cfg["paths"] é processado)
+temporal_fusion_paths:
+  # Base D
+  tf_D_ewma_lags:    "base_D_with_rad_drop_rows_calculated/ewma_lags"
+  tf_D_arima:        "base_D_with_rad_drop_rows_calculated/arima"
+  tf_D_sarima:       "base_D_with_rad_drop_rows_calculated/sarima"
+  tf_D_arimax:       "base_D_with_rad_drop_rows_calculated/arimax"
+  tf_D_sarimax_exog: "base_D_with_rad_drop_rows_calculated/sarimax_exog"
+  tf_D_prophet:      "base_D_with_rad_drop_rows_calculated/prophet"
+  tf_D_minirocket:   "base_D_with_rad_drop_rows_calculated/minirocket"
+  tf_D_tskmeans:     "base_D_with_rad_drop_rows_calculated/tskmeans"
+  tf_D_champion:     "base_D_with_rad_drop_rows_calculated_champion_tsfusion"
+  # Base E
+  tf_E_ewma_lags:    "base_E_with_rad_knn_calculated/ewma_lags"
+  tf_E_arima:        "base_E_with_rad_knn_calculated/arima"
+  tf_E_sarima:       "base_E_with_rad_knn_calculated/sarima"
+  tf_E_arimax:       "base_E_with_rad_knn_calculated/arimax"
+  tf_E_sarimax_exog: "base_E_with_rad_knn_calculated/sarimax_exog"
+  tf_E_prophet:      "base_E_with_rad_knn_calculated/prophet"
+  tf_E_minirocket:   "base_E_with_rad_knn_calculated/minirocket"
+  tf_E_tskmeans:     "base_E_with_rad_knn_calculated/tskmeans"
+  tf_E_champion:     "base_E_with_rad_knn_calculated_champion_tsfusion"
+  # Base F
+  tf_F_ewma_lags:    "base_F_full_original_calculated/ewma_lags"
+  tf_F_arima:        "base_F_full_original_calculated/arima"
+  tf_F_sarima:       "base_F_full_original_calculated/sarima"
+  tf_F_arimax:       "base_F_full_original_calculated/arimax"
+  tf_F_sarimax_exog: "base_F_full_original_calculated/sarimax_exog"
+  tf_F_prophet:      "base_F_full_original_calculated/prophet"
+  tf_F_minirocket:   "base_F_full_original_calculated/minirocket"
+  tf_F_tskmeans:     "base_F_full_original_calculated/tskmeans"
+  tf_F_champion:     "base_F_full_original_calculated_champion_tsfusion"
+
 logging:
   level: "INFO"
   file: "./logs/app.log"
@@ -75,3 +146,158 @@ inmet:
   dataset: "estacoes_automaticas_diarias"     # placeholder para referência
   years: [] # opcional; pode ser sobrescrito no código
   filename_template: "inmet_{year}.csv"
+
+# =============================================================================
+# PIPELINE INMET-GEE — bloco de configuração
+# Módulo: src/integrations/inmet_gee/
+# =============================================================================
+inmet_gee_pipeline:
+
+  # --- Entrada e identificação de estações ---
+  # Cenário base para extrair metadados de lat/lon e detectar deriva espacial.
+  # Usar variante "_calculated" para garantir presença de precip_ewma / dias_sem_chuva.
+  station_source_scenario: "base_E_calculated"
+  # Coluna(s) que compõem o station_uid. Se "cidade_norm" for ambígua (homônimos),
+  # trocar por ["CD_ESTACAO"] quando disponível nos CSVs brutos.
+  station_id_columns: ["cidade_norm"]
+  # Anos a processar. Vazio = descoberta automática por glob nos parquets.
+  years: []
+
+  # --- Deriva espacial ---
+  # Distância haversine abaixo da qual a mudança de coordenada é ruído de arredondamento.
+  coordinate_jitter_max_m: 50
+  # Distância acima da qual a mudança é registrada como evento de deriva real.
+  drift_alert_min_m: 500
+
+  # --- Resiliência e retry ---
+  retry_max_attempts: 3
+  retry_base_delay_s: 5      # espera inicial; dobra a cada tentativa (exponential backoff)
+  retry_max_delay_s: 120
+
+  # --- Google Earth Engine ---
+  gee:
+    # ID do projeto Google Cloud onde o Earth Engine está habilitado.
+    # Pode ser sobrescrito pela variável GEE_PROJECT. Com conta de serviço, se vazio,
+    # o pipeline usa o "project_id" do próprio JSON da chave.
+    project_id: ""
+    # Caminho para o JSON da conta de serviço (relativo à raiz do projeto ou absoluto).
+    # Prioridade: variável de ambiente GEE_SERVICE_ACCOUNT_JSON > esta chave.
+    # Ex.: "./credentials/meu-projeto-xxxxx.json" — ou renomeie o JSON para service_account_gee.json.
+    service_account_key_path: "./credentials/service_account_gee.json"
+    # Coleção de imagem usada na validação de ponto (fase 1 = apenas validação).
+    # Fase 2 substituirá por coleção NDVI/LAI com janela temporal ajustada.
+    reference_image_collection: "COPERNICUS/S2_SR_HARMONIZED"
+    scale_m: 10
+    # Modo de região de interesse por estação.
+    # "point"        — apenas o ponto (fase 1)
+    # "point_buffer" — ponto + buffer (fase 2, usa buffer_radius_km)
+    roi_mode: "point"
+    # PHASE-2 HOOK: raio do buffer (km) ao redor da estação para extração de índices.
+    buffer_radius_km: 5.0
+    # Limite de chamadas por minuto (evitar quota exceeded). 0 = sem limite explícito.
+    calls_per_minute_cap: 20
+    # Estratégia de validação na fase 1: "per_geo_version" (recomendado, economiza cota)
+    # ou "per_year" (mais granular, mais chamadas).
+    validation_strategy: "per_geo_version"
+
+  # --- Séries temporais E vs F ---
+  timeseries:
+    enabled: true
+    # Cenários a comparar. Chaves em modeling_scenarios acima.
+    scenarios:
+      E: "base_E_calculated"
+      F: "base_F_calculated"
+    # Variáveis a extrair das séries. Devem corresponder exatamente aos nomes de coluna
+    # dos parquets da variante *_calculated (gerados por feature_engineering_physics.py).
+    variables:
+      - "PRECIPITAÇÃO TOTAL, HORÁRIO (mm)"
+      - "PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)"
+      - "RADIACAO GLOBAL (KJ/m²)"
+      - "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)"
+      - "TEMPERATURA DO PONTO DE ORVALHO (°C)"
+      - "UMIDADE RELATIVA DO AR, HORARIA (%)"
+      - "VENTO, DIREÇÃO HORARIA (gr) (° (gr))"
+      - "VENTO, RAJADA MAXIMA (m/s)"
+      - "VENTO, VELOCIDADE HORARIA (m/s)"
+      - "precip_ewma"
+      - "dias_sem_chuva"
+    # Seleção de cidades para gráficos.
+    # Se sample_cities estiver vazio, usa top-N por menor % NaN na interseção E∩F.
+    sample_cities: []
+    auto_sample_n: 5
+    # Ano de referência para escolher as cidades automáticas.
+    # "last" = último ano com dados em ambas as bases; ou número fixo (ex. 2019).
+    reference_year_for_city_pick: "last"
+    # Calcular cumsum de precipitação (acumulado intra-ano civil por padrão).
+    cumsum_precip: true
+    # "false" = só intra-ano; "true" = acumulado contínuo multi-anual (mantém estado entre anos).
+    cumsum_multiyear: false
+    # Método de downsample para a visão "todo o dataset" nos gráficos globais.
+    # "daily_mean" | "weekly_mean" | "none"
+    downsample_for_global_plot: "daily_mean"
+    # Formato de export tabular por ano.
+    # "parquet" (recomendado) ou "csv"
+    export_format: "parquet"
+    # Gerar também CSV resumido (apenas cidades amostra, média diária) além do parquet.
+    export_sample_csv: true
+
+  # --- Cores dos gráficos ---
+  # Base F (original enriquecida): azul; Base E (imputada KNN): laranja-terroso
+  plot_color_F: "#1f77b4"
+  plot_color_E: "#d62728"
+
+  # --- PHASE-2 HOOKS: integração futura com focos de calor ---
+  # Raio de influência da estação (km) para análise de distância geodésica até focos.
+  # Usado futuramente em módulo de distância euclidiana/geodésica e sweep de otimização.
+  station_influence_radius_km: 50.0
+  # Parâmetros de interpolação espacial (IDW/Krigagem) — reservados para fase 3.
+  spatial_interpolation:
+    roi_size_km: 10.0
+    resolution_m: 1000
+
+# =============================================================================
+# PIPELINE DO ARTIGO — enriquecimento espacial, GEE e EDA
+# Módulo: src/article/
+# =============================================================================
+article_pipeline:
+  # Raiz dos artefatos do artigo (isolada de data/modeling).
+  output_root: "./data/_article"
+
+  # Cenários a processar (chaves em modeling_scenarios).
+  scenarios:
+    D: "base_D_with_rad_drop_rows_calculated"
+    E: "base_E_with_rad_knn_calculated"
+    F: "base_F_full_original_calculated"
+
+  # Anos. Vazio = descoberta automática por glob nos parquets.
+  years: []
+
+  # Chave de join entre Parquet e station_year_locations.
+  station_id_columns: ["cidade_norm"]
+
+  # GEE — extração de biomassa semanal (MOD13Q1)
+  gee:
+    canonical_scenario: "base_E_with_rad_knn_calculated"
+    image_collection: "MODIS/061/MOD13Q1"
+    scale_m: 250
+    buffer_radius_km: 50
+    composite_period_days: 16
+    bands: ["NDVI", "EVI"]
+    # Credenciais: GEE_SERVICE_ACCOUNT_JSON / GEE_PROJECT têm prioridade.
+    # Se vazio, herdam de inmet_gee_pipeline.gee (mesmo JSON).
+    project_id: ""
+    service_account_key_path: ""
+    sites_chunk_size: 400
+    tile_scale: 2
+    pause_between_chunks_s: 0.5
+    gee_retry_max_attempts: 3
+
+  # EDA — cidades benchmark (lista explícita para reprodutibilidade).
+  # Deve coincidir com valores em cidade_norm nos Parquets.
+  eda:
+    benchmark_cities:
+      - "brasilia"
+      - "campo grande"
+      - "uberlandia"
+      - "ponta pora"
+      - "tangara da serra"
