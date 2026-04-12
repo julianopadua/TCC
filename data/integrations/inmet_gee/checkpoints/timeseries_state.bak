@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-04-10T03:06:16.044793+00:00",
+  "updated_at": "2026-04-10T03:14:11.277453+00:00",
+  "completed_years_ts": [
+    2003,
+    2004,
+    2005,
+    2006,
+    2007,
+    2008,
+    2009,
+    2010,
+    2011,
+    2012,
+    2013,
+    2014,
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+  ],
+  "last_plot_year": 2023,
+  "failed_years_ts": {},
+  "sample_cities": [
+    "gilbues",
+    "ponta pora",
+    "campo grande",
+    "sapezal",
+    "tangara da serra"
+  ],
+  "file_fingerprints": {},
+  "cumsum_carry": {}
+}
