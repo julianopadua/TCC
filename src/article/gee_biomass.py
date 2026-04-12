@@ -294,6 +294,13 @@ def align_weekly_to_hourly(
 
     weekly = df_weekly.copy()
     weekly["_ts"] = pd.to_datetime(weekly["composite_start"])
+
+    # merge_asof exige o mesmo dtype nas colunas `by`; parquet costuma ser StringDtype
+    # e o weekly vindo do GEE pode ser object.
+    for col in (station_col, site_key_col):
+        df[col] = df[col].astype("string")
+        weekly[col] = weekly[col].astype("string")
+
     weekly = weekly.sort_values([station_col, site_key_col, "_ts"])
 
     df = df.sort_values([station_col, site_key_col, "_ts"])
