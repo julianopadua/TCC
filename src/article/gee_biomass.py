@@ -33,6 +33,12 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from src.article.config import ArticlePipelineConfig, load_article_config
+from src.article.pipeline_state import (
+    GEE_MANIFEST_NAME,
+    gee_mark_year_complete,
+    gee_should_process_year,
+    load_gee_manifest,
+)
 from src.article.processing_issues import IssueLogger
 from src.integrations.inmet_gee.ee_init import call_gee_with_retry, initialize_earth_engine
 from src.utils import ensure_dir, get_logger
@@ -405,11 +411,13 @@ def _discover_years(directory: Path) -> List[int]:
 def run_gee_pipeline(
     years: Optional[List[int]] = None,
     skip_years: Optional[List[int]] = None,
+    overwrite: bool = False,
 ) -> None:
     """
     Orquestra: extração GEE semanal na canônica → ffill → propagação para D/E/F.
 
     skip_years: anos a ignorar (útil após já ter processado um ano pesado).
+    overwrite: com True, reprocessa anos já listados no manifesto (combinar com --years).
     """
     acfg = load_article_config()
     log = get_logger("article.gee_biomass", kind="article", per_run_file=True)
@@ -451,12 +459,34 @@ def run_gee_pipeline(
         issues.flush()
         return
 
+    manifest_path = ensure_dir(acfg.output_root / "logs") / GEE_MANIFEST_NAME
+    gee_done = load_gee_manifest(manifest_path)
+    if not overwrite:
+        log.info("  Manifesto GEE: %s (%d anos concluídos)", manifest_path, len(gee_done))
+    else:
+        log.info("  --overwrite: anos já concluídos podem ser reprocessados conforme --years.")
+
+    years_to_run: List[int] = []
+    for y in sorted(available):
+        if gee_should_process_year(y, gee_done, overwrite, years):
+            years_to_run.append(y)
+        else:
+            log.info(
+                "  Pulando ano %d (GEE já concluído). Use --overwrite [--years ...] para refazer.",
+                y,
+            )
+
+    if not years_to_run:
+        log.warning("Nenhum ano a processar após manifesto GEE / --overwrite.")
+        issues.flush()
+        return
+
     bands = acfg.gee.bands
     biomass_cols = [f"{b}_buffer" for b in bands] + [f"{b}_point" for b in bands]
 
     other_scenarios = {k: v for k, v in acfg.scenarios.items() if v != canonical}
 
-    for year in sorted(available):
+    for year in years_to_run:
         log.info("=== Ano %d ===", year)
 
         canon_path = canonical_dir / PARQUET_TEMPLATE.format(year=year)
@@ -497,6 +527,9 @@ def run_gee_pipeline(
                 log.info("  Propagado para %s: %s (%d linhas)", key, target_path.name, len(result))
                 del result
                 gc.collect()
+
+            gee_mark_year_complete(manifest_path, year)
+            log.info("  Ano %d registrado no manifesto GEE (canônica + propagados).", year)
         else:
             log.info(
                 "  GEE sem dados de biomassa para ano %d — colunas não atualizadas.",

@@ -34,6 +34,14 @@ def main() -> None:
         help="Anos a ignorar em todas as etapas (ex.: já processados com GEE).",
     )
     parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Coords e GEE: ignorar manifesto (refazer). Com --years, só esses anos "
+            "são refeitos no GEE; coords refaz qualquer ano da execução."
+        ),
+    )
+    parser.add_argument(
         "--skip-coords", action="store_true",
         help="Pular etapa 0 (enriquecimento de coordenadas).",
     )
@@ -72,15 +80,21 @@ def main() -> None:
     log.info("  Anos: %s", args.years or "todos")
     if args.skip_years:
         log.info("  Pular anos: %s", args.skip_years)
+    if args.overwrite:
+        log.info("  --overwrite: coords e GEE podem refazer trabalho já registrado.")
     log.info("=" * 72)
 
     if run_coords:
         from src.article.enrich_coords import run_all as run_coords_fn
-        run_coords_fn(years=args.years, skip_years=args.skip_years)
+        run_coords_fn(
+            years=args.years, skip_years=args.skip_years, overwrite=args.overwrite,
+        )
 
     if run_gee:
         from src.article.gee_biomass import run_gee_pipeline
-        run_gee_pipeline(years=args.years, skip_years=args.skip_years)
+        run_gee_pipeline(
+            years=args.years, skip_years=args.skip_years, overwrite=args.overwrite,
+        )
 
     if run_eda:
         from src.article.eda import run_eda as run_eda_fn

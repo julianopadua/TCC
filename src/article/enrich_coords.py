@@ -22,7 +22,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
 
@@ -31,6 +31,12 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from src.article.config import ArticlePipelineConfig, load_article_config
+from src.article.pipeline_state import (
+    COORDS_MANIFEST_NAME,
+    coords_mark_year_complete,
+    coords_should_process_year,
+    load_coords_manifest,
+)
 from src.article.processing_issues import IssueLogger
 from src.utils import ensure_dir, get_logger
 
@@ -264,6 +270,9 @@ def enrich_scenario(
     log: logging.Logger,
     years: Optional[List[int]] = None,
     skip_years: Optional[List[int]] = None,
+    coords_state: Optional[Dict[str, Any]] = None,
+    coords_manifest_path: Optional[Path] = None,
+    overwrite: bool = False,
 ) -> List[Path]:
     """Enriquece todos os anos de um cenário. Retorna paths dos Parquets gerados."""
     source_dir = acfg.modeling_dir / scenario_folder
@@ -287,6 +296,18 @@ def enrich_scenario(
     outputs: List[Path] = []
 
     for year in sorted(available_years):
+        if (
+            coords_state is not None
+            and coords_manifest_path is not None
+            and not coords_should_process_year(year, scenario_key, coords_state, overwrite)
+        ):
+            log.info(
+                "  Pulando %d (coords já registrado para %s). Use --overwrite para refazer.",
+                year,
+                scenario_key,
+            )
+            continue
+
         pq_src = source_dir / PARQUET_TEMPLATE.format(year=year)
         if not pq_src.exists():
             log.warning("Parquet não encontrado: %s", pq_src)
@@ -304,6 +325,9 @@ def enrich_scenario(
         log.info("  → Gravado: %s (%d linhas)", out_path.name, len(df_enriched))
         outputs.append(out_path)
 
+        if coords_state is not None and coords_manifest_path is not None:
+            coords_mark_year_complete(coords_state, scenario_key, year, coords_manifest_path)
+
         del df_enriched, bdq_df
         gc.collect()
 
@@ -317,6 +341,7 @@ def enrich_scenario(
 def run_all(
     years: Optional[List[int]] = None,
     skip_years: Optional[List[int]] = None,
+    overwrite: bool = False,
 ) -> Dict[str, List[Path]]:
     """Executa enriquecimento para todos os cenários configurados."""
     acfg = load_article_config()
@@ -329,11 +354,27 @@ def run_all(
 
     effective_years = years or acfg.years or None
 
+    manifest_path = ensure_dir(acfg.output_root / "logs") / COORDS_MANIFEST_NAME
+    coords_state: Dict[str, Any] = load_coords_manifest(manifest_path)
+    if not overwrite:
+        log.info("  Manifesto coords: %s", manifest_path)
+    else:
+        log.info("  --overwrite: reprocessar coords mesmo para anos já registrados.")
+
     results: Dict[str, List[Path]] = {}
     for key, folder in acfg.scenarios.items():
         log.info("--- Cenário %s (%s) ---", key, folder)
         paths = enrich_scenario(
-            key, folder, acfg, issues, log, effective_years, skip_years=skip_years,
+            key,
+            folder,
+            acfg,
+            issues,
+            log,
+            effective_years,
+            skip_years=skip_years,
+            coords_state=coords_state,
+            coords_manifest_path=manifest_path,
+            overwrite=overwrite,
         )
         results[key] = paths
         log.info("Cenário %s concluído: %d arquivos gerados.\n", key, len(paths))
