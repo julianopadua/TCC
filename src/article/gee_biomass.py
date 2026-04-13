@@ -50,6 +50,24 @@ FOCO_ID_COL = "FOCO_ID"
 SITE_KEY_COL = "gee_site_key"
 
 
+def _write_parquet_atomic(df: pd.DataFrame, path: Path) -> None:
+    """Escreve parquet de forma atômica (tmp + replace)."""
+    tmp = path.with_name(f"{path.name}.tmp")
+    df.to_parquet(tmp, index=False, engine="pyarrow")
+    tmp.replace(path)
+
+
+def _normalize_join_keys(df: pd.DataFrame, key_cols: List[str], ts_col: str) -> pd.DataFrame:
+    """Normaliza tipos de chave para reduzir mismatches no join."""
+    out = df.copy()
+    for c in key_cols:
+        if c == ts_col:
+            out[c] = pd.to_datetime(out[c], errors="coerce")
+        else:
+            out[c] = out[c].astype("string")
+    return out
+
+
 def compute_gee_site_key(df: pd.DataFrame) -> pd.Series:
     """
     Chave estável por foco: FOCO_ID quando válido; senão lat/lon do foco
@@ -116,7 +134,7 @@ def extract_weekly_biomass_gee(
     Retorna DataFrame longo: cidade_norm, gee_site_key, composite_start, NDVI_buffer, ...
     """
     if sites_df is None or len(sites_df) == 0:
-        log.warning("Nenhum site para extração GEE no ano %d.", year)
+        log.warning("Nenhum site para extracao GEE no ano %d.", year)
         return None
 
     gcfg = cfg.gee
@@ -128,7 +146,7 @@ def extract_weekly_biomass_gee(
     buffer_m = gcfg.buffer_radius_km * 1000.0
     bands = list(gcfg.bands)
     if not bands:
-        log.warning("article_pipeline.gee.bands vazio — nada a extrair.")
+        log.warning("article_pipeline.gee.bands vazio - nada a extrair.")
         return None
 
     rows: List[Dict[str, Any]] = []
@@ -139,7 +157,7 @@ def extract_weekly_biomass_gee(
     valid = sites_df["lat_foco"].notna() & sites_df["lon_foco"].notna()
     n_bad = (~valid).sum()
     if n_bad:
-        log.warning("Removendo %d sites sem lat_foco/lon_foco válidos (ano %d).", int(n_bad), year)
+        log.warning("Removendo %d sites sem lat_foco/lon_foco validos (ano %d).", int(n_bad), year)
     sites_df = sites_df.loc[valid].copy()
     if len(sites_df) == 0:
         return None
@@ -169,10 +187,10 @@ def extract_weekly_biomass_gee(
         log, lambda: col.size().getInfo(), max_attempts=ra, base_delay=5.0, max_delay=120.0
     )
     if n_images is None:
-        log.error("Falha ao obter tamanho da coleção GEE (ano %d).", year)
+        log.error("Falha ao obter tamanho da colecao GEE (ano %d).", year)
         return None
     if n_images == 0:
-        log.warning("Coleção GEE vazia para o ano %d após filterDate/filterBounds.", year)
+        log.warning("Colecao GEE vazia para o ano %d apos filterDate/filterBounds.", year)
         return None
 
     list_obj = col.toList(int(n_images))
@@ -180,7 +198,7 @@ def extract_weekly_biomass_gee(
     chunks = _chunked(site_records, chunk_sz)
 
     log.info(
-        "  GEE ano %d: %d imagens, %d sites em chunks de até %d (tileScale=%d).",
+        "  GEE ano %d: %d imagens, %d sites em chunks de ate %d (tileScale=%d).",
         year,
         int(n_images),
         len(site_records),
@@ -367,20 +385,56 @@ def propagate_biomass(
     target_df = ensure_gee_site_key(target_df)
 
     key_cols = [station_col, site_key_col, ts_col]
-    canon_subset = canonical_df[key_cols + biomass_cols].drop_duplicates(subset=key_cols)
+    canon_raw = canonical_df[key_cols + biomass_cols].copy()
+    canon_raw = _normalize_join_keys(canon_raw, key_cols, ts_col)
+    target_df = _normalize_join_keys(target_df, key_cols, ts_col)
 
-    result = target_df.merge(canon_subset, on=key_cols, how="left")
+    dup_mask = canon_raw.duplicated(subset=key_cols, keep=False)
+    n_dup = int(dup_mask.sum())
+    if n_dup > 0:
+        issues.log(
+            STAGE,
+            "CANON_DUPLICATE_KEYS",
+            f"Canonica tem {n_dup} linhas com chave duplicada; "
+            f"drop_duplicates mantera primeira ocorrencia "
+            f"(ano {year}, arquivo {target_parquet.name}).",
+            "LOGGED_ONLY",
+            year=year,
+        )
+        log.warning("CANON_DUPLICATE_KEYS no ano %d: %d linhas duplicadas.", year, n_dup)
+
+    canon_subset = canon_raw.drop_duplicates(subset=key_cols, keep="first")
+    canon_indexed = canon_subset.set_index(key_cols)
+
+    # Evita colunas duplicadas no merge e reduz pico de memória.
+    target_base = target_df.drop(columns=[c for c in biomass_cols if c in target_df.columns], errors="ignore")
+    target_keys = pd.MultiIndex.from_frame(target_base[key_cols])
+    result = target_base.copy()
+    for col in biomass_cols:
+        if col in canon_indexed.columns:
+            result[col] = canon_indexed[col].reindex(target_keys).to_numpy(copy=False)
+        else:
+            result[col] = np.nan
 
     if len(result) != n_target:
         issues.log(
             STAGE,
             "ROWCOUNT_MISMATCH",
-            f"Propagação alterou contagem de linhas: {n_target} → {len(result)} "
+            f"Propagacao alterou contagem de linhas: {n_target} -> {len(result)} "
             f"(ano {year}, arquivo {target_parquet.name}).",
             "LOGGED_ONLY",
             year=year,
         )
         log.warning("ROWCOUNT_MISMATCH no merge de biomassa: %s", target_parquet.name)
+
+    n_key_unique = int(canon_subset[key_cols].drop_duplicates().shape[0])
+    log.info(
+        "  Propagacao %s (ano %d): target=%d linhas, chaves canonicas=%d",
+        target_parquet.name,
+        year,
+        n_target,
+        n_key_unique,
+    )
 
     n_missing = result[biomass_cols[0]].isna().sum() if biomass_cols else 0
     if n_missing > 0:
@@ -392,6 +446,13 @@ def propagate_biomass(
             "LOGGED_ONLY",
             year=year,
         )
+    if biomass_cols:
+        miss_by_col = {
+            c: int(result[c].isna().sum())
+            for c in biomass_cols
+            if c in result.columns
+        }
+        log.info("  Missing por coluna (%s): %s", target_parquet.name, miss_by_col)
 
     return result
 
@@ -424,26 +485,26 @@ def run_gee_pipeline(
     issues = IssueLogger(ensure_dir(acfg.output_root / "logs") / "processing_issues.csv")
 
     log.info("=" * 72)
-    log.info("ARTICLE PIPELINE — Etapa 1: GEE Biomassa (semanal → horária)")
+    log.info("ARTICLE PIPELINE - Etapa 1: GEE Biomassa (semanal -> horaria)")
     log.info("=" * 72)
 
     ee_mod = initialize_earth_engine(
         log,
         service_account_key_path=acfg.gee.service_account_key_path,
         project_id=acfg.gee.project_id,
-        log_resource_name=f"Coleção biomassa: {acfg.gee.image_collection}",
+        log_resource_name=f"Colecao biomassa: {acfg.gee.image_collection}",
     )
     if ee_mod is None:
         log.error(
-            "Earth Engine não inicializado — defina credenciais (article_pipeline.gee ou "
+            "Earth Engine nao inicializado - defina credenciais (article_pipeline.gee ou "
             "inmet_gee_pipeline.gee, ou GEE_SERVICE_ACCOUNT_JSON / GEE_PROJECT). "
-            "Biomassa não será extraída."
+            "Biomassa nao sera extraida."
         )
 
     canonical = acfg.gee.canonical_scenario
     canonical_dir = acfg.output_root / "0_datasets_with_coords" / canonical
     if not canonical_dir.exists():
-        log.error("Diretório canônico não existe: %s. Execute enrich_coords primeiro.", canonical_dir)
+        log.error("Diretorio canonico nao existe: %s. Execute enrich_coords primeiro.", canonical_dir)
         return
 
     available = _discover_years(canonical_dir)
@@ -455,16 +516,16 @@ def run_gee_pipeline(
         log.info("  Ignorando anos (skip_years): %s", sorted(sk))
 
     if not available:
-        log.warning("Nenhum ano a processar após --years / --skip-years.")
+        log.warning("Nenhum ano a processar apos --years / --skip-years.")
         issues.flush()
         return
 
     manifest_path = ensure_dir(acfg.output_root / "logs") / GEE_MANIFEST_NAME
     gee_done = load_gee_manifest(manifest_path)
     if not overwrite:
-        log.info("  Manifesto GEE: %s (%d anos concluídos)", manifest_path, len(gee_done))
+        log.info("  Manifesto GEE: %s (%d anos concluidos)", manifest_path, len(gee_done))
     else:
-        log.info("  --overwrite: anos já concluídos podem ser reprocessados conforme --years.")
+        log.info("  --overwrite: anos ja concluidos podem ser reprocessados conforme --years.")
 
     years_to_run: List[int] = []
     for y in sorted(available):
@@ -472,12 +533,12 @@ def run_gee_pipeline(
             years_to_run.append(y)
         else:
             log.info(
-                "  Pulando ano %d (GEE já concluído). Use --overwrite [--years ...] para refazer.",
+                "  Pulando ano %d (GEE ja concluido). Use --overwrite [--years ...] para refazer.",
                 y,
             )
 
     if not years_to_run:
-        log.warning("Nenhum ano a processar após manifesto GEE / --overwrite.")
+        log.warning("Nenhum ano a processar apos manifesto GEE / --overwrite.")
         issues.flush()
         return
 
@@ -510,29 +571,29 @@ def run_gee_pipeline(
                 station_col="cidade_norm",
                 site_key_col=SITE_KEY_COL,
             )
-            df_canon.to_parquet(canon_path, index=False, engine="pyarrow")
-            log.info("  Canônica atualizada com biomassa: %s", canon_path.name)
+            _write_parquet_atomic(df_canon, canon_path)
+            log.info("  Canonica atualizada com biomassa: %s", canon_path.name)
 
             for key, folder in other_scenarios.items():
                 target_dir = acfg.output_root / "0_datasets_with_coords" / folder
                 target_path = target_dir / PARQUET_TEMPLATE.format(year=year)
                 if not target_path.exists():
-                    log.warning("  Target não encontrado para cenário %s: %s", key, target_path)
+                    log.warning("  Target nao encontrado para cenario %s: %s", key, target_path)
                     continue
 
                 result = propagate_biomass(
                     df_canon, target_path, biomass_cols, issues, log, year,
                 )
-                result.to_parquet(target_path, index=False, engine="pyarrow")
+                _write_parquet_atomic(result, target_path)
                 log.info("  Propagado para %s: %s (%d linhas)", key, target_path.name, len(result))
                 del result
                 gc.collect()
 
             gee_mark_year_complete(manifest_path, year)
-            log.info("  Ano %d registrado no manifesto GEE (canônica + propagados).", year)
+            log.info("  Ano %d registrado no manifesto GEE (canonica + propagados).", year)
         else:
             log.info(
-                "  GEE sem dados de biomassa para ano %d — colunas não atualizadas.",
+                "  GEE sem dados de biomassa para ano %d - colunas nao atualizadas.",
                 year,
             )
 

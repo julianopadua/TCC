@@ -40,7 +40,7 @@ def initialize_earth_engine(
             kp = Path(key_path)
             if not kp.is_file():
                 log.warning(
-                    "Arquivo de conta de serviço GEE não encontrado: '%s'. "
+                    "Arquivo de conta de servico GEE nao encontrado: '%s'. "
                     "Verifique service_account_key_path ou GEE_SERVICE_ACCOUNT_JSON.",
                     key_path,
                 )
@@ -55,7 +55,7 @@ def initialize_earth_engine(
                 project = (sa_meta.get("project_id") or "").strip() or None
             if not project:
                 log.warning(
-                    "Conta de serviço em '%s', mas project_id está vazio. "
+                    "Conta de servico em '%s', mas project_id esta vazio. "
                     "Defina project_id no YAML ou GEE_PROJECT.",
                     kp.name,
                 )
@@ -65,7 +65,7 @@ def initialize_earth_engine(
             )
             _ee.Initialize(credentials=credentials, project=project)
             log.info(
-                "Google Earth Engine inicializado (conta de serviço). "
+                "Google Earth Engine inicializado (conta de servico). "
                 "E-mail: %s | Projeto: %s | Key: %s | %s.",
                 sa_email,
                 project,
@@ -80,7 +80,7 @@ def initialize_earth_engine(
             _ee.Initialize()
         log.info(
             "Google Earth Engine inicializado (OAuth/ADC). Projeto: '%s' | %s.",
-            project or "(padrão)",
+            project or "(padrao)",
             log_resource_name,
         )
         return _ee
@@ -115,7 +115,7 @@ def call_gee_with_retry(
                 for kw in ("quota", "rate", "limit", "toomany", "429", "resource exhausted")
             )
             if attempt >= max_attempts:
-                log.error("Falha GEE após %d tentativas: %s", max_attempts, exc)
+                log.error("Falha GEE apos %d tentativas: %s", max_attempts, exc)
                 return None
             jitter = random.uniform(0, delay * 0.25)
             wait = min(delay + jitter, max_delay)

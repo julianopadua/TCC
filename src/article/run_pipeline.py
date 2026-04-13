@@ -75,13 +75,13 @@ def main() -> None:
         run_coords = run_gee = False
 
     log.info("=" * 72)
-    log.info("ARTICLE PIPELINE — Início")
+    log.info("ARTICLE PIPELINE - Inicio")
     log.info("  Etapas: coords=%s, gee=%s, eda=%s", run_coords, run_gee, run_eda)
     log.info("  Anos: %s", args.years or "todos")
     if args.skip_years:
         log.info("  Pular anos: %s", args.skip_years)
     if args.overwrite:
-        log.info("  --overwrite: coords e GEE podem refazer trabalho já registrado.")
+        log.info("  --overwrite: coords e GEE podem refazer trabalho ja registrado.")
     log.info("=" * 72)
 
     if run_coords:
@@ -100,7 +100,7 @@ def main() -> None:
         from src.article.eda import run_eda as run_eda_fn
         run_eda_fn(years=args.years, skip_years=args.skip_years)
 
-    log.info("ARTICLE PIPELINE — Concluído.")
+    log.info("ARTICLE PIPELINE - Concluido.")
 
 
 if __name__ == "__main__":
