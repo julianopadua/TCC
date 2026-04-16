@@ -301,3 +301,78 @@ article_pipeline:
       - "uberlandia"
       - "ponta pora"
       - "tangara da serra"
+
+  # ---------------------------------------------------------------------------
+  # FUSÃO TEMPORAL — pipeline do artigo (v1)
+  # Ver doc/planos/plano_fusao_article_v1.md
+  # ---------------------------------------------------------------------------
+  # Entrada: data/_article/0_datasets_with_coords/{cenario}/
+  # Saída:   data/_article/1_datasets_with_fusion/{cenario}/{metodo}/
+  # EDA:     data/eda/temporal_fusion/
+  # Resultados de treino: data/_article/results/
+  # ---------------------------------------------------------------------------
+  temporal_fusion:
+    # Subpaths relativos ao output_root (../data/_article)
+    input_subdir: "0_datasets_with_coords"
+    output_subdir: "1_datasets_with_fusion"
+    results_subdir: "results"
+
+    # EDA (ranking + features selecionadas) sobre paths.data.dataset → eda/temporal_fusion
+    eda_subdir: "temporal_fusion"
+
+    # Cenário padrão (chave de article_pipeline.scenarios).
+    default_scenario: "E"
+
+    # Anos reservados para teste (últimos N anos disponíveis).
+    test_size_years: 2
+
+    # TOP K features tsf_* a reter na Camada A.
+    top_k: 50
+
+    # Métodos "elite" expostos pelo orquestrador do artigo.
+    # Cada método pode ser executado isoladamente via --methods.
+    methods: ["ewma_lags", "sarimax_exog", "minirocket"]
+
+    # -------------------------------------------------------------------------
+    # Parâmetros por método
+    # -------------------------------------------------------------------------
+    ewma_lags:
+      # Slugs de variáveis meteorológicas (usam lags/alphas "meteo").
+      meteo_vars: ["precip", "temp", "umid", "rad"]
+      # Slugs de biomassa (MOD13Q1 ≈ 16 dias; lags em passos horários).
+      biomass_vars: ["ndvi_buffer", "evi_buffer"]
+      meteo_lags_h: [1, 24, 168]
+      biomass_lags_h: [168, 336]
+      alphas: {a01: 0.1, a03: 0.3, a08: 0.8}
+
+    sarimax_exog:
+      endog: "precip"
+      # Exogenas inclui biomassa (ndvi_buffer) como nova variável do artigo.
+      exog: ["temp", "umid", "rad", "ndvi_buffer"]
+      order: [2, 1, 2]
+      seasonal_order: [1, 1, 1, 24]
+      refit_hours: 168
+      window_hours: 720
+
+    minirocket:
+      # 5 canais: 3 meteo + 2 biomassa.
+      channels:
+        ["precip", "temp", "umid", "ndvi_buffer", "evi_buffer"]
+      window: 168
+      n_kernels: 168
+      random_state: 42
+
+    # -------------------------------------------------------------------------
+    # Camada A — Feature Selection
+    # -------------------------------------------------------------------------
+    feature_selection:
+      # Descartar features com NaN > threshold (fração 0..1) no treino.
+      max_nan_fraction: 0.5
+      # Pesos do score composto (normalizados para [0,1]).
+      spearman_weight: 0.5
+      mi_weight: 0.5
+      # Amostragem para MI (MI é O(n log n); amostrar se n_rows_train >= sample_cutoff).
+      mi_sample_cutoff: 2000000
+      mi_sample_size: 500000
+      # Estratificação por HAS_FOCO preservada na amostragem.
+      stratify_by: "HAS_FOCO"

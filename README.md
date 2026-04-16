@@ -12,6 +12,7 @@ ETL, fusão horária, bases para modelagem e experimentos de ML para ocorrência
 * [Visão geral](#visão-geral)
 * [Pipeline em diagrama (Mermaid)](#pipeline-em-diagrama-mermaid)
 * [Branch `article-temporal-fusion`](#branch-article-temporal-fusion)
+* [Pipeline do artigo (`src/article/`)](#pipeline-do-artigo-srcarticle)
 * [Estrutura de pastas](#estrutura-de-pastas)
 * [Fluxo do pipeline (ordem sugerida)](#fluxo-do-pipeline-ordem-sugerida)
 * [Módulos `src/` (resumo)](#módulos-src-resumo)
@@ -138,6 +139,135 @@ Entregas principais:
 * **`pyproject.toml`**: dependências incluindo fusão temporal (`statsmodels`, `prophet`, `aeon`, `tslearn`, etc.).
 
 Detalhamento: [doc/planos/fusao_temporal_artigo_2026-04-07.md](doc/planos/fusao_temporal_artigo_2026-04-07.md).
+
+---
+
+## Pipeline do artigo (`src/article/`)
+
+Pipeline dedicado à escrita do artigo, separado do pipeline original do TCC.
+Opera sobre os parquets em `data/_article/` (coordenadas + biomassa GEE +
+fusão temporal) e usa 3 métodos "elite" para feature engineering temporal,
+seguidos de uma **Camada A** de triagem científica (Spearman + Mutual
+Information contra `HAS_FOCO`).
+
+Detalhamento completo: [doc/planos/plano_fusao_article_v1.md](doc/planos/plano_fusao_article_v1.md).
+
+Estrutura de dados:
+
+```text
+data/_article/
+├── 0_datasets_with_coords/         # coords + NDVI/EVI (saída de run_pipeline.py)
+│   └── base_E_with_rad_knn_calculated/inmet_bdq_{ANO}_cerrado.parquet
+├── 1_datasets_with_fusion/         # gerado pelo orquestrador
+│   └── base_E_with_rad_knn_calculated/
+│       ├── ewma_lags/              # Etapa 1 — método EWMA+lags
+│       ├── sarimax_exog/           # Etapa 1 — método SARIMAX c/ biomassa exog
+│       ├── minirocket/             # Etapa 1 — embeddings multicanal
+│       └── champion/               # Etapa 3 — originais + TOP K tsf_*
+└── results/                        # (futuro) métricas e modelos treinados
+```
+
+EDA / ranking de features:
+
+```text
+data/eda/temporal_fusion/
+├── method_ranking_article.csv       # todas as features tsf_* + scores
+└── selected_features_article.json   # TOP K selecionadas
+```
+
+### Etapas do pipeline
+
+| Script / módulo | Papel |
+|---|---|
+| `src/article/run_pipeline.py` | **Pré-requisito**: etapas 0–2 (coords, GEE, EDA) que alimentam `0_datasets_with_coords/`. |
+| `src/article/temporal_fusion_article.py` | Etapa 1 — fusão temporal (3 métodos elite). |
+| `src/article/feature_selection_article.py` | Etapa 2 — Camada A (Spearman + MI). |
+| `src/article/article_orchestrator.py` | CLI unificado que encadeia as 3 etapas. |
+
+### Orquestrador — argumentos
+
+```bash
+python src/article/article_orchestrator.py [opções]
+```
+
+| Flag | Default | Descrição |
+|---|---|---|
+| `--scenario {D,E,F,folder}` | `E` | Aceita chave curta, `base_X` ou o folder name completo. |
+| `--methods ewma_lags sarimax_exog minirocket` | todos do config | Métodos de fusão a rodar na Etapa 1. |
+| `--top-k N` | `50` | Número de features `tsf_*` a reter após Camada A. |
+| `--years Y Y Y` | todos | Subset de anos a processar. |
+| `--test-years N` | `2` | Últimos N anos são reservados como teste (MiniRocket não fita). |
+| `--overwrite` | off | Regrava parquets existentes (fusion + champion). |
+| `--skip-fusion` | off | Pula Etapa 1 (assume parquets de fusion já gerados). |
+| `--skip-selection` | off | Pula Etapa 2 (assume `selected_features_article.json` existente). |
+| `--skip-train` | off | Pula Etapa 3 (não gera a base "champion"). |
+
+### Cenários de uso típicos
+
+**1. Pipeline completo, cenário E (default):**
+
+```bash
+python src/article/article_orchestrator.py
+```
+
+**2. Rodar apenas no cenário D:**
+
+```bash
+python src/article/article_orchestrator.py --scenario D
+```
+
+**3. Apenas EWMA+Lags (rápido, útil para validar caminho completo):**
+
+```bash
+python src/article/article_orchestrator.py --methods ewma_lags
+```
+
+**4. Rodar só em alguns anos (debug):**
+
+```bash
+python src/article/article_orchestrator.py --years 2020 2021 2022
+```
+
+**5. Pular fusão; usar parquets já gerados para re-rodar só a Camada A:**
+
+```bash
+python src/article/article_orchestrator.py --skip-fusion
+```
+
+**6. Só gerar ranking de features, sem construir a base champion:**
+
+```bash
+python src/article/article_orchestrator.py --skip-fusion --skip-train
+```
+
+**7. Forçar regravação completa com outro top-k:**
+
+```bash
+python src/article/article_orchestrator.py --overwrite --top-k 30
+```
+
+**8. Usar a base consolidada existente direto no train_runner (pulando tudo):**
+
+```bash
+python src/article/article_orchestrator.py --skip-fusion --skip-selection --skip-train
+# (no-op informacional; útil apenas para auditoria dos logs)
+```
+
+### Métodos elite — o que cada um gera
+
+| Método | Saída por parquet | Observação |
+|---|---|---|
+| `ewma_lags` | ~34 colunas `tsf_ewma_*` e `tsf_lag_*` | Vetorizado, rápido; inclui meteo + biomassa (lags de 168h e 336h). |
+| `sarimax_exog` | 2 colunas (`*_pred`, `*_resid`) | Endógena `precip`; exogenas `[temp, umid, rad, NDVI_buffer]`. O `resid` é o sinal de anomalia de seca. |
+| `minirocket` | 168 embeddings `tsf_minirocket_f000..f167` | 5 canais (precip + temp + umid + NDVI_buffer + EVI_buffer), janela 168h (1 semana). Pré-condição: sem NaN na janela — cenário E ideal. |
+
+### Logs
+
+Cada execução do orquestrador grava um log dedicado em
+`logs/article_run_{YYYYMMDD_HHMMSS}.log`, além do stream de console. Erros
+recuperáveis (ex.: SARIMAX falhando para uma cidade) são logados como
+`WARNING` (primeiras 25 com stack parcial; demais em `DEBUG`), sem
+interromper a execução global.
 
 ---
 
