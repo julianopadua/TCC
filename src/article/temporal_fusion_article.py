@@ -69,6 +69,75 @@ BIOMASS_SLUGS: List[str] = ["ndvi_buffer", "evi_buffer"]
 
 ALLOWED_METHODS: Set[str] = {"ewma_lags", "sarimax_exog", "minirocket"}
 
+# ---------------------------------------------------------------------------
+# Guardrail de memoria — thresholds (% de RAM usada)
+# ---------------------------------------------------------------------------
+_MEM_PRESSURE_PCT = 90         # pausa submissao de novos workers
+_MEM_SERIAL_FALLBACK_PCT = 94  # nem tenta paralelo; vai direto serial
+
+
+# ---------------------------------------------------------------------------
+# Worker function (module-level para ser picklavel no Windows/spawn)
+# ---------------------------------------------------------------------------
+def _sarimax_city_worker(
+    z_endog: np.ndarray,
+    z_exog: np.ndarray,
+    order: tuple,
+    seasonal_order: tuple,
+    H: int,
+    W: int,
+    min_train: int,
+) -> Tuple[np.ndarray, int, int, int, dict]:
+    """SARIMAX rolling forecast para uma cidade. Roda em processo filho."""
+    import warnings as _w
+    from statsmodels.tsa.statespace.sarimax import SARIMAX as _SARIMAX
+
+    n = len(z_endog)
+    preds = np.full(n, np.nan)
+    ok = fail = skipped = 0
+    fail_types: dict = {}
+
+    for start in range(0, n, H):
+        end = min(start + H, n)
+        train_start = max(0, start - W)
+
+        tr_endog = z_endog[train_start:start]
+        tr_exog = z_exog[train_start:start, :]
+
+        valid = np.isfinite(tr_endog) & np.all(np.isfinite(tr_exog), axis=1)
+        tr_endog_c = tr_endog[valid]
+        tr_exog_c = tr_exog[valid, :]
+
+        if len(tr_endog_c) < min_train:
+            skipped += 1
+            continue
+
+        exog_future = np.tile(tr_exog_c[-1:, :], (end - start, 1))
+
+        try:
+            model = _SARIMAX(
+                tr_endog_c,
+                exog=tr_exog_c,
+                order=order,
+                seasonal_order=seasonal_order,
+                trend="n",
+                enforce_stationarity=False,
+                enforce_invertibility=False,
+            )
+            with _w.catch_warnings():
+                _w.simplefilter("ignore")
+                res = model.fit(maxiter=80, disp=False)
+            fc = res.forecast(steps=end - start, exog=exog_future)
+            preds[start:end] = fc
+            ok += 1
+        except Exception as exc:
+            fail += 1
+            key = exc.__class__.__name__
+            fail_types[key] = fail_types.get(key, 0) + 1
+
+    return preds, ok, fail, skipped, fail_types
+
+
 # Dependencias opcionais
 _statsmodels_available = False
 try:
@@ -149,6 +218,7 @@ class ArticleTemporalFusion:
         overwrite: bool = False,
         filter_years: Optional[List[int]] = None,
         test_size_years: Optional[int] = None,
+        sarimax_workers: Optional[int] = None,
         log=None,
     ) -> None:
         self.fcfg = load_fusion_config()
@@ -179,12 +249,28 @@ class ArticleTemporalFusion:
         # Modelos treinados reutilizados entre anos de teste (MiniRocket).
         self._minirocket_model = None
 
+        # Numero de workers para sarimax_exog (CLI > config > 1).
+        if sarimax_workers is not None:
+            self._sarimax_workers = max(1, sarimax_workers)
+        else:
+            self._sarimax_workers = max(
+                1, int(self.fcfg["sarimax_exog"].get("workers", 1))
+            )
+
         # Orcamento de falhas com detalhe em WARNING.
         self._fail_detail_remaining = 0
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    def _get_mem_used_pct(self) -> float:
+        """Retorna % de RAM usada (0.0 se psutil indisponivel)."""
+        try:
+            import psutil
+            return psutil.virtual_memory().percent
+        except Exception:
+            return 0.0
+
     def _reset_fail_budget(self) -> None:
         self._fail_detail_remaining = TSF_FAIL_DETAIL_LOG_CAP
 
@@ -317,6 +403,7 @@ class ArticleTemporalFusion:
 
     # ==================================================================
     # Metodo 2 — SARIMAX com biomassa como exogena
+    #            Suporta execucao paralela por cidade (ProcessPoolExecutor).
     # ==================================================================
     def _generate_sarimax_exog(
         self, df_agg: pd.DataFrame, year: int
@@ -349,12 +436,14 @@ class ArticleTemporalFusion:
         exog_slug_list = [s for s, _ in exog_items]
         order = tuple(cfg.get("order", [2, 1, 2]))
         seasonal_order = tuple(cfg.get("seasonal_order", [1, 1, 1, 24]))
-        H = int(cfg.get("refit_hours", 168))
+        H = int(cfg.get("refit_hours", 336))
         W = int(cfg.get("window_hours", 720))
+        n_workers = self._sarimax_workers
 
         self.log.info(
             f"[sarimax_exog {year}] endog={endog_slug} exog={exog_slug_list} "
-            f"order={order} seasonal={seasonal_order} H={H}h W={W}h"
+            f"order={order} seasonal={seasonal_order} H={H}h W={W}h "
+            f"workers={n_workers}"
         )
 
         self._reset_fail_budget()
@@ -369,64 +458,133 @@ class ArticleTemporalFusion:
         n_exog = len(exog_cols)
         min_train = max(seasonal_order[3] * 2, order[0] + order[2]) + order[1] + n_exog + 10
 
+        # --- preparar payloads por cidade (arrays numpy, pickle-safe) ---
+        city_data: List[dict] = []
+        for city in cities:
+            mask = df_agg["cidade_norm"] == city
+            city_df = df_agg.loc[mask]
+            city_data.append({
+                "city": city,
+                "idx": city_df.index.to_numpy(),
+                "z_endog": city_df[endog_col].to_numpy(dtype=float),
+                "z_exog": city_df[exog_cols].to_numpy(dtype=float),
+            })
+
+        worker_args = (order, seasonal_order, H, W, min_train)
+
         ok = fail = skipped = 0
         fail_types: Counter = Counter()
 
-        for city in tqdm(cities, desc=f"sarimax_exog {year}", leave=False):
-            mask = df_agg["cidade_norm"] == city
-            city_df = df_agg.loc[mask]
-            idx = city_df.index
+        # --- decidir modo de execucao ---
+        use_parallel = n_workers > 1 and len(city_data) > 1
 
-            z_endog = city_df[endog_col].to_numpy(dtype=float)
-            z_exog = city_df[exog_cols].to_numpy(dtype=float)
-            n = len(z_endog)
-            preds = np.full(n, np.nan)
+        if use_parallel:
+            mem_pct = self._get_mem_used_pct()
+            if mem_pct > _MEM_SERIAL_FALLBACK_PCT:
+                self.log.warning(
+                    f"[sarimax_exog] memoria={mem_pct:.0f}% >= "
+                    f"{_MEM_SERIAL_FALLBACK_PCT}%; forcando modo serial."
+                )
+                use_parallel = False
 
-            for start in range(0, n, H):
-                end = min(start + H, n)
-                train_start = max(0, start - W)
+        if use_parallel:
+            self.log.info(
+                f"[sarimax_exog {year}] modo PARALELO "
+                f"({n_workers} workers, {len(city_data)} cidades)"
+            )
+            try:
+                from concurrent.futures import (
+                    ProcessPoolExecutor,
+                    wait,
+                    FIRST_COMPLETED,
+                )
 
-                tr_endog = z_endog[train_start:start]
-                tr_exog = z_exog[train_start:start, :]
-
-                valid_mask = np.isfinite(tr_endog) & np.all(np.isfinite(tr_exog), axis=1)
-                tr_endog_c = tr_endog[valid_mask]
-                tr_exog_c = tr_exog[valid_mask, :]
-
-                if len(tr_endog_c) < min_train:
-                    skipped += 1
-                    continue
-
-                exog_future = np.tile(tr_exog_c[-1:, :], (end - start, 1))
-
-                try:
-                    model = SM_SARIMAX(
-                        tr_endog_c,
-                        exog=tr_exog_c,
-                        order=order,
-                        seasonal_order=seasonal_order,
-                        trend="n",
-                        enforce_stationarity=False,
-                        enforce_invertibility=False,
-                    )
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
-                        res = model.fit(maxiter=80, disp=False)
-                    fc = res.forecast(steps=end - start, exog=exog_future)
-                    preds[start:end] = fc
-                    ok += 1
-                except Exception as exc:
-                    fail += 1
-                    fail_types[exc.__class__.__name__] += 1
-                    self._log_block_failure(
-                        "sarimax_exog",
-                        year,
-                        f"city={city} bloco=[{start}:{end}] train_n={len(tr_endog_c)}",
-                        exc,
+                with ProcessPoolExecutor(max_workers=n_workers) as pool:
+                    pending: Dict[Any, dict] = {}
+                    queue = list(city_data)
+                    pbar = tqdm(
+                        total=len(city_data),
+                        desc=f"sarimax_exog {year}",
+                        leave=False,
                     )
 
-            result.loc[idx, pred_col] = preds
-            result.loc[idx, resid_col] = z_endog - preds
+                    while queue or pending:
+                        # Submeter ate preencher workers livres
+                        while queue and len(pending) < n_workers:
+                            mem_pct = self._get_mem_used_pct()
+                            if mem_pct > _MEM_PRESSURE_PCT and pending:
+                                self.log.warning(
+                                    f"[sarimax_exog GUARDRAIL] mem={mem_pct:.0f}%; "
+                                    f"pausando submissao ({len(pending)} em voo)"
+                                )
+                                break
+                            cd = queue.pop(0)
+                            fut = pool.submit(
+                                _sarimax_city_worker,
+                                cd["z_endog"],
+                                cd["z_exog"],
+                                *worker_args,
+                            )
+                            pending[fut] = cd
+
+                        if not pending:
+                            break
+
+                        done, _ = wait(
+                            pending, timeout=300, return_when=FIRST_COMPLETED,
+                        )
+                        if not done:
+                            continue
+
+                        for fut in done:
+                            cd = pending.pop(fut)
+                            try:
+                                preds, c_ok, c_fail, c_skip, c_ft = fut.result()
+                                idx_arr = cd["idx"]
+                                result.loc[idx_arr, pred_col] = preds
+                                result.loc[idx_arr, resid_col] = (
+                                    cd["z_endog"] - preds
+                                )
+                                ok += c_ok
+                                fail += c_fail
+                                skipped += c_skip
+                                fail_types.update(c_ft)
+                            except Exception as exc:
+                                self.log.error(
+                                    f"[sarimax_exog] worker crash "
+                                    f"city={cd['city']}: "
+                                    f"{exc.__class__.__name__}: {exc}"
+                                )
+                            pbar.update(1)
+
+                    pbar.close()
+
+            except Exception as exc:
+                self.log.error(
+                    f"[sarimax_exog] pool falhou "
+                    f"({exc.__class__.__name__}: {exc}); fallback serial."
+                )
+                result[pred_col] = np.nan
+                result[resid_col] = np.nan
+                ok = fail = skipped = 0
+                fail_types = Counter()
+                use_parallel = False
+
+        if not use_parallel:
+            if n_workers > 1:
+                self.log.info(
+                    f"[sarimax_exog {year}] modo SERIAL (fallback)"
+                )
+            for cd in tqdm(city_data, desc=f"sarimax_exog {year}", leave=False):
+                preds, c_ok, c_fail, c_skip, c_ft = _sarimax_city_worker(
+                    cd["z_endog"], cd["z_exog"], *worker_args,
+                )
+                result.loc[cd["idx"], pred_col] = preds
+                result.loc[cd["idx"], resid_col] = cd["z_endog"] - preds
+                ok += c_ok
+                fail += c_fail
+                skipped += c_skip
+                fail_types.update(c_ft)
 
         pct_finite = float(np.isfinite(result[pred_col].to_numpy()).mean() * 100)
         breakdown = ""
@@ -667,6 +825,7 @@ class ArticleTemporalFusion:
         self.log.info("ARTICLE TEMPORAL FUSION")
         self.log.info(f"Cenario:   {self.scenario_folder}")
         self.log.info(f"Metodos:   {self.methods}")
+        self.log.info(f"SARIMAX workers: {self._sarimax_workers}")
         self.log.info(f"Input:     {self.input_dir}")
         self.log.info(f"Output:    {self.output_dir}")
         self.log.info(f"Overwrite: {self.overwrite}")
@@ -710,6 +869,7 @@ def run_article_fusion(
     overwrite: bool = False,
     years: Optional[List[int]] = None,
     test_size_years: Optional[int] = None,
+    sarimax_workers: Optional[int] = None,
     log=None,
 ) -> None:
     """Executa fusao temporal no cenario especificado.
@@ -720,6 +880,7 @@ def run_article_fusion(
         overwrite: regravar parquets existentes.
         years: subset de anos; None = todos descobertos.
         test_size_years: ultimos N anos reservados para teste (MiniRocket nao fita).
+        sarimax_workers: override de workers para sarimax_exog (None = config).
         log: logger externo (opcional).
     """
     engine = ArticleTemporalFusion(
@@ -728,6 +889,7 @@ def run_article_fusion(
         overwrite=overwrite,
         filter_years=years,
         test_size_years=test_size_years,
+        sarimax_workers=sarimax_workers,
         log=log,
     )
     engine.run()

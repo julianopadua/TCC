@@ -272,6 +272,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Regravar parquets existentes.",
     )
     parser.add_argument(
+        "--sarimax-workers", type=int, default=None,
+        help=(
+            "Override de workers para sarimax_exog "
+            "(default: config.yaml article_pipeline.temporal_fusion.sarimax_exog.workers)."
+        ),
+    )
+    parser.add_argument(
         "--skip-fusion", action="store_true",
         help="Pular Etapa 1 (fusao temporal).",
     )
@@ -341,6 +348,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 overwrite=args.overwrite,
                 years=args.years,
                 test_size_years=args.test_years,
+                sarimax_workers=args.sarimax_workers,
                 log=log,
             )
             summary["steps_ran"].append("fusion")

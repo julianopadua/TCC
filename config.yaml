@@ -351,8 +351,10 @@ article_pipeline:
       exog: ["temp", "umid", "rad", "ndvi_buffer"]
       order: [2, 1, 2]
       seasonal_order: [1, 1, 1, 24]
-      refit_hours: 168
+      refit_hours: 336
       window_hours: 720
+      # Paralelismo por cidade (ProcessPoolExecutor). 1 = serial (fallback seguro).
+      workers: 2
 
     minirocket:
       # 5 canais: 3 meteo + 2 biomassa.
