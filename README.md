@@ -13,6 +13,7 @@ ETL, fusão horária, bases para modelagem e experimentos de ML para ocorrência
 * [Pipeline em diagrama (Mermaid)](#pipeline-em-diagrama-mermaid)
 * [Branch `article-temporal-fusion`](#branch-article-temporal-fusion)
 * [Pipeline do artigo (`src/article/`)](#pipeline-do-artigo-srcarticle)
+* [Visualização Streamlit do artigo](#visualização-streamlit-do-artigo)
 * [Estrutura de pastas](#estrutura-de-pastas)
 * [Fluxo do pipeline (ordem sugerida)](#fluxo-do-pipeline-ordem-sugerida)
 * [Módulos `src/` (resumo)](#módulos-src-resumo)
@@ -268,6 +269,45 @@ Cada execução do orquestrador grava um log dedicado em
 recuperáveis (ex.: SARIMAX falhando para uma cidade) são logados como
 `WARNING` (primeiras 25 com stack parcial; demais em `DEBUG`), sem
 interromper a execução global.
+
+---
+
+## Visualização Streamlit do artigo
+
+A visualização interativa do artigo está em `src/article/viz/app.py` e lê os
+Parquets de `data/_article/0_datasets_with_coords/`, respeitando os cenários
+de `article_pipeline.scenarios` no `config.yaml`.
+
+Pré-requisitos:
+
+- Ambiente virtual ativo.
+- Dependências instaladas (incluindo `streamlit` e `plotly` via `pyproject.toml`).
+- Dados já gerados em `data/_article/0_datasets_with_coords/<cenario>/`.
+
+Execução (raiz do repositório):
+
+```bash
+streamlit run src/article/viz/app.py
+```
+
+Windows PowerShell (sem depender do PATH):
+
+```powershell
+.\.venv\Scripts\streamlit.exe run src/article/viz/app.py
+```
+
+Atalho pronto no projeto:
+
+```powershell
+.\scripts\run_article_viz.ps1
+```
+
+O que você encontra na app:
+
+- Aba **Um ano**: exploração de um único Parquet por ano, com filtros de cidade/variáveis.
+- Aba **Vários anos**: concatenação de anos e visão comparativa multi-anual.
+
+Mais detalhes da visualização: `src/article/viz/README.md`.
 
 ---
 

@@ -52,6 +52,7 @@ except ImportError:
 
 
 TARGET_COL = "HAS_FOCO"
+TSF_ABS_CLIP = 1e15
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +154,15 @@ def _load_train_tsf_plus_target(
             continue
 
         df = pd.read_parquet(path, columns=wanted, engine="pyarrow")
+        tsf_cols = [c for c in wanted if c.startswith("tsf_")]
+        if tsf_cols:
+            # Sanitizacao defensiva: infinities e magnitudes extremas podem
+            # quebrar mutual_info_classif ao converter para float32.
+            df[tsf_cols] = df[tsf_cols].replace([np.inf, -np.inf], np.nan)
+            df[tsf_cols] = df[tsf_cols].clip(
+                lower=-TSF_ABS_CLIP,
+                upper=TSF_ABS_CLIP,
+            )
         frames.append(df)
         log.info(
             f"[selection] carregado {path.name} ({year}) rows={len(df)} "
