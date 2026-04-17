@@ -53,11 +53,84 @@ except ImportError:
 
 TARGET_COL = "HAS_FOCO"
 TSF_ABS_CLIP = 1e15
+_REDUNDANCY_RNG_SEED = 42
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _abs_spearman_pair(
+    a: np.ndarray,
+    b: np.ndarray,
+    max_sample: int,
+    rng: np.random.Generator,
+) -> float:
+    """|rho| de Spearman entre dois vetores; subsample para limitar RAM."""
+    if not _scipy_available:
+        return 0.0
+    n = min(len(a), len(b))
+    if n < 30:
+        return 0.0
+    a = np.asarray(a[:n], dtype=np.float64)
+    b = np.asarray(b[:n], dtype=np.float64)
+    m = np.isfinite(a) & np.isfinite(b)
+    a = a[m]
+    b = b[m]
+    if len(a) < 30:
+        return 0.0
+    if len(a) > max_sample:
+        idx = rng.choice(len(a), size=max_sample, replace=False)
+        a = a[idx]
+        b = b[idx]
+    r, _ = spearmanr(a, b)
+    return abs(float(r)) if np.isfinite(r) else 0.0
+
+
+def _greedy_non_redundant(
+    ranking: pd.DataFrame,
+    method_X: Dict[str, pd.DataFrame],
+    redundancy_threshold: float,
+    top_k: int,
+    max_sample: int,
+    log,
+) -> Tuple[List[Tuple[str, str]], np.ndarray]:
+    """Seleção gulosa por |Spearman| vs features já aceitas."""
+    accepted: List[Tuple[str, str]] = []
+    n = len(ranking)
+    is_redundant = np.zeros(n, dtype=bool)
+    rng = np.random.default_rng(_REDUNDANCY_RNG_SEED)
+
+    for pos in range(n):
+        row = ranking.iloc[pos]
+        fname = str(row["feature_name"])
+        meth = str(row["method"])
+        if meth not in method_X or fname not in method_X[meth].columns:
+            continue
+
+        v = method_X[meth][fname].to_numpy(dtype=np.float64, copy=False)
+        redundant = False
+        for aname, ameth in accepted:
+            if ameth not in method_X or aname not in method_X[ameth].columns:
+                continue
+            w = method_X[ameth][aname].to_numpy(dtype=np.float64, copy=False)
+            if _abs_spearman_pair(v, w, max_sample, rng) >= redundancy_threshold:
+                redundant = True
+                break
+
+        if redundant:
+            is_redundant[pos] = True
+            continue
+
+        if len(accepted) < top_k:
+            accepted.append((fname, meth))
+
+    log.info(
+        f"[selection] greedy redundancia: aceitas={len(accepted)} "
+        f"(limite top_k={top_k}) | linhas marcadas redundantes={int(is_redundant.sum())}"
+    )
+    return accepted, is_redundant
+
+
 def _method_from_feature_name(feat: str) -> str:
     """Tenta inferir o metodo de origem a partir do nome da feature tsf_*."""
     if not feat.startswith("tsf_"):
@@ -312,6 +385,8 @@ def run_feature_selection(
     mi_sample_cutoff = int(fs_cfg.get("mi_sample_cutoff", 2_000_000))
     mi_sample_size = int(fs_cfg.get("mi_sample_size", 500_000))
     stratify_by = fs_cfg.get("stratify_by", "HAS_FOCO")
+    redundancy_threshold = float(fs_cfg.get("redundancy_threshold", 0.85))
+    redundancy_max_sample_rows = int(fs_cfg.get("redundancy_max_sample_rows", 200_000))
 
     test_size_years = int(fcfg["test_size_years"])
 
@@ -330,6 +405,7 @@ def run_feature_selection(
     utils.ensure_dir(eda_dir)
 
     all_ranking_rows: List[pd.DataFrame] = []
+    method_X_kept: Dict[str, pd.DataFrame] = {}
     cut_year_global: Optional[int] = None
     n_train_rows_total = 0
 
@@ -401,8 +477,9 @@ def run_feature_selection(
         )
 
         all_ranking_rows.append(meth_ranking)
+        method_X_kept[method] = X_kept
 
-        del X, X_kept, y, sp_df, mi_df, meth_ranking
+        del X, y, sp_df, mi_df, meth_ranking
         gc.collect()
 
     if not all_ranking_rows:
@@ -426,12 +503,22 @@ def run_feature_selection(
     ranking = ranking.sort_values("score_composite", ascending=False).reset_index(drop=True)
     ranking["rank"] = np.arange(1, len(ranking) + 1)
 
+    accepted, red_flags = _greedy_non_redundant(
+        ranking,
+        method_X_kept,
+        redundancy_threshold=redundancy_threshold,
+        top_k=top_k,
+        max_sample=redundancy_max_sample_rows,
+        log=log,
+    )
+    ranking["is_redundant"] = red_flags.astype(bool)
+
     # Colunas finais (ordem amigavel).
     final_cols = [
         "feature_name", "method", "target_var",
         "spearman_r", "spearman_p", "spearman_abs_norm",
         "mi_score", "mi_norm", "score_composite", "rank",
-        "n_obs", "pct_nan",
+        "n_obs", "pct_nan", "is_redundant",
     ]
     ranking = ranking[[c for c in final_cols if c in ranking.columns]]
 
@@ -439,12 +526,23 @@ def run_feature_selection(
     ranking.to_csv(ranking_path, index=False)
     log.info(f"[selection] ranking salvo em {ranking_path} ({len(ranking)} linhas)")
 
-    # TOP K (respeitando metodos selecionados e filtrando NaN score).
-    top = (
-        ranking[np.isfinite(ranking["score_composite"])]
-        .head(top_k)
-        .reset_index(drop=True)
-    )
+    selected_rows: List[Dict[str, Any]] = []
+    for fname, meth in accepted:
+        sub = ranking[
+            (ranking["feature_name"] == fname) & (ranking["method"] == meth)
+        ]
+        if sub.empty:
+            continue
+        r = sub.iloc[0]
+        selected_rows.append(
+            {
+                "name": str(r["feature_name"]),
+                "method": str(r.get("method", "")),
+                "target_var": str(r.get("target_var", "")),
+                "score": float(r["score_composite"]),
+                "rank": int(r["rank"]),
+            }
+        )
 
     selected_json_path = eda_dir / "selected_features_article.json"
     payload = {
@@ -455,28 +553,23 @@ def run_feature_selection(
         "n_train_rows": int(n_train_rows_total),
         "weights": {"spearman": spearman_weight, "mi": mi_weight},
         "max_nan_fraction": max_nan_fraction,
-        "selected_features": [
-            {
-                "name": str(r["feature_name"]),
-                "method": str(r.get("method", "")),
-                "target_var": str(r.get("target_var", "")),
-                "score": float(r["score_composite"]),
-                "rank": int(r["rank"]),
-            }
-            for _, r in top.iterrows()
-        ],
+        "redundancy_threshold": redundancy_threshold,
+        "selected_features": selected_rows,
     }
     with open(selected_json_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     log.info(
-        f"[selection] TOP {top_k} salvos em {selected_json_path}"
+        f"[selection] {len(selected_rows)} features nao redundantes salvas em {selected_json_path}"
     )
+
+    del method_X_kept
+    gc.collect()
 
     return {
         "ranking_csv": str(ranking_path),
         "selected_json": str(selected_json_path),
         "n_features_total": int(len(ranking)),
-        "n_features_selected": int(len(top)),
+        "n_features_selected": int(len(selected_rows)),
         "cut_year": cut_year_global,
     }
 

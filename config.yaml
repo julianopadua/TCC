@@ -382,3 +382,7 @@ article_pipeline:
       mi_sample_size: 500000
       # Estratificação por HAS_FOCO preservada na amostragem.
       stratify_by: "HAS_FOCO"
+      # Seleção gulosa pós-ranking: descarta se |rho| >= limiar vs já aceitas.
+      redundancy_threshold: 0.85
+      # Amostra máxima de linhas por par na correlação gulosa (RAM).
+      redundancy_max_sample_rows: 200000
