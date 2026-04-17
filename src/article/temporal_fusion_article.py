@@ -70,6 +70,9 @@ BIOMASS_SLUGS: List[str] = ["ndvi_buffer", "evi_buffer"]
 
 ALLOWED_METHODS: Set[str] = {"ewma_lags", "sarimax_exog", "minirocket"}
 
+# MiniRocket transform: batch size (linhas de janela) para limitar pico de RAM no .transform().
+_MINIROCKET_TRANSFORM_CHUNK = 225_000
+
 # ---------------------------------------------------------------------------
 # Guardrail de memoria — thresholds (% de RAM usada)
 # ---------------------------------------------------------------------------
@@ -802,6 +805,8 @@ class ArticleTemporalFusion:
             return pd.DataFrame()
 
         X_valid = X_3d[valid]
+        del X_3d
+        gc.collect()
 
         if self._minirocket_model is None:
             self.log.warning(
@@ -811,14 +816,40 @@ class ArticleTemporalFusion:
             return pd.DataFrame()
 
         self._log_memory(f"minirocket {year} pre-transform")
-        feats = self._minirocket_model.transform(X_valid)
-        n_feat = feats.shape[1]
+        mr = self._minirocket_model
+        valid_idx = np.flatnonzero(valid)
+        n_windows = int(X_valid.shape[0])
 
-        result = df_agg[["cidade_norm", "_ts"]].copy()
+        probe = mr.transform(np.ascontiguousarray(X_valid[:1]))
+        n_feat = int(probe.shape[1])
+        del probe
+        gc.collect()
+
         feat_cols = [f"tsf_minirocket_f{i:03d}" for i in range(n_feat)]
-        for col in feat_cols:
-            result[col] = np.nan
-        result.loc[valid, feat_cols] = feats.astype(np.float32)
+        base = df_agg[["cidade_norm", "_ts"]].copy()
+        nan_block = np.full((len(base), n_feat), np.nan, dtype=np.float32)
+        feat_block = pd.DataFrame(
+            nan_block, index=base.index, columns=feat_cols
+        )
+        result = pd.concat([base, feat_block], axis=1)
+        del base, nan_block, feat_block
+        gc.collect()
+
+        feat_j = result.columns.get_indexer(feat_cols)
+        chunk_sz = _MINIROCKET_TRANSFORM_CHUNK
+        for start in range(0, n_windows, chunk_sz):
+            end = min(start + chunk_sz, n_windows)
+            X_chunk = np.ascontiguousarray(X_valid[start:end])
+            transformed = mr.transform(X_chunk)
+            out_f32 = np.asarray(transformed, dtype=np.float32)
+            del transformed, X_chunk
+            rows = valid_idx[start:end]
+            result.iloc[rows, feat_j] = out_f32
+            del out_f32
+            gc.collect()
+
+        del X_valid
+        gc.collect()
 
         self.log.info(f"[minirocket {year}] {n_feat} embeddings gerados")
         self._log_memory(f"minirocket {year} pos-transform")
