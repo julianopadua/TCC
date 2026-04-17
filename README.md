@@ -130,14 +130,14 @@ flowchart LR
 
 Entregas principais:
 
-* Script **`feature_engineering_temporal.py`**: features `tsf_*` (EWMA/lags, ARIMA, SARIMA, Prophet, MiniROCKET, TSKMeans) sobre parquets `*_calculated`, por padrão cenários **D** e **F**. Suporta dois layouts de saída:
-  * `split` (padrão): uma pasta por método em `data/temporal_fusion/{base}/{método}/` — cenários `tf_D_*` / `tf_F_*` no `config.yaml`.
-  * `merged` (legado): todos os métodos num único parquet em `data/modeling/…_tsfusion/`.
-* Script **`build_champion_temporal_bases.py`**: lê o ranking de métodos (`method_ranking_train.csv`) e mescla as colunas `tsf_*` dos top-k em bases "campeãs" (`tf_D_champion` / `tf_F_champion`).
-* Métricas de **Camada A** em `data/eda/temporal_fusion/`: `layer_a_summary.csv`, `layer_a_summary_train.csv`, `method_ranking_train.csv` (só anos de treino, sem vazamento para seleção de métodos).
-* **`train_runner.py`**: detecta e inclui `tsf_*` automaticamente para todos os cenários `tf_*` (via `_is_temporal_fusion_scenario`).
-* **`config.yaml`**: chaves `tf_D_*` / `tf_F_*` (12 por método + 2 campeãs); seção `temporal_fusion_paths` mapeia cada chave ao subcaminho real em `data/temporal_fusion/`.
-* **`pyproject.toml`**: dependências incluindo fusão temporal (`statsmodels`, `prophet`, `aeon`, `tslearn`, etc.).
+* Script **`feature_engineering_temporal.py`** (legado D/E/F): features `tsf_*` com **`ewma_lags`** e **`sarimax_exog`** sobre parquets `*_calculated`. Suporta dois layouts de saída:
+  * `split` (padrão): uma pasta por método em `data/temporal_fusion/{base}/{método}/` — cenários `tf_*_ewma_lags`, `tf_*_sarimax_exog`, `tf_*_champion` no `config.yaml`.
+  * `merged` (legado): ambos os métodos num único parquet em `data/modeling/…_tsfusion/`.
+* Métricas de **Camada A** em `data/eda/temporal_fusion/`: `layer_a_summary.csv`, `layer_a_summary_train.csv`, `method_ranking_train.csv` (só anos de treino).
+* **`train_runner.py`**: detecta e inclui `tsf_*` automaticamente para cenários `tf_*` (via `_is_temporal_fusion_scenario`).
+* **`config.yaml`**: `temporal_fusion_paths` mapeia `tf_*_ewma_lags`, `tf_*_sarimax_exog`, `tf_*_champion` ao subcaminho em `data/temporal_fusion/`.
+* **`pyproject.toml`**: fusão temporal legada e artigo: `statsmodels`, `aeon` (MiniRocket no pipeline `src/article/`).
+* Bases campeãs e seleção por ranking no fluxo **oficial** do artigo: `src/article/article_orchestrator.py` e `method_ranking_article.csv` (não `build_champion_temporal_bases.py`, removido).
 
 Detalhamento: [doc/planos/fusao_temporal_artigo_2026-04-07.md](doc/planos/fusao_temporal_artigo_2026-04-07.md).
 
@@ -350,9 +350,8 @@ Caminhos centrais vêm de **`config.yaml`** (`paths.data.*`). Hoje `paths.data.e
 6. **Auditoria missing:** `dataset_missing_audit.py` → `data/eda/dataset/{ANO}/`.
 7. **Parquets A–F:** `modeling_build_datasets.py`.
 8. **Features físicas:** `feature_engineering_physics.py` → pastas `*_calculated`.
-9. **Fusão temporal — por método:** `feature_engineering_temporal.py --output-layout split` → `data/temporal_fusion/{base}/{método}/` + `data/eda/temporal_fusion/`.
-10. **Bases campeãs:** `build_champion_temporal_bases.py [--top-k N]` → lê `method_ranking_train.csv` e grava `tf_D_champion` / `tf_F_champion`.
-11. **Treino:** `train_runner.py` (selecionar cenários `tf_D_*`, `tf_F_*` ou `tf_D_champion` no menu).
+9. **Fusão temporal (legado):** `feature_engineering_temporal.py --output-layout split` → `data/temporal_fusion/{base}/{método}/` + `data/eda/temporal_fusion/`.
+10. **Treino:** `train_runner.py` (cenários `tf_*_ewma_lags`, `tf_*_sarimax_exog`, `tf_*_champion` no menu).
 11. **Pós-processamento:** `run_results_consolidator.py` / `run_results_visualization.py` / `plot_confusion.py`.
 
 ---
@@ -371,7 +370,8 @@ Caminhos centrais vêm de **`config.yaml`** (`paths.data.*`). Hoje `paths.data.e
 | `dataset_missing_audit.py` | Relatórios de missing por ano |
 | `modeling_build_datasets.py` | Cenários A–F em Parquet |
 | `feature_engineering_physics.py` | Features estilo INPE → `*_calculated` |
-| `feature_engineering_temporal.py` | Fusão temporal → `*_tsfusion` |
+| `feature_engineering_temporal.py` | Fusão temporal legada (ewma + sarimax_exog) → `data/temporal_fusion/` |
+| `tsf_constants.py` | Constantes COL_* / TSF_FAIL_DETAIL_LOG_CAP (partilhadas com `src/article/`) |
 | `train_runner.py` | Orquestrador interativo de experimentos |
 | `audit_*`, `explore_risco_fogo.py`, `merge_risco_validation.py` | Auditorias e validações |
 | `modeling/results_*.py`, `run_results_*.py`, `plot_confusion.py` | Consolidação e gráficos |
@@ -480,7 +480,7 @@ python src/modeling_build_datasets.py --years 2004 2015 --overwrite-existing
 
 ```bash
 python src/feature_engineering_physics.py
-python src/feature_engineering_temporal.py --methods ewma_lags arima --years 2018 2019
+python src/feature_engineering_temporal.py --methods ewma_lags sarimax_exog --years 2018 2019
 ```
 
 ### Treino (interativo)
@@ -520,4 +520,4 @@ O `train_runner` lista todas as chaves ordenadas no menu.
 
 ---
 
-*Última atualização: 2026-04-07 — integração das figuras `images/TCC_*.png`, hub de documentação e espelho `doc/_src`.*
+*Última atualização: 2026-04-17 — limpeza do fusão temporal legado (só `ewma_lags` + `sarimax_exog`), `tsf_constants.py`, remoção de `build_champion_temporal_bases.py`.*

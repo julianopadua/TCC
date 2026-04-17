@@ -455,7 +455,7 @@ data/_article/
 
 3. **Config.yaml:** adicionar cenarios `article_*_tsfusion` em `modeling_scenarios` e paths correspondentes em `temporal_fusion_paths` ou num bloco `article_pipeline.temporal_fusion`.
 
-4. **Champion builder:** adaptar `build_champion_temporal_bases.py` para ler de `1_datasets_with_fusion/` e gravar em `1_datasets_with_fusion/{cenario}/champion_tsfusion/`.
+4. **Champion builder:** implementado em `src/article/article_orchestrator.py` (`_build_champion`); o script legado `build_champion_temporal_bases.py` foi removido.
 
 ### 7.2 Avaliacao (Camadas A e B)
 

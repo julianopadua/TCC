@@ -16,7 +16,8 @@ Esta árvore **espelha a pasta `src/`**: cada módulo Python relevante possui um
 | `src/dataset_missing_audit.py` | [src/dataset_missing_audit/dataset_missing_audit.md](./src/dataset_missing_audit/dataset_missing_audit.md) |
 | `src/modeling_build_datasets.py` | [src/modeling_build_datasets/modeling_build_datasets.md](./src/modeling_build_datasets/modeling_build_datasets.md) |
 | `src/feature_engineering_physics.py` | [src/feature_engineering_physics/feature_engineering_physics.md](./src/feature_engineering_physics/feature_engineering_physics.md) |
-| `src/feature_engineering_temporal.py` | [src/feature_engineering_temporal/feature_engineering_temporal.md](./src/feature_engineering_temporal/feature_engineering_temporal.md) |
+| `src/tsf_constants.py` | Constantes COL_* / TSF_FAIL_DETAIL_LOG_CAP (espelhado em `feature_engineering_temporal`) |
+| `src/feature_engineering_temporal.py` | Legado D/E/F: `ewma_lags` + `sarimax_exog`; pipeline do artigo em `src/article/` |
 | `src/train_runner.py` | [src/train_runner/train_runner.md](./src/train_runner/train_runner.md) |
 | `src/audit_city_coverage.py` | [src/audit_city_coverage/audit_city_coverage.md](./src/audit_city_coverage/audit_city_coverage.md) |
 | `src/audit_consolidated_sources.py` | [src/audit_consolidated_sources/audit_consolidated_sources.md](./src/audit_consolidated_sources/audit_consolidated_sources.md) |
