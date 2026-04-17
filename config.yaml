@@ -363,6 +363,10 @@ article_pipeline:
       window: 168
       n_kernels: 168
       random_state: 42
+      # Fit global: no maximo N janelas/ano (amostragem aleatoria) para evitar OOM.
+      fit_max_windows_per_year: 10000
+      # Paralelismo no MiniRocket (aeon), se suportado pela versao instalada.
+      n_jobs: -1
 
     # -------------------------------------------------------------------------
     # Camada A — Feature Selection

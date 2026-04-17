@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import gc
+import inspect
 import sys
 import time
 import warnings
@@ -640,33 +641,157 @@ class ArticleTemporalFusion:
 
         return X, valid
 
-    def _generate_minirocket(
-        self, df_agg: pd.DataFrame, year: int, is_train: bool
-    ) -> pd.DataFrame:
-        if not _minirocket_available:
-            self.log.warning("[minirocket] aeon nao instalado, pulando.")
-            return pd.DataFrame()
+    def _prepare_df_agg(self, src_path: Path) -> pd.DataFrame:
+        df_raw = pd.read_parquet(src_path)
+        df = self._parse_ts(df_raw)
+        numeric_cols = [
+            c for c in [
+                COL_PRECIP, COL_TEMP, COL_UMID, COL_RAD, COL_VENTO, COL_PRESSAO,
+                COL_NDVI_BUFFER, COL_EVI_BUFFER, COL_NDVI_POINT, COL_EVI_POINT,
+            ]
+            if c in df.columns
+        ]
+        df_agg = self._aggregate_series(df, numeric_cols)
+        del df_raw, df
+        gc.collect()
+        return df_agg
 
+    def _minirocket_channel_columns(
+        self, df_agg: pd.DataFrame
+    ) -> Optional[List[str]]:
         cfg = self.fcfg["minirocket"]
         channels_slugs = cfg.get(
             "channels",
             ["precip", "temp", "umid", "ndvi_buffer", "evi_buffer"],
         )
+        active = self._active_slugs(df_agg, channels_slugs)
+        if len(active) < 2:
+            return None
+        return list(active.values())
+
+    @staticmethod
+    def _minirocket_subsample_windows(
+        X: np.ndarray, max_n: int, rng: np.random.Generator
+    ) -> np.ndarray:
+        n = len(X)
+        if n <= max_n:
+            return X
+        idx = rng.choice(n, size=max_n, replace=False)
+        return np.ascontiguousarray(X[idx])
+
+    def _minirocket_fit_global(
+        self, train_year_files: List[Tuple[int, Path]]
+    ) -> None:
+        if not _minirocket_available:
+            self.log.warning("[minirocket] aeon nao instalado; fit global omitido.")
+            return
+        if not train_year_files:
+            self.log.warning("[minirocket] fit global: nenhum ano de treino.")
+            return
+
+        cfg = self.fcfg["minirocket"]
         L = int(cfg.get("window", 168))
         n_kernels = int(cfg.get("n_kernels", 168))
         random_state = int(cfg.get("random_state", 42))
+        max_per_year = int(cfg.get("fit_max_windows_per_year", 10_000))
+        n_jobs_cfg = cfg.get("n_jobs", None)
+        rng = np.random.default_rng(random_state)
 
-        active = self._active_slugs(df_agg, channels_slugs)
-        if len(active) < 2:
+        chunks: List[np.ndarray] = []
+        for year, src_path in train_year_files:
+            df_agg = self._prepare_df_agg(src_path)
+            self._log_nan_stats(df_agg, year)
+            cols_for_window = self._minirocket_channel_columns(df_agg)
+            if not cols_for_window:
+                self.log.warning(
+                    f"[minirocket fit global {year}] menos de 2 canais; pulando ano."
+                )
+                del df_agg
+                gc.collect()
+                continue
+
+            self.log.info(
+                f"[minirocket fit global {year}] janelas L={L} "
+                f"canais={cols_for_window}"
+            )
+            self._log_memory(f"minirocket fit global {year} pre-janelas")
+            X_3d, valid = self._build_windows(df_agg, cols_for_window, L)
+            del df_agg
+            gc.collect()
+
+            X_valid = X_3d[valid]
+            del X_3d
+            gc.collect()
+
+            n_valid = int(len(X_valid))
+            self.log.info(
+                f"[minirocket fit global {year}] {n_valid} janelas validas "
+                f"(cap {max_per_year}/ano)"
+            )
+            if n_valid == 0:
+                continue
+
+            X_sub = self._minirocket_subsample_windows(
+                X_valid, max_per_year, rng
+            )
+            del X_valid
+            gc.collect()
+            chunks.append(X_sub)
+            del X_sub
+            gc.collect()
+
+        if not chunks:
             self.log.warning(
-                f"[minirocket] menos de 2 canais ativos ({list(active.keys())}); pulando."
+                "[minirocket] fit global: nenhuma janela valida em anos de treino."
+            )
+            return
+
+        X_train_global = np.concatenate(chunks, axis=0)
+        del chunks
+        gc.collect()
+        self.log.info(
+            f"[minirocket] fit global: {len(X_train_global)} janelas agregadas, "
+            f"fit(n_kernels={n_kernels})..."
+        )
+        self._log_memory("minirocket fit global pre-fit")
+
+        mr_kwargs: Dict[str, Any] = {
+            "n_kernels": n_kernels,
+            "random_state": random_state,
+        }
+        if n_jobs_cfg is not None:
+            try:
+                sig = inspect.signature(MiniRocket.__init__)
+                if "n_jobs" in sig.parameters:
+                    mr_kwargs["n_jobs"] = n_jobs_cfg
+            except Exception:
+                pass
+
+        mr = MiniRocket(**mr_kwargs)
+        mr.fit(X_train_global)
+        del X_train_global
+        gc.collect()
+
+        self._minirocket_model = mr
+        self._log_memory("minirocket fit global pos-fit")
+
+    def _generate_minirocket(self, df_agg: pd.DataFrame, year: int) -> pd.DataFrame:
+        if not _minirocket_available:
+            self.log.warning("[minirocket] aeon nao instalado, pulando.")
+            return pd.DataFrame()
+
+        cfg = self.fcfg["minirocket"]
+        L = int(cfg.get("window", 168))
+
+        cols_for_window = self._minirocket_channel_columns(df_agg)
+        if not cols_for_window:
+            self.log.warning(
+                f"[minirocket] menos de 2 canais ativos no ano {year}; pulando."
             )
             return pd.DataFrame()
 
-        cols_for_window = list(active.values())
         self.log.info(
-            f"[minirocket {year}] construindo janelas L={L} "
-            f"canais={list(active.keys())} kernels={n_kernels}"
+            f"[minirocket {year}] construindo janelas L={L} transform-only"
         )
         self._log_memory(f"minirocket {year} pre-janelas")
         X_3d, valid = self._build_windows(df_agg, cols_for_window, L)
@@ -678,19 +803,10 @@ class ArticleTemporalFusion:
 
         X_valid = X_3d[valid]
 
-        if is_train and self._minirocket_model is None:
-            self.log.info(
-                f"[minirocket] fit em {n_valid} janelas de treino "
-                f"(n_kernels={n_kernels})"
-            )
-            mr = MiniRocket(n_kernels=n_kernels, random_state=random_state)
-            mr.fit(X_valid)
-            self._minirocket_model = mr
-
         if self._minirocket_model is None:
             self.log.warning(
-                "[minirocket] modelo ainda nao treinado; ano de teste pulado "
-                "(rode primeiro anos de treino)."
+                "[minirocket] modelo ausente (fit global nao executado ou falhou); "
+                "pulando."
             )
             return pd.DataFrame()
 
@@ -719,7 +835,7 @@ class ArticleTemporalFusion:
         if method == "sarimax_exog":
             return self._generate_sarimax_exog(df_agg, year)
         if method == "minirocket":
-            return self._generate_minirocket(df_agg, year, is_train)
+            return self._generate_minirocket(df_agg, year)
         self.log.warning(f"[UNKNOWN METHOD] {method}")
         return pd.DataFrame()
 
@@ -857,6 +973,14 @@ class ArticleTemporalFusion:
 
         # Roda anos ordenados para que MiniRocket treine antes do teste.
         year_files.sort(key=lambda t: t[0])
+
+        if "minirocket" in self.methods:
+            train_year_files = [
+                (y, p) for y, p in year_files if y < cut_year
+            ]
+            self._minirocket_fit_global(train_year_files)
+            del train_year_files
+            gc.collect()
 
         for year, src_path in year_files:
             is_train = year < cut_year

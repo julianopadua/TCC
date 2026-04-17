@@ -331,6 +331,13 @@ def _downsample_keep_all_pos(
     return out
 
 
+def _article_temporal_test_size_years(cfg: Dict[str, Any]) -> int:
+    """Single source of truth: article_pipeline.temporal_fusion.test_size_years."""
+    ap = cfg.get("article_pipeline") or {}
+    tf = ap.get("temporal_fusion") or {}
+    return int(tf.get("test_size_years", 2))
+
+
 class TrainingOrchestrator:
     def __init__(self, scenario_key: str):
         self.cfg = utils.loadConfig()
@@ -639,7 +646,7 @@ class TrainingOrchestrator:
 
         try:
             train_df, test_df, valid = self.load_split_batched(
-                test_size_years=2,
+                test_size_years=_article_temporal_test_size_years(self.cfg),
                 gap_years=0,
                 max_train_rows=(8_000_000 if is_calculated else None),
                 max_test_rows=(2_000_000 if is_calculated else None),
