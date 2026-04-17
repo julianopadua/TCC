@@ -74,6 +74,7 @@ ALLOWED_METHODS: Set[str] = {"ewma_lags", "sarimax_exog", "minirocket"}
 # ---------------------------------------------------------------------------
 _MEM_PRESSURE_PCT = 90         # pausa submissao de novos workers
 _MEM_SERIAL_FALLBACK_PCT = 94  # nem tenta paralelo; vai direto serial
+_MEM_RECOVER_PCT = 85          # restaura paralelismo apos estabilizacao
 
 
 # ---------------------------------------------------------------------------
@@ -508,16 +509,21 @@ class ArticleTemporalFusion:
                         leave=False,
                     )
 
+                    inflight_limit = n_workers
                     while queue or pending:
+                        mem_pct = self._get_mem_used_pct()
+                        new_limit = 1 if mem_pct > _MEM_PRESSURE_PCT else n_workers
+                        if mem_pct <= _MEM_RECOVER_PCT:
+                            new_limit = n_workers
+                        if new_limit != inflight_limit:
+                            self.log.warning(
+                                f"[sarimax_exog GUARDRAIL] mem={mem_pct:.0f}% "
+                                f"limite_concorrencia {inflight_limit}->{new_limit}"
+                            )
+                            inflight_limit = new_limit
+
                         # Submeter ate preencher workers livres
-                        while queue and len(pending) < n_workers:
-                            mem_pct = self._get_mem_used_pct()
-                            if mem_pct > _MEM_PRESSURE_PCT and pending:
-                                self.log.warning(
-                                    f"[sarimax_exog GUARDRAIL] mem={mem_pct:.0f}%; "
-                                    f"pausando submissao ({len(pending)} em voo)"
-                                )
-                                break
+                        while queue and len(pending) < inflight_limit:
                             cd = queue.pop(0)
                             fut = pool.submit(
                                 _sarimax_city_worker,

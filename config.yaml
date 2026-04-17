@@ -346,15 +346,15 @@ article_pipeline:
       alphas: {a01: 0.1, a03: 0.3, a08: 0.8}
 
     sarimax_exog:
-      endog: "precip"
+      endog: "umid"
       # Exogenas inclui biomassa (ndvi_buffer) como nova variável do artigo.
-      exog: ["temp", "umid", "rad", "ndvi_buffer"]
+      exog: ["temp", "rad", "precip", "ndvi_buffer"]
       order: [2, 1, 2]
       seasonal_order: [1, 1, 1, 24]
       refit_hours: 336
       window_hours: 720
       # Paralelismo por cidade (ProcessPoolExecutor). 1 = serial (fallback seguro).
-      workers: 2
+      workers: 4
 
     minirocket:
       # 5 canais: 3 meteo + 2 biomassa.
