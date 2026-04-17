@@ -194,6 +194,21 @@ def _discover_train_test_years(
     return train, test, cut_year
 
 
+def _sanitize_tsf_columns_inplace(df: pd.DataFrame, tsf_cols: List[str]) -> None:
+    """Inf/NaN e clip de magnitude, coluna a coluna.
+
+    Evita o replace/clip em bloco do pandas, que materializa mascaras booleanas
+    (n_cols x n_rows) e estoura RAM em bases largas (ex.: minirocket).
+    """
+    lo = -TSF_ABS_CLIP
+    hi = TSF_ABS_CLIP
+    for c in tsf_cols:
+        v = df[c].to_numpy(dtype=np.float64, copy=True)
+        v[~np.isfinite(v)] = np.nan
+        np.clip(v, lo, hi, out=v)
+        df[c] = v
+
+
 def _load_train_tsf_plus_target(
     method_dir: Path,
     train_files: Iterable[Tuple[int, Path]],
@@ -231,11 +246,7 @@ def _load_train_tsf_plus_target(
         if tsf_cols:
             # Sanitizacao defensiva: infinities e magnitudes extremas podem
             # quebrar mutual_info_classif ao converter para float32.
-            df[tsf_cols] = df[tsf_cols].replace([np.inf, -np.inf], np.nan)
-            df[tsf_cols] = df[tsf_cols].clip(
-                lower=-TSF_ABS_CLIP,
-                upper=TSF_ABS_CLIP,
-            )
+            _sanitize_tsf_columns_inplace(df, tsf_cols)
         frames.append(df)
         log.info(
             f"[selection] carregado {path.name} ({year}) rows={len(df)} "
