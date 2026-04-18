@@ -336,6 +336,9 @@ article_pipeline:
       # Pesos do score composto (normalizados para [0,1]).
       spearman_weight: 0.5
       mi_weight: 0.5
+      # Teto de linhas de treino materializadas na RAM na Camada A (Spearman + NaN%).
+      # Evita pd.concat gigante (~85M células float32) e falha de alocação em 16GB.
+      train_selection_max_rows: 2500000
       # Amostragem para MI (MI é O(n log n); amostrar se n_rows_train >= sample_cutoff).
       mi_sample_cutoff: 2000000
       mi_sample_size: 500000

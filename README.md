@@ -20,6 +20,7 @@ ETL, fusão horária, bases para modelagem e experimentos de ML para ocorrência
 * [Pré-requisitos e ambiente](#pré-requisitos-e-ambiente)
 * [Configuração](#configuração)
 * [Execução rápida](#execução-rápida)
+* [Treino (`train_runner`)](#treino-train_runner)
 * [Cenários de modelagem (`config.yaml`)](#cenários-de-modelagem-configyaml)
 * [Convenções e logs](#convenções-e-logs)
 * [Solução de problemas](#solução-de-problemas)

@@ -10,6 +10,7 @@
 # 5) Nunca usar o caractere "—"
 # =============================================================================
 
+import argparse
 import gc
 import re
 import shutil
@@ -122,6 +123,36 @@ def _parse_int_tokens(text: str) -> List[int]:
     return out
 
 
+def _parse_name_tokens(text: str) -> List[str]:
+    """Tokens de nomes (cenarios, modelos) separados por virgula/espaco/etc."""
+    t = (text or "").strip()
+    if not t:
+        return []
+    parts = re.split(r"[,\s;|]+", t)
+    out: List[str] = []
+    seen = set()
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        if p not in seen:
+            out.append(p)
+            seen.add(p)
+    return out
+
+
+def _flatten_variation_args(tokens: List[str]) -> List[int]:
+    """Junta tokens CLI de variacoes (ex.: ['1','2'] ou ['1,2','4']) em lista de int."""
+    out: List[int] = []
+    seen = set()
+    for tok in tokens:
+        for v in _parse_int_tokens(tok):
+            if v not in seen:
+                out.append(v)
+                seen.add(v)
+    return out
+
+
 def _select_many(opts: Dict[int, Any], title: str) -> List[Any]:
     print(f"\n--- {title} ---")
     for k, v in opts.items():
@@ -181,6 +212,10 @@ class VariationOption:
     key: int
     label: str
     settings: Dict[str, Any]
+
+
+class TrainRunnerOutputExistsError(Exception):
+    """Saida ja existe e o modo --on-exist error foi pedido."""
 
 
 def _variation_menu_legacy(model_key: str) -> List[VariationOption]:
@@ -631,12 +666,18 @@ class TrainingOrchestrator:
         plan: List[Dict[str, Any]],
         overwrite_all: bool,
         skip_all: bool,
+        on_exist: str = "interactive",
     ) -> Tuple[bool, bool]:
         """
         overwrite_all:
           - True: nao pergunta, limpa pasta do run e sobrescreve.
         skip_all:
           - True: nao pergunta, pula se existir.
+        on_exist:
+          - interactive: pergunta no terminal (legado).
+          - skip: pula run se ja existir saida (nao interativo).
+          - overwrite: limpa e sobrescreve se ja existir (nao interativo).
+          - error: falha se ja existir saida (nao interativo).
         """
         # tf_* and tsfusion scenarios are always derived from *_calculated bases
         is_calculated = (
@@ -720,10 +761,20 @@ class TrainingOrchestrator:
                     print(f"       [SKIP] Ja existe: .../{trainer.model_type}/{trainer.run_name}/{self.scenario_folder} (skip_all ativo)")
                     continue
 
-                if exists and overwrite_all:
+                if exists and on_exist == "skip":
+                    print(f"       [SKIP] Ja existe: .../{trainer.model_type}/{trainer.run_name}/{self.scenario_folder} (--on-exist skip)")
+                    continue
+
+                if exists and on_exist == "error":
+                    raise TrainRunnerOutputExistsError(
+                        f"Saida ja existe (use --on-exist overwrite ou skip): "
+                        f".../{trainer.model_type}/{trainer.run_name}/{self.scenario_folder}"
+                    )
+
+                if exists and (overwrite_all or on_exist == "overwrite"):
                     print(f"       [OVERWRITE_ALL] Limpando: .../{trainer.model_type}/{trainer.run_name}/{self.scenario_folder}")
                     _clear_dir(trainer.output_dir)
-                elif exists:
+                elif exists and on_exist == "interactive":
                     print(f"       [AVISO] Ja existe: .../{trainer.model_type}/{trainer.run_name}/{self.scenario_folder}")
                     r = input("       >> Overwrite? [y/N/all/none_all]: ").strip().lower()
 
@@ -739,6 +790,10 @@ class TrainingOrchestrator:
                         _clear_dir(trainer.output_dir)
                     else:
                         continue
+                elif exists:
+                    # Estado inconsistente: existe mas nenhum ramo tratou
+                    self.log.warning(f"[SKIP] saida existente nao tratada para on_exist={on_exist!r}")
+                    continue
 
                 trainer.train(X_tr, y_tr, **st)
 
@@ -765,6 +820,8 @@ class TrainingOrchestrator:
                 pr_str = "None" if pr is None else f"{float(pr):.6f}"
                 print(f"       >> OK: PR-AUC={pr_str}")
 
+            except TrainRunnerOutputExistsError:
+                raise
             except Exception as e:
                 self.log.error(f"[ERROR] {m}: {e}")
                 import traceback
@@ -780,18 +837,87 @@ class TrainingOrchestrator:
 # ----------------------------
 # CLI
 # ----------------------------
-def _build_plan(selected_models: List[str]) -> List[Dict[str, Any]]:
+def available_model_names() -> List[str]:
+    """Modelos que o runner pode usar (mesma ordem logica do menu legado)."""
+    names: List[str] = ["dummy_stratified", "dummy_prior", "logistic", "xgboost"]
+    if NaiveBayesTrainer is not None:
+        names.append("naive_bayes")
+    if SVMTrainer is not None:
+        names.append("svm")
+    if RandomForestTrainer is not None:
+        names.append("random_forest")
+    return names
+
+
+def build_plan_from_specs(
+    selected_models: List[str],
+    default_variation_keys: List[int],
+    per_model_variation: Optional[Dict[str, List[int]]] = None,
+) -> List[Dict[str, Any]]:
     """
-    Permite varias variacoes por modelo (exceto dummies).
+    Monta o plano de treinos: dummies sem variacao; demais conforme chaves 1-4 por modelo.
+    per_model_variation: sobrescreve default_variation_keys para modelos listados.
     """
+    per_model_variation = dict(per_model_variation or {})
     plan: List[Dict[str, Any]] = []
 
-    # Dummies entram sem variacao
     for m in selected_models:
         if m.startswith("dummy_"):
             plan.append({"type": m, "settings": {}})
 
-    # Modelos com variacoes
+    for m in selected_models:
+        if m.startswith("dummy_"):
+            continue
+
+        opts = _variation_menu_legacy(m)
+        opt_by_key = {o.key: o for o in opts}
+        keys = per_model_variation.get(m, default_variation_keys)
+        if not keys:
+            keys = [1]
+
+        for k in keys:
+            if k not in opt_by_key:
+                valid = sorted(opt_by_key.keys())
+                raise ValueError(f"Variacao invalida {k} para modelo {m!r} (validas: {valid})")
+            o = opt_by_key[k]
+            plan.append({"type": m, "settings": dict(o.settings)})
+
+    return plan
+
+
+def _parse_model_variation_arg(spec: str) -> Tuple[str, List[int]]:
+    """Uma entrada tipo logistic=1,2 ou xgboost=4."""
+    s = (spec or "").strip()
+    if "=" not in s:
+        raise ValueError(f"Esperado MODEL=1,2,...; recebido: {spec!r}")
+    name, rest = s.split("=", 1)
+    name = name.strip()
+    keys = _parse_int_tokens(rest)
+    if not name:
+        raise ValueError(f"Nome de modelo vazio em: {spec!r}")
+    if not keys:
+        raise ValueError(f"Nenhuma variacao numerica em: {spec!r}")
+    return name, keys
+
+
+def _merge_model_variation_args(specs: List[str]) -> Dict[str, List[int]]:
+    out: Dict[str, List[int]] = {}
+    for spec in specs:
+        name, keys = _parse_model_variation_arg(spec)
+        merged: List[int] = []
+        seen = set()
+        for k in out.get(name, []) + keys:
+            if k not in seen:
+                merged.append(k)
+                seen.add(k)
+        out[name] = merged
+    return out
+
+
+def _build_plan(selected_models: List[str]) -> List[Dict[str, Any]]:
+    """Modo interativo: pergunta variacoes por modelo e delega a build_plan_from_specs."""
+    per_model: Dict[str, List[int]] = {}
+
     for m in selected_models:
         if m.startswith("dummy_"):
             continue
@@ -818,32 +944,277 @@ def _build_plan(selected_models: List[str]) -> List[Dict[str, Any]]:
                 print("Nenhuma variacao valida selecionada. Tente novamente.")
                 continue
 
-            for o in chosen:
-                plan.append({"type": m, "settings": dict(o.settings)})
+            per_model[m] = [o.key for o in chosen]
             break
 
-    return plan
+    return build_plan_from_specs(selected_models, default_variation_keys=[1], per_model_variation=per_model)
 
 
-def main():
+def _cli_epilog() -> str:
+    return """subcomandos:
+  run                 Treina com cenarios e modelos escolhidos (nao interativo).
+  list-scenarios      Lista chaves em modeling_scenarios (config.yaml).
+  list-models         Lista modelos disponiveis neste ambiente.
+  describe-variations Mostra opcoes de variacao (1-4) para um --model.
+  interactive         Menu legado com input() (bases, modelos, variacoes, overwrite).
+
+Exemplo:
+  python src/train_runner.py run --scenario base_E_calculated --model logistic --variations 1
+"""
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="train_runner.py",
+        description="Orquestrador de experimentos: batches por ano, split temporal, metricas por run.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_cli_epilog(),
+    )
+    sub = p.add_subparsers(dest="command", metavar="COMMAND")
+
+    # --- run ---
+    pr = sub.add_parser(
+        "run",
+        help="Executa treinos para cenarios e modelos informados.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Cenarios sao chaves de modeling_scenarios no config.yaml (ex.: base_E_calculated, tf_D_champion). "
+            "Variacoes 1-4 correspondem ao menu legado (_variation_menu_legacy)."
+        ),
+        epilog=(
+            "Exemplos:\n"
+            "  python src/train_runner.py run -s base_E_calculated -m logistic -v 1\n"
+            "  python src/train_runner.py run --scenario tf_E_champion --model xgboost --variations 1 2\n"
+            "  python src/train_runner.py run -s base_A -s base_B -m logistic --model-variation logistic=2,3\n"
+            "  python src/train_runner.py run -s base_E_calculated -m logistic --dry-run\n"
+        ),
+    )
+    pr.add_argument(
+        "--scenario",
+        "--base",
+        dest="scenarios",
+        action="append",
+        metavar="KEY",
+        help="Chave de modeling_scenarios (repita ou use varias em uma unica string com -s uma vez).",
+    )
+    pr.add_argument(
+        "-s",
+        dest="scenarios_short",
+        action="append",
+        metavar="KEY",
+        help="Atalho para --scenario.",
+    )
+    pr.add_argument(
+        "--model",
+        "-m",
+        dest="models",
+        action="append",
+        metavar="NAME",
+        help="Nome do modelo: dummy_stratified, dummy_prior, logistic, xgboost, ... (repita para varios).",
+    )
+    pr.add_argument(
+        "--variations",
+        "-v",
+        nargs="*",
+        metavar="N",
+        help="Chaves de variacao 1-4 para todos os modelos nao-dummy (default: 1). Ex.: -v 1 2 ou -v 1,2",
+    )
+    pr.add_argument(
+        "--model-variation",
+        action="append",
+        metavar="MODEL=N[,N]",
+        help="Variacoes por modelo (repetivel). Ex.: --model-variation logistic=1,2 --model-variation xgboost=4",
+    )
+    pr.add_argument(
+        "--on-exist",
+        choices=("skip", "overwrite", "error"),
+        default="skip",
+        help="Se ja existir saida do run: skip (default), overwrite ou error.",
+    )
+    pr.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="So valida entradas e imprime o plano; nao carrega dados nem treina.",
+    )
+
+    # --- list-scenarios ---
+    ps = sub.add_parser(
+        "list-scenarios",
+        help="Lista chaves de modeling_scenarios disponiveis no config.",
+    )
+    ps.add_argument(
+        "--show-folders",
+        action="store_true",
+        help="Mostra tambem o scenario_folder de cada chave.",
+    )
+
+    # --- list-models ---
+    sub.add_parser("list-models", help="Lista nomes de modelos usaveis neste ambiente.")
+
+    # --- describe-variations ---
+    pdv = sub.add_parser(
+        "describe-variations",
+        help="Imprime as opcoes de variacao (1-4) para um modelo.",
+    )
+    pdv.add_argument(
+        "--model",
+        "-m",
+        required=True,
+        metavar="NAME",
+        help="Ex.: logistic, xgboost, random_forest",
+    )
+
+    # --- interactive ---
+    sub.add_parser(
+        "interactive",
+        help="Menu interativo legado (input): bases, modelos, variacoes e conflitos de pasta.",
+    )
+
+    return p
+
+
+def cmd_run(args: argparse.Namespace) -> None:
     cfg = utils.loadConfig()
-    scens = cfg.get("modeling_scenarios", {})
+    scens: Dict[str, Any] = cfg.get("modeling_scenarios") or {}
+    if not scens:
+        print("[CRITICAL] modeling_scenarios vazio no config.yaml")
+        sys.exit(1)
+
+    raw_lists: List[str] = []
+    if args.scenarios:
+        raw_lists.extend(args.scenarios)
+    if getattr(args, "scenarios_short", None):
+        raw_lists.extend(args.scenarios_short)
+    bases: List[str] = []
+    seen_b = set()
+    for chunk in raw_lists:
+        for name in _parse_name_tokens(chunk):
+            if name not in seen_b:
+                bases.append(name)
+                seen_b.add(name)
+
+    if not bases:
+        print("[ERROR] Informe ao menos um cenario: --scenario KEY (ou -s KEY).")
+        sys.exit(2)
+
+    for b in bases:
+        if b not in scens:
+            print(f"[ERROR] Cenario invalido {b!r}. Chaves validas (ordenadas): {sorted(scens.keys())}")
+            sys.exit(2)
+
+    avail = available_model_names()
+    avail_set = set(avail)
+    models_raw: List[str] = []
+    if args.models:
+        for chunk in args.models:
+            models_raw.extend(_parse_name_tokens(chunk))
+    models: List[str] = []
+    seen_m = set()
+    for m in models_raw:
+        if m not in seen_m:
+            models.append(m)
+            seen_m.add(m)
+
+    if not models:
+        print("[ERROR] Informe ao menos um modelo: --model NAME (ou -m NAME).")
+        sys.exit(2)
+
+    for m in models:
+        if m not in avail_set:
+            print(f"[ERROR] Modelo invalido {m!r}. Disponiveis: {avail}")
+            sys.exit(2)
+
+    var_toks: List[str] = []
+    if args.variations is not None:
+        var_toks = list(args.variations)
+    default_keys = _flatten_variation_args(var_toks) if var_toks else [1]
+    if not default_keys:
+        default_keys = [1]
+
+    per_model: Optional[Dict[str, List[int]]] = None
+    if args.model_variation:
+        per_model = _merge_model_variation_args(args.model_variation)
+        for m in per_model:
+            if m not in avail_set:
+                print(f"[ERROR] Modelo em --model-variation desconhecido: {m!r}. Disponiveis: {avail}")
+                sys.exit(2)
+
+    try:
+        plan = build_plan_from_specs(models, default_variation_keys=default_keys, per_model_variation=per_model)
+    except ValueError as e:
+        print(f"[ERROR] {e}")
+        sys.exit(2)
+
+    print(f"\n{'=' * 40}")
+    print(f"PLANO: {len(bases)} cenario(s) x {len(plan)} run(s) por cenario")
+    print(f"Cenarios: {bases}")
+    print(f"Modelos/variacoes: {len(plan)} entradas no plano")
+    print(f"on-exist: {args.on_exist}")
+    print(f"{'=' * 40}")
+
+    if args.dry_run:
+        print("[dry-run] Encerrando sem treinar.")
+        return
+
+    overwrite_all = False
+    skip_all = False
+    on_exist = args.on_exist
+
+    for i, b in enumerate(bases):
+        print(f"\n>>> [CENARIO {i + 1}/{len(bases)}] {b}")
+        try:
+            orc = TrainingOrchestrator(b)
+            overwrite_all, skip_all = orc.run(
+                plan,
+                overwrite_all=overwrite_all,
+                skip_all=skip_all,
+                on_exist=on_exist,
+            )
+        except TrainRunnerOutputExistsError as e:
+            print(f"[ERROR] {e}")
+            sys.exit(1)
+        except Exception as e:
+            print(e)
+        gc.collect()
+
+
+def cmd_list_scenarios(args: argparse.Namespace) -> None:
+    cfg = utils.loadConfig()
+    scens = cfg.get("modeling_scenarios") or {}
+    for k in sorted(scens.keys()):
+        if args.show_folders:
+            print(f"{k}\t{scens[k]}")
+        else:
+            print(k)
+
+
+def cmd_list_models(_args: argparse.Namespace) -> None:
+    for m in available_model_names():
+        print(m)
+
+
+def cmd_describe_variations(args: argparse.Namespace) -> None:
+    m = args.model.strip()
+    avail = [x for x in available_model_names() if not x.startswith("dummy_")]
+    if m not in avail:
+        print(f"[ERROR] Modelo {m!r} nao suporta variacao ou nao existe. Candidatos: {avail}")
+        sys.exit(2)
+    opts = _variation_menu_legacy(m)
+    print(f"Variacoes para modelo={m}:\n")
+    for o in opts:
+        print(f"  [{o.key}] {o.label}")
+
+
+def cmd_interactive(_args: argparse.Namespace) -> None:
+    cfg = utils.loadConfig()
+    scens = cfg.get("modeling_scenarios") or {}
     if not scens:
         print("[CRITICAL] modeling_scenarios vazio no config.yaml")
         return
 
     bases = _select_many({i + 1: k for i, k in enumerate(sorted(scens.keys()))}, "Bases")
 
-    # Menu dinamico de modelos (so mostra os que existem)
-    models_menu: List[str] = ["dummy_stratified", "dummy_prior", "logistic", "xgboost"]
-    if NaiveBayesTrainer is not None:
-        models_menu.append("naive_bayes")
-    if SVMTrainer is not None:
-        models_menu.append("svm")
-    if RandomForestTrainer is not None:
-        models_menu.append("random_forest")
-
-    models_dict = {i + 1: name for i, name in enumerate(models_menu)}
+    models_dict = {i + 1: name for i, name in enumerate(available_model_names())}
     models = _select_many(models_dict, "Modelos")
 
     plan = _build_plan(models)
@@ -859,10 +1230,42 @@ def main():
         print(f"\n>>> [BASE {i + 1}/{len(bases)}] {b}")
         try:
             orc = TrainingOrchestrator(b)
-            overwrite_all, skip_all = orc.run(plan, overwrite_all=overwrite_all, skip_all=skip_all)
+            overwrite_all, skip_all = orc.run(
+                plan,
+                overwrite_all=overwrite_all,
+                skip_all=skip_all,
+                on_exist="interactive",
+            )
         except Exception as e:
             print(e)
         gc.collect()
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = build_arg_parser()
+    if not argv:
+        parser.print_help()
+        return
+
+    args = parser.parse_args(argv)
+    cmd = args.command
+    if cmd is None:
+        parser.print_help()
+        return
+
+    if cmd == "run":
+        cmd_run(args)
+    elif cmd == "list-scenarios":
+        cmd_list_scenarios(args)
+    elif cmd == "list-models":
+        cmd_list_models(args)
+    elif cmd == "describe-variations":
+        cmd_describe_variations(args)
+    elif cmd == "interactive":
+        cmd_interactive(args)
+    else:
+        parser.error(f"Comando desconhecido: {cmd!r}")
 
 
 if __name__ == "__main__":

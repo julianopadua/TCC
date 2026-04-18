@@ -771,6 +771,9 @@ class ArticleTemporalFusion:
                 pass
 
         mr = MiniRocket(**mr_kwargs)
+        X_train_global += np.random.normal(0, 1e-5, X_train_global.shape).astype(
+            np.float32
+        )
         mr.fit(X_train_global)
         del X_train_global
         gc.collect()
@@ -840,6 +843,7 @@ class ArticleTemporalFusion:
         for start in range(0, n_windows, chunk_sz):
             end = min(start + chunk_sz, n_windows)
             X_chunk = np.ascontiguousarray(X_valid[start:end])
+            X_chunk += np.random.normal(0, 1e-5, X_chunk.shape).astype(np.float32)
             transformed = mr.transform(X_chunk)
             out_f32 = np.asarray(transformed, dtype=np.float32)
             del transformed, X_chunk
@@ -877,12 +881,12 @@ class ArticleTemporalFusion:
     def _merge_back(df: pd.DataFrame, feat_df: pd.DataFrame) -> pd.DataFrame:
         if feat_df is None or feat_df.empty:
             return df.drop(columns=["_ts"], errors="ignore")
-        tsf_cols = [c for c in feat_df.columns if c not in ("cidade_norm", "_ts")]
-        df_out = df.merge(
-            feat_df[["cidade_norm", "_ts"] + tsf_cols],
-            on=["cidade_norm", "_ts"],
-            how="left",
-        )
+        idx = ["cidade_norm", "_ts"]
+        tsf_cols = [c for c in feat_df.columns if c not in idx]
+        right = feat_df.set_index(idx)[tsf_cols]
+        df_out = df.join(right, on=idx, how="left")
+        del right
+        gc.collect()
         df_out = df_out.drop(columns=["_ts"], errors="ignore")
         return df_out
 
@@ -952,7 +956,7 @@ class ArticleTemporalFusion:
                 )
                 continue
 
-            df_out = self._merge_back(df.copy(), feat)
+            df_out = self._merge_back(df, feat)
             utils.ensure_dir(out_path.parent)
             df_out.to_parquet(out_path, index=False)
             self.log.info(

@@ -195,31 +195,106 @@ def _discover_train_test_years(
 
 
 def _sanitize_tsf_columns_inplace(df: pd.DataFrame, tsf_cols: List[str]) -> None:
-    """Inf/NaN e clip de magnitude, coluna a coluna.
+    """Inf/NaN e clip de magnitude, coluna a coluna (float32 para metade da RAM).
 
     Evita o replace/clip em bloco do pandas, que materializa mascaras booleanas
     (n_cols x n_rows) e estoura RAM em bases largas (ex.: minirocket).
+    Usa copy=False quando possivel; copia so se o buffer nao for gravavel.
     """
-    lo = -TSF_ABS_CLIP
-    hi = TSF_ABS_CLIP
+    lo = np.float32(-TSF_ABS_CLIP)
+    hi = np.float32(TSF_ABS_CLIP)
     for c in tsf_cols:
-        v = df[c].to_numpy(dtype=np.float64, copy=True)
-        v[~np.isfinite(v)] = np.nan
+        v = df[c].to_numpy(dtype=np.float32, copy=False)
+        if not v.flags.writeable:
+            v = v.copy()
         np.clip(v, lo, hi, out=v)
+        v[~np.isfinite(v)] = np.nan
         df[c] = v
+
+
+def _parquet_row_count(path: Path) -> int:
+    """Numero de linhas via metadado PyArrow (sem carregar dados)."""
+    try:
+        import pyarrow.parquet as pq
+
+        return int(pq.ParquetFile(str(path)).metadata.num_rows)
+    except Exception:
+        return len(pd.read_parquet(path, columns=[TARGET_COL], engine="pyarrow"))
+
+
+def _concat_train_frames(
+    frames: List[pd.DataFrame],
+    max_train_rows: int,
+    log,
+) -> pd.DataFrame:
+    """Concatena anos de treino; se exceder teto, amostra proporcionalmente antes do concat.
+
+    O concat monolitico de dezenas de milhoes de linhas forca um bloco contiguo
+    grande no BlockManager e estoura RAM em maquinas 16GB.
+    """
+    total = sum(len(f) for f in frames)
+    if total <= max_train_rows:
+        if len(frames) == 1:
+            return frames[0]
+        return pd.concat(frames, axis=0, ignore_index=True, copy=False)
+
+    rng = np.random.RandomState(42)
+    parts: List[pd.DataFrame] = []
+    for f in frames:
+        n = len(f)
+        k = max(1, min(n, int(round(n * max_train_rows / total))))
+        if k >= n:
+            parts.append(f)
+        else:
+            idx = rng.choice(n, size=k, replace=False)
+            parts.append(f.iloc[idx].reset_index(drop=True))
+        gc.collect()
+
+    out = pd.concat(parts, axis=0, ignore_index=True, copy=False)
+    del parts
+    gc.collect()
+    if len(out) > max_train_rows:
+        out = (
+            out.sample(n=max_train_rows, random_state=42).reset_index(drop=True)
+        )
+    log.info(
+        f"[selection] treino downsampled Camada A: {len(out)} linhas materializadas "
+        f"(total bruto {total}; teto train_selection_max_rows={max_train_rows})"
+    )
+    return out
+
+
+def _nan_fraction_and_high_nan_columns(
+    X: pd.DataFrame, max_nan_fraction: float
+) -> Tuple[pd.Series, List[str]]:
+    """Fracao de NaN por coluna sem `X.isna()` na matriz inteira (evita pico bool n*m)."""
+    nan_frac_dict: Dict[str, float] = {}
+    to_drop: List[str] = []
+    for c in X.columns:
+        nf = float(X[c].isna().mean())
+        nan_frac_dict[c] = nf
+        if nf > max_nan_fraction:
+            to_drop.append(c)
+    return pd.Series(nan_frac_dict), to_drop
 
 
 def _load_train_tsf_plus_target(
     method_dir: Path,
     train_files: Iterable[Tuple[int, Path]],
     log,
-) -> Tuple[pd.DataFrame, pd.Series]:
+    max_train_rows: int,
+) -> Tuple[pd.DataFrame, pd.Series, int]:
     """Concatena anos de treino carregando somente colunas tsf_* + HAS_FOCO.
 
     Usa PyArrow column projection para manter a RAM baixa.
+    Retorna (X, y, n_linhas_treino_total_parquet) — o terceiro valor e a soma
+    dos num_rows dos parquets (antes de qualquer downsample).
     """
+    train_list = list(train_files)
+    n_rows_full = sum(_parquet_row_count(p) for _, p in train_list)
+
     frames: List[pd.DataFrame] = []
-    for year, path in train_files:
+    for year, path in train_list:
         # Descobre colunas via metadado (rapido, nao carrega dados).
         try:
             import pyarrow.parquet as pq
@@ -242,6 +317,18 @@ def _load_train_tsf_plus_target(
             continue
 
         df = pd.read_parquet(path, columns=wanted, engine="pyarrow")
+        ni = len(df)
+        # Downsample por ano ANTES de sanitizar: evita picos de RAM ao acumular
+        # dezenas de milhoes de linhas em `frames` + copias float32 na sanitizacao.
+        denom = max(n_rows_full, 1)
+        target_k = max(1, min(ni, int(round(ni * max_train_rows / denom))))
+        if ni > target_k:
+            df = df.sample(
+                n=target_k,
+                random_state=(42 + int(year) * 10007) & 0x7FFFFFFF,
+            ).reset_index(drop=True)
+            gc.collect()  # libera o dataframe completo do ano antes da sanitizacao
+
         tsf_cols = [c for c in wanted if c.startswith("tsf_")]
         if tsf_cols:
             # Sanitizacao defensiva: infinities e magnitudes extremas podem
@@ -250,7 +337,7 @@ def _load_train_tsf_plus_target(
         frames.append(df)
         log.info(
             f"[selection] carregado {path.name} ({year}) rows={len(df)} "
-            f"cols_tsf={len(wanted) - 1}"
+            f"(bruto parquet {ni}) cols_tsf={len(wanted) - 1}"
         )
 
     if not frames:
@@ -259,13 +346,15 @@ def _load_train_tsf_plus_target(
             "Rode a etapa de fusion antes da Camada A."
         )
 
-    df_all = pd.concat(frames, axis=0, ignore_index=True)
+    df_all = _concat_train_frames(frames, max_train_rows, log)
     del frames
     gc.collect()
 
-    y = df_all[TARGET_COL].astype(np.int8)
-    X = df_all.drop(columns=[TARGET_COL])
-    return X, y
+    # pop evita reindex interno de drop(), que duplicaria blocos na RAM cheia.
+    y = df_all.pop(TARGET_COL).astype(np.int8)
+    X = df_all
+    gc.collect()
+    return X, y, n_rows_full
 
 
 def _compute_spearman(
@@ -393,6 +482,7 @@ def run_feature_selection(
     max_nan_fraction = float(fs_cfg.get("max_nan_fraction", 0.5))
     spearman_weight = float(fs_cfg.get("spearman_weight", 0.5))
     mi_weight = float(fs_cfg.get("mi_weight", 0.5))
+    train_selection_max_rows = int(fs_cfg.get("train_selection_max_rows", 2_500_000))
     mi_sample_cutoff = int(fs_cfg.get("mi_sample_cutoff", 2_000_000))
     mi_sample_size = int(fs_cfg.get("mi_sample_size", 500_000))
     stratify_by = fs_cfg.get("stratify_by", "HAS_FOCO")
@@ -441,19 +531,22 @@ def run_feature_selection(
             f"{len(test_files)} anos teste | cut={cut_year}"
         )
 
-        X, y = _load_train_tsf_plus_target(method_dir, train_files, log)
-        n_train_rows_total = max(n_train_rows_total, len(X))
+        X, y, n_full = _load_train_tsf_plus_target(
+            method_dir, train_files, log, train_selection_max_rows
+        )
+        n_train_rows_total = max(n_train_rows_total, n_full)
         log.info(f"[selection] {method}: dataframe de treino {X.shape}")
 
-        # Filtro de features com NaN > max_nan_fraction.
-        nan_frac = X.isna().mean()
-        to_drop = nan_frac[nan_frac > max_nan_fraction].index.tolist()
+        # Filtro de features com NaN > max_nan_fraction (sem isna() na matriz inteira).
+        nan_frac, to_drop = _nan_fraction_and_high_nan_columns(X, max_nan_fraction)
         if to_drop:
             log.warning(
                 f"[selection] {method}: {len(to_drop)} features descartadas "
                 f"por NaN>{max_nan_fraction:.0%} (ex.: {to_drop[:3]}...)"
             )
-        X_kept = X.drop(columns=to_drop)
+            X.drop(columns=to_drop, inplace=True)
+        X_kept = X
+        gc.collect()
 
         if X_kept.empty:
             log.warning(
