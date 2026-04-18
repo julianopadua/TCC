@@ -46,6 +46,7 @@ try:
         list_article_fusion_train_menu_keys,
         resolve_parquet_dir,
     )
+    from src.article.config import biomass_modeling_columns_for_schema
     from src.ml.core import MemoryMonitor, TemporalSplitter
     from src.models.dummy import DummyTrainer
     from src.models.logistic import LogisticTrainer
@@ -465,6 +466,8 @@ class TrainingOrchestrator:
         self.features = list(self._base_features)
         if self._is_temporal_fusion_scenario():
             self._extend_with_tsf_columns()
+        if self.use_article_data:
+            self._extend_with_article_biomass_columns()
 
         self.target = "HAS_FOCO"
         self.year_col = "ANO"
@@ -528,6 +531,38 @@ class TrainingOrchestrator:
                 )
         except Exception as e:
             self.log.warning(f"[TSF] Could not auto-detect tsf_* columns: {e}")
+
+    def _extend_with_article_biomass_columns(self) -> None:
+        """NDVI/EVI do GEE no conjunto de features (--article), conforme modeling_biomass_mode."""
+        if not self.use_article_data:
+            return
+        try:
+            import pyarrow.parquet as pq
+
+            path = resolve_parquet_dir(
+                self.cfg, self.scenario_folder, source=self._parquet_source
+            )
+            first = next(path.glob("*.parquet"), None)
+            if first is None:
+                return
+            schema_names = set(pq.read_schema(first).names)
+            biomass_cols = biomass_modeling_columns_for_schema(self.cfg, schema_names)
+            ap = self.cfg.get("article_pipeline") or {}
+            mode = str(ap.get("modeling_biomass_mode", "buffers")).strip().lower()
+            seen = set(self.features)
+            added: List[str] = []
+            for c in biomass_cols:
+                if c not in seen:
+                    self.features.append(c)
+                    seen.add(c)
+                    added.append(c)
+            if added:
+                self.log.info(
+                    f"[BIOM] modeling_biomass_mode={mode!r} | +{len(added)} colunas: {added} "
+                    f"(schema={first.name})"
+                )
+        except Exception as e:
+            self.log.warning(f"[BIOM] Nao foi possivel adicionar NDVI/EVI: {e}")
 
     def _discover_files(self) -> List[Path]:
         path = resolve_parquet_dir(

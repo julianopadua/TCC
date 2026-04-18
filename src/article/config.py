@@ -9,7 +9,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, Iterable, List
 
 _project_root = Path(__file__).resolve().parents[2]
 if str(_project_root) not in sys.path:
@@ -133,3 +133,35 @@ def load_article_config() -> ArticlePipelineConfig:
         bdq_processed_dir=bdq_processed_dir,
         modeling_scenarios=cfg.get("modeling_scenarios", {}),
     )
+
+
+def biomass_modeling_columns_for_schema(
+    cfg: Dict[str, Any], schema_names: Iterable[str]
+) -> List[str]:
+    """Colunas NDVI/EVI a usar no train_runner --article, conforme modeling_biomass_mode.
+
+    Apenas nomes presentes em ``schema_names`` entram na lista (ordem estável).
+    Modos: ``buffers`` | ``points`` | ``all_four`` (default: buffers).
+    """
+    from src.article.temporal_fusion_article import (
+        COL_EVI_BUFFER,
+        COL_EVI_POINT,
+        COL_NDVI_BUFFER,
+        COL_NDVI_POINT,
+    )
+
+    ap = cfg.get("article_pipeline") or {}
+    mode = str(ap.get("modeling_biomass_mode", "buffers")).strip().lower()
+    names = set(schema_names)
+
+    if mode == "points":
+        candidates = [COL_NDVI_POINT, COL_EVI_POINT]
+    elif mode == "all_four":
+        candidates = [COL_NDVI_BUFFER, COL_EVI_BUFFER, COL_NDVI_POINT, COL_EVI_POINT]
+    elif mode == "buffers":
+        candidates = [COL_NDVI_BUFFER, COL_EVI_BUFFER]
+    else:
+        candidates = [COL_NDVI_BUFFER, COL_EVI_BUFFER]
+
+    out: List[str] = [c for c in candidates if c in names]
+    return out

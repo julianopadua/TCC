@@ -135,7 +135,7 @@ Entregas principais:
   * `split` (padrão): uma pasta por método em `data/temporal_fusion/{base}/{método}/` — cenários `tf_*_ewma_lags`, `tf_*_sarimax_exog`, `tf_*_champion` no `config.yaml`.
   * `merged` (legado): ambos os métodos num único parquet em `data/modeling/…_tsfusion/`.
 * Métricas de **Camada A** em `data/eda/temporal_fusion/`: `layer_a_summary.csv`, `layer_a_summary_train.csv`, `method_ranking_train.csv` (só anos de treino).
-* **`train_runner.py`**: detecta e inclui `tsf_*` automaticamente para cenários `tf_*` (via `_is_temporal_fusion_scenario`).
+* **`train_runner.py`**: detecta e inclui `tsf_*` automaticamente para cenários `tf_*` (via `_is_temporal_fusion_scenario`). Com **`run --article`**, inclui também colunas NDVI/EVI do GEE presentes no Parquet, conforme `article_pipeline.modeling_biomass_mode` no `config.yaml` (padrão `buffers`, alinhado à fusão temporal).
 * **`config.yaml`**: `temporal_fusion_paths` mapeia `tf_*_ewma_lags`, `tf_*_sarimax_exog`, `tf_*_champion` ao subcaminho em `data/temporal_fusion/`.
 * **`pyproject.toml`**: fusão temporal legada e artigo: `statsmodels`, `aeon` (MiniRocket no pipeline `src/article/`).
 * Bases campeãs e seleção por ranking no fluxo **oficial** do artigo: `src/article/article_orchestrator.py` e `method_ranking_article.csv` (não `build_champion_temporal_bases.py`, removido).
@@ -502,6 +502,8 @@ O treino usa **chaves** de `modeling_scenarios` no [`config.yaml`](config.yaml) 
 python src/train_runner.py --help
 python src/train_runner.py run --help
 ```
+
+Com **`run --article`**, a fonte de dados é `data/_article/…` e o modelo usa, além das features meteorológicas/engenheiradas (e `tsf_*` nos cenários `tf_*`), as colunas de biomassa NDVI/EVI que existirem no schema — veja `article_pipeline.modeling_biomass_mode` em [`config.yaml`](config.yaml) (`buffers` \| `points` \| `all_four`).
 
 **Subcomandos**
 

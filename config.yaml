@@ -234,6 +234,10 @@ article_pipeline:
   #   <TIPO_MODELO>/<variacao>/<pasta_do_cenario>/
   train_runner_results_subdir: "_results"
 
+  # train_runner --article: quais colunas GEE NDVI/EVI incluir no modelo (intersecao com o schema).
+  # buffers = NDVI_buffer + EVI_buffer (alinha com fusao temporal); points = NDVI_point + EVI_point; all_four = as quatro.
+  modeling_biomass_mode: buffers
+
   # Cenários a processar (chaves em modeling_scenarios).
   scenarios:
     D: "base_D_with_rad_drop_rows_calculated"
