@@ -125,7 +125,7 @@ class LogisticTrainer(BaseModelTrainer):
                 smote_k_neighbors=smote_k_neighbors,
                 # Mantem serial e previsivel na Logistica
                 n_jobs=1,
-                verbose=0,  # a gente vai logar o equivalente de "Fitting ... fits" no logger
+                verbose=1,
             )
         else:
             steps = []
@@ -150,6 +150,7 @@ class LogisticTrainer(BaseModelTrainer):
 
             pipe = (ImbPipeline if use_smote else SkPipeline)(steps)
             self.model = pipe
+            self.log.info("[TRAIN] Pipeline.fit (fast) iniciando...")
             self.model.fit(X_train, y_train)
 
             self.log.info("[TRAIN] Treinamento direto concluido (fast).")

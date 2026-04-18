@@ -12,14 +12,22 @@
 
 import argparse
 import gc
+import os
 import re
 import shutil
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
+
+try:
+    from tqdm.auto import tqdm
+except ImportError:  # pragma: no cover
+    def tqdm(it, **_kwargs):  # type: ignore
+        return it
 
 # Path Setup
 current_file = Path(__file__).resolve()
@@ -32,6 +40,7 @@ try:
     import src.utils as utils
     from src.utils import (
         article_coords_root,
+        article_parquet_dir_has_files,
         list_article_coord_dataset_folders,
         list_article_tf_scenario_keys,
         resolve_parquet_dir,
@@ -378,6 +387,25 @@ def _article_temporal_test_size_years(cfg: Dict[str, Any]) -> int:
     return int(tf.get("test_size_years", 2))
 
 
+def _scenario_accepted_for_run(cfg: Dict[str, Any], token: str, *, use_article: bool) -> bool:
+    """
+    Cenario valido para o CLI se:
+      - chave em modeling_scenarios; ou
+      - --article e pasta em 0_datasets_with_coords com parquets; ou
+      - --article e resolve_parquet_dir(article) tem parquets (ex.: nome de scenario_folder / tf_*).
+    """
+    scens = cfg.get("modeling_scenarios") or {}
+    if token in scens:
+        return True
+    if not use_article:
+        return False
+    if token in set(list_article_coord_dataset_folders(cfg)):
+        return True
+    if article_parquet_dir_has_files(cfg, token):
+        return True
+    return False
+
+
 class TrainingOrchestrator:
     def __init__(self, scenario_key: str, *, use_article_data: bool = False):
         self.cfg = utils.loadConfig()
@@ -430,6 +458,32 @@ class TrainingOrchestrator:
 
         self.target = "HAS_FOCO"
         self.year_col = "ANO"
+
+    def _log_run_banner(self) -> None:
+        """Registra cenario, caminho absoluto dos parquets, PID e uso de host."""
+        pq = resolve_parquet_dir(
+            self.cfg, self.scenario_folder, source=self._parquet_source
+        ).resolve()
+        self.log.info("=" * 72)
+        self.log.info("TRAIN_RUNNER | INICIO DO CENARIO")
+        self.log.info(f"scenario_key={self.scenario_key}")
+        self.log.info(f"scenario_folder={self.scenario_folder}")
+        self.log.info(f"parquet_source={self._parquet_source}")
+        self.log.info(f"parquet_dir={pq}")
+        if self.use_article_data:
+            self.log.info(f"article_coords_root={article_coords_root(self.cfg)}")
+        self.log.info(
+            f"n_features={len(self.features)} | target={self.target} | year_col={self.year_col}"
+        )
+        self.log.info(
+            f"pid={os.getpid()} | python={sys.version.split()[0]} | random_seed={self.random_seed}"
+        )
+        self.log.info(
+            f"test_size_years={_article_temporal_test_size_years(self.cfg)} | "
+            f"use_article_data={self.use_article_data}"
+        )
+        MemoryMonitor.log_usage(self.log, "pre-load")
+        self.log.info("=" * 72)
 
     def _is_temporal_fusion_scenario(self) -> bool:
         """True if this scenario carries temporal fusion (tsf_*) features."""
@@ -535,6 +589,10 @@ class TrainingOrchestrator:
           - amostra negativos respeitando orcamento e neg_pos_ratio
         """
         files = self._discover_files()
+        names = [f.name for f in files]
+        preview = names[:40]
+        tail = " ..." if len(names) > 40 else ""
+        self.log.info(f"[LOAD] n_parquets={len(files)} arquivos: {', '.join(preview)}{tail}")
         cols = self._select_columns(files[0])
 
         years: List[int] = []
@@ -586,8 +644,16 @@ class TrainingOrchestrator:
 
         valid_features: Optional[List[str]] = None
 
-        for f, y_from_name in file_years:
+        pbar = tqdm(
+            file_years,
+            desc="[LOAD] parquets",
+            unit="arq",
+            total=len(file_years),
+            leave=True,
+        )
+        for f, y_from_name in pbar:
             try:
+                pbar.set_postfix_str(f.name[:28], refresh=False)
                 df = pd.read_parquet(f, columns=cols)
                 read_ok += 1
 
@@ -713,6 +779,8 @@ class TrainingOrchestrator:
             or self._is_temporal_fusion_scenario()
         )
 
+        self._log_run_banner()
+
         try:
             train_df, test_df, valid = self.load_split_batched(
                 test_size_years=_article_temporal_test_size_years(self.cfg),
@@ -798,6 +866,10 @@ class TrainingOrchestrator:
                 trainer.variation_desc = desc
 
             print(f"\n    >> [MODELO] {trainer.model_type}/{trainer.run_name} - {getattr(trainer, 'variation_desc', '')} @ {self.scenario_key}")
+            self.log.info(
+                f"[PLANO] model={trainer.model_type} | variation={trainer.run_name} | "
+                f"desc={getattr(trainer, 'variation_desc', '')} | scenario_key={self.scenario_key}"
+            )
 
             try:
                 exists = _dir_has_outputs(trainer.output_dir)
@@ -840,16 +912,33 @@ class TrainingOrchestrator:
                     self.log.warning(f"[SKIP] saida existente nao tratada para on_exist={on_exist!r}")
                     continue
 
+                pq_resolved = resolve_parquet_dir(
+                    self.cfg, self.scenario_folder, source=self._parquet_source
+                ).resolve()
+                self.log.info("-" * 72)
+                self.log.info(f"[TRAIN] inicio | model={trainer.model_type} | variation={trainer.run_name}")
+                self.log.info(f"[TRAIN] output_dir={trainer.output_dir}")
+                self.log.info(f"[TRAIN] parquet_dir={pq_resolved}")
+                MemoryMonitor.log_usage(self.log, "pre-fit")
+                t_fit = time.time()
                 trainer.train(X_tr, y_tr, **st)
+                train_wall_s = time.time() - t_fit
+                self.log.info(
+                    f"[TRAIN] fim | wall_train_s={train_wall_s:.2f} | model={trainer.model_type}"
+                )
+                MemoryMonitor.log_usage(self.log, "pos-fit")
 
                 thr = float(st.get("thr", 0.5))
                 metrics = trainer.evaluate(X_te, y_te, thr=thr)
+                MemoryMonitor.log_usage(self.log, "pos-eval")
 
                 run_meta = {
                     "scenario_key": self.scenario_key,
                     "scenario_folder": self.scenario_folder,
                     "parquet_source": self._parquet_source,
+                    "parquet_dir": str(pq_resolved),
                     "features_used": valid,
+                    "n_features": len(valid),
                     "target": self.target,
                     "year_col": self.year_col,
                     "train_rows": int(len(y_tr)),
@@ -858,6 +947,8 @@ class TrainingOrchestrator:
                     "test_pos_rate": _pos_rate(y_te),
                     "settings": st,
                     "threshold": thr,
+                    "host_snapshot": MemoryMonitor.get_snapshot(),
+                    "train_wall_s": round(train_wall_s, 3),
                 }
 
                 trainer.save_artifacts(metrics, run_meta=run_meta)
@@ -1156,8 +1247,16 @@ def cmd_run(args: argparse.Namespace) -> None:
         sys.exit(2)
 
     for b in bases:
-        if b not in scens:
+        if not _scenario_accepted_for_run(cfg, b, use_article=args.article):
             print(f"[ERROR] Cenario invalido {b!r}. Chaves validas (ordenadas): {sorted(scens.keys())}")
+            if args.article:
+                cr = article_coords_root(cfg)
+                coords = list_article_coord_dataset_folders(cfg)
+                print(
+                    f"  Com --article, pode usar nome de pasta em {cr} com *.parquet, "
+                    f"ou chave tf_* com dados em 1_datasets_with_fusion/. "
+                    f"Exemplos de pastas coords: {coords[:12]}{'...' if len(coords) > 12 else ''}"
+                )
             sys.exit(2)
 
     avail = available_model_names()
@@ -1285,7 +1384,34 @@ def cmd_interactive(_args: argparse.Namespace) -> None:
             break
         print("Entrada invalida. Digite 1 ou 2.")
 
-    bases = _select_many({i + 1: k for i, k in enumerate(sorted(scens.keys()))}, "Bases")
+    if use_article_data:
+        coord = list_article_coord_dataset_folders(cfg)
+        tf_avail = list_article_tf_scenario_keys(cfg)
+        base_opts: Dict[int, str] = {}
+        n = 1
+        cr = article_coords_root(cfg)
+        if coord:
+            print(f"\nPastas com *.parquet em (coords):\n  {cr}")
+            for name in coord:
+                base_opts[n] = name
+                n += 1
+        if tf_avail:
+            print(
+                "\nCenarios tf_* com parquets no artigo (1_datasets_with_fusion/): "
+                + ", ".join(tf_avail)
+            )
+            for name in tf_avail:
+                base_opts[n] = name
+                n += 1
+        if not base_opts:
+            print(
+                f"\n[WARN] Nenhuma pasta com parquets encontrada em {cr} "
+                f"nem tf_* com dados no artigo. Usando lista do config (modeling_scenarios)."
+            )
+            base_opts = {i + 1: k for i, k in enumerate(sorted(scens.keys()))}
+        bases = _select_many(base_opts, "Bases (artigo: coords + tf_*)")
+    else:
+        bases = _select_many({i + 1: k for i, k in enumerate(sorted(scens.keys()))}, "Bases (TCC)")
 
     models_dict = {i + 1: name for i, name in enumerate(available_model_names())}
     models = _select_many(models_dict, "Modelos")

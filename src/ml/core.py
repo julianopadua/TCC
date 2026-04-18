@@ -71,16 +71,56 @@ except Exception:
 # 1. MONITORAMENTO
 # -----------------------------------------------------------------------------
 class MemoryMonitor:
+    """
+    RSS/VMS do processo, uso aproximado de CPU (desde ultima chamada), threads,
+    e RAM do sistema (quando psutil disponivel).
+    """
+
+    @staticmethod
+    def get_snapshot() -> Dict[str, Any]:
+        if psutil is None:
+            return {"psutil": False}
+        p = psutil.Process(os.getpid())
+        mi = p.memory_info()
+        rss = float(mi.rss) / (1024**3)
+        vms = float(getattr(mi, "vms", 0)) / (1024**3)
+        out: Dict[str, Any] = {
+            "psutil": True,
+            "pid": int(os.getpid()),
+            "rss_gb": round(rss, 3),
+            "vms_gb": round(vms, 3),
+            "cpu_pct": round(float(p.cpu_percent(interval=None)), 1),
+            "threads": int(p.num_threads()),
+        }
+        try:
+            vm = psutil.virtual_memory()
+            out["sys_mem_pct"] = round(float(vm.percent), 1)
+            out["sys_avail_gb"] = round(float(vm.available) / (1024**3), 2)
+        except Exception:
+            pass
+        return out
+
+    @staticmethod
+    def format_snapshot() -> str:
+        s = MemoryMonitor.get_snapshot()
+        if not s.get("psutil"):
+            return "psutil=na"
+        line = (
+            f"pid={s['pid']} rss={s['rss_gb']:.2f}GB vms={s['vms_gb']:.2f}GB "
+            f"cpu={s['cpu_pct']:.1f}% thr={s['threads']}"
+        )
+        if "sys_mem_pct" in s:
+            line += f" | sys_ram={s['sys_mem_pct']:.1f}% livre={s['sys_avail_gb']:.2f}GB"
+        return line
+
     @staticmethod
     def get_usage() -> str:
-        if psutil is None:
-            return "psutil_not_installed"
-        p = psutil.Process(os.getpid())
-        return f"{p.memory_info().rss / (1024 ** 3):.2f} GB"
+        """Compat: string curta (mesmo conteudo rico que format_snapshot)."""
+        return MemoryMonitor.format_snapshot()
 
     @staticmethod
     def log_usage(log, ctx: str = "") -> None:
-        log.info(f"[MEMORIA] {ctx}: {MemoryMonitor.get_usage()}")
+        log.info(f"[HOST] {ctx}: {MemoryMonitor.format_snapshot()}")
 
 
 # -----------------------------------------------------------------------------
@@ -229,7 +269,7 @@ class ModelOptimizer:
         use_scaler: bool = True,
         scoring: str = "average_precision",
         n_jobs: Optional[int] = None,
-        verbose: int = 0,
+        verbose: int = 1,
         smote_sampling_strategy: float = 0.1,
         smote_k_neighbors: int = 5,
         pre_dispatch: str = "1*n_jobs",
@@ -464,6 +504,7 @@ class BaseModelTrainer(ABC):
         pos = int(np.sum(y))
         rate = (pos / n) if n > 0 else 0.0
         self.log.info(f"[RUN] model_type={self.model_type} | variation={self.run_name} | scenario={self.scenario}")
+        self.log.info(f"[RUN] output_dir={self.output_dir}")
         self.log.info(f"[DATA] X={getattr(X, 'shape', None)} | y={getattr(y, 'shape', None)} | pos={pos}/{n} ({rate:.4%})")
         MemoryMonitor.log_usage(self.log, "inicio do treino")
 

@@ -164,9 +164,11 @@ class XGBoostTrainer(BaseModelTrainer):
                         ("model", base_model),
                     ]
                 )
+                self.log.info("[TRAIN] ImbPipeline.fit (fast) iniciando...")
                 self.model.fit(X_train, y_train)
             else:
                 self.model = base_model
+                self.log.info("[TRAIN] XGBClassifier.fit (fast) iniciando...")
                 self.model.fit(X_train, y_train)
 
             self.log.info("[TRAIN] Treinamento direto concluído (fast).")

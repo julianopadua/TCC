@@ -130,7 +130,7 @@ class NaiveBayesTrainer(BaseModelTrainer):
                 smote_sampling_strategy=smote_sampling_strategy,
                 smote_k_neighbors=smote_k_neighbors,
                 n_jobs=1,
-                verbose=0,
+                verbose=1,
             )
         else:
             steps = []
