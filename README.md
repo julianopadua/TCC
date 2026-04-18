@@ -188,6 +188,7 @@ data/eda/temporal_fusion/
 | `src/article/feature_selection_article.py` | Etapa 2 — Camada A (Spearman + MI). |
 | `src/article/article_orchestrator.py` | CLI unificado que encadeia as 3 etapas. |
 | `src/article/audit_fusion_dataset.py` | Gera `audit.md` por cenário em `1_datasets_with_fusion/{cenario}/` (schema, `tsf_*`, `num_rows` vs coords). |
+| `src/article/normalize_has_foco_article.py` | Normaliza `HAS_FOCO` para `int8` {0,1} em todos os parquets de `0_datasets_with_coords/` e `1_datasets_with_fusion/` (opcional `--scenario`, `--dry-run`). |
 
 ### Orquestrador — argumentos
 
