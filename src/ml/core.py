@@ -380,7 +380,8 @@ class BaseModelTrainer(ABC):
     Convencao de pastas:
       data/modeling/results/<MODEL_TYPE>/<VARIATION>/<SCENARIO>/
     Com ``article_results=True``:
-      data/_article/results/<MODEL_TYPE>/<VARIATION>/<SCENARIO>/
+      data/_article/<train_runner_results_subdir>/<MODEL_TYPE>/<VARIATION>/<SCENARIO>/
+      (subdir default: ``_results``, ver ``article_pipeline.train_runner_results_subdir``).
     """
 
     def __init__(
@@ -411,12 +412,23 @@ class BaseModelTrainer(ABC):
         self._custom_run_name = False
         self._update_path()
 
+    @staticmethod
+    def _article_train_results_subdir(cfg: Dict[str, Any]) -> Path:
+        ap = cfg.get("article_pipeline") or {}
+        raw = str(ap.get("train_runner_results_subdir", "_results")).strip() or "_results"
+        p = Path(raw)
+        if p.is_absolute() or ".." in p.parts:
+            return Path("_results")
+        return p
+
     def _update_path(self) -> None:
         if self.article_results:
             base = Path(self.cfg["paths"]["data"]["article"])
+            sub = self._article_train_results_subdir(self.cfg)
+            self.output_dir = base / sub / self.model_type / self.run_name / self.scenario
         else:
             base = Path(self.cfg["paths"]["data"]["modeling"])
-        self.output_dir = base / "results" / self.model_type / self.run_name / self.scenario
+            self.output_dir = base / "results" / self.model_type / self.run_name / self.scenario
         utils.ensure_dir(self.output_dir)
 
     def set_custom_folder_name(self, variation_name: str) -> None:

@@ -222,6 +222,10 @@ article_pipeline:
   # Raiz dos artefatos do artigo (isolada de data/modeling).
   output_root: "./data/_article"
 
+  # train_runner.py --article: métricas e artefatos sob output_root / train_runner_results_subdir /
+  #   <TIPO_MODELO>/<variacao>/<pasta_do_cenario>/
+  train_runner_results_subdir: "_results"
+
   # Cenários a processar (chaves em modeling_scenarios).
   scenarios:
     D: "base_D_with_rad_drop_rows_calculated"
@@ -268,7 +272,7 @@ article_pipeline:
   # Entrada: data/_article/0_datasets_with_coords/{cenario}/
   # Saída:   data/_article/1_datasets_with_fusion/{cenario}/{metodo}/
   # EDA:     data/eda/temporal_fusion/
-  # Resultados de treino: data/_article/results/
+  # Treino (train_runner --article): data/_article/_results/<modelo>/... (article_pipeline.train_runner_results_subdir)
   # ---------------------------------------------------------------------------
   temporal_fusion:
     # Subpaths relativos ao output_root (../data/_article)

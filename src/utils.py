@@ -175,6 +175,51 @@ def resolve_parquet_dir(
     return Path(cfg["paths"]["data"]["modeling"]) / scenario_folder
 
 
+def article_coords_root(cfg: Dict[str, Any]) -> Path:
+    """Raiz ``.../0_datasets_with_coords`` (ou ``input_subdir`` do artigo)."""
+    article_root = Path(cfg["paths"]["data"]["article"])
+    ap = cfg.get("article_pipeline") or {}
+    tf = ap.get("temporal_fusion") or {}
+    sub = str(tf.get("input_subdir", "0_datasets_with_coords"))
+    return article_root / sub
+
+
+def article_parquet_dir_has_files(cfg: Dict[str, Any], scenario_folder: str) -> bool:
+    """True se ``resolve_parquet_dir(..., article)`` existe e tem ao menos um ``*.parquet``."""
+    try:
+        path = resolve_parquet_dir(cfg, scenario_folder, source="article")
+        return path.is_dir() and any(path.glob("*.parquet"))
+    except Exception:
+        return False
+
+
+def list_article_coord_dataset_folders(cfg: Dict[str, Any]) -> List[str]:
+    """Subpastas de ``article_coords_root`` que contêm ao menos um ``*.parquet`` (nomes ordenados)."""
+    root = article_coords_root(cfg)
+    if not root.is_dir():
+        return []
+    out: List[str] = []
+    for p in sorted(root.iterdir()):
+        if p.is_dir() and any(p.glob("*.parquet")):
+            out.append(p.name)
+    return out
+
+
+def list_article_tf_scenario_keys(cfg: Dict[str, Any]) -> List[str]:
+    """Chaves ``tf_*`` em ``modeling_scenarios`` cujo path no artigo tem parquets."""
+    scens = cfg.get("modeling_scenarios") or {}
+    out: List[str] = []
+    for k in sorted(scens.keys()):
+        if not k.startswith("tf_"):
+            continue
+        v = scens[k]
+        if not isinstance(v, str):
+            continue
+        if article_parquet_dir_has_files(cfg, v):
+            out.append(k)
+    return out
+
+
 def _create_all_paths(cfg: Dict[str, Any]) -> None:
     """
     Cria todos os diretórios presentes em cfg['paths'] e o diretório do arquivo de log.

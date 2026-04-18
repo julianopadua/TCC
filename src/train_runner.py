@@ -30,7 +30,12 @@ if str(project_root) not in sys.path:
 # Core deps (obrigatorios)
 try:
     import src.utils as utils
-    from src.utils import resolve_parquet_dir
+    from src.utils import (
+        article_coords_root,
+        list_article_coord_dataset_folders,
+        list_article_tf_scenario_keys,
+        resolve_parquet_dir,
+    )
     from src.ml.core import MemoryMonitor, TemporalSplitter
     from src.models.dummy import DummyTrainer
     from src.models.logistic import LogisticTrainer
@@ -379,8 +384,21 @@ class TrainingOrchestrator:
         self.log = utils.get_logger("runner.train", kind="train", per_run_file=True)
 
         self.scenario_key = scenario_key
-        self.scenario_folder = self.cfg["modeling_scenarios"].get(scenario_key)
-        if not self.scenario_folder:
+        scens = self.cfg.get("modeling_scenarios") or {}
+        folder = scens.get(scenario_key)
+        if folder:
+            self.scenario_folder = folder
+        elif use_article_data:
+            cr = article_coords_root(self.cfg)
+            cand = cr / scenario_key
+            if cand.is_dir() and any(cand.glob("*.parquet")):
+                self.scenario_folder = scenario_key
+            else:
+                raise ValueError(
+                    f"Cenario {scenario_key!r} invalido: nao esta em modeling_scenarios e "
+                    f"nao ha parquets em {cand}"
+                )
+        else:
             raise ValueError(f"Cenario {scenario_key} invalido.")
 
         self.use_article_data = bool(use_article_data)
@@ -1072,7 +1090,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help=(
             "Le parquets do pipeline do artigo: paths.data.article / "
             "0_datasets_with_coords (ou 1_datasets_with_fusion para tf_*). "
-            "Grava metricas/modelos em data/_article/results/ (nao sobrescreve runs do TCC em data/modeling/results)."
+            "Grava metricas/modelos em data/_article/<train_runner_results_subdir>/ "
+            "(default _results), por tipo de modelo e variacao — ver article_pipeline no config.yaml."
         ),
     )
 
