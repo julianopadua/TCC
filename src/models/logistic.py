@@ -42,8 +42,12 @@ class LogisticTrainer(BaseModelTrainer):
         random_state: int = 42,
         C: float = 1.0,
         max_iter: int = 1000,
+        *,
+        article_results: bool = False,
     ):
-        super().__init__(scenario_name, "LogisticRegression", random_state)
+        super().__init__(
+            scenario_name, "LogisticRegression", random_state, article_results=article_results
+        )
         self.C = float(C)
         self.max_iter = int(max_iter)
 

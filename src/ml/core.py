@@ -379,9 +379,18 @@ class BaseModelTrainer(ABC):
     """
     Convencao de pastas:
       data/modeling/results/<MODEL_TYPE>/<VARIATION>/<SCENARIO>/
+    Com ``article_results=True``:
+      data/_article/results/<MODEL_TYPE>/<VARIATION>/<SCENARIO>/
     """
 
-    def __init__(self, scenario_name: str, model_type: str, random_state: int = 42):
+    def __init__(
+        self,
+        scenario_name: str,
+        model_type: str,
+        random_state: int = 42,
+        *,
+        article_results: bool = False,
+    ):
         if utils is None:
             raise ImportError("Falha ao importar utils (src/utils.py). Ajuste seu PYTHONPATH/execucao como pacote.")
 
@@ -392,6 +401,7 @@ class BaseModelTrainer(ABC):
         self.model_type = model_type
         self.run_name = "base"
         self.random_state = int(random_state)
+        self.article_results = bool(article_results)
 
         self.variation_tags = []
         self.variation_desc = "Base (sem SMOTE, sem GridSearch, sem pesos)"
@@ -402,7 +412,10 @@ class BaseModelTrainer(ABC):
         self._update_path()
 
     def _update_path(self) -> None:
-        base = Path(self.cfg["paths"]["data"]["modeling"])
+        if self.article_results:
+            base = Path(self.cfg["paths"]["data"]["article"])
+        else:
+            base = Path(self.cfg["paths"]["data"]["modeling"])
         self.output_dir = base / "results" / self.model_type / self.run_name / self.scenario
         utils.ensure_dir(self.output_dir)
 

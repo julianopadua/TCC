@@ -50,8 +50,10 @@ class NaiveBayesTrainer(BaseModelTrainer):
         scenario_name: str,
         random_state: int = 42,
         var_smoothing: float = 1e-9,
+        *,
+        article_results: bool = False,
     ):
-        super().__init__(scenario_name, "NaiveBayes", random_state)
+        super().__init__(scenario_name, "NaiveBayes", random_state, article_results=article_results)
         self.var_smoothing = float(var_smoothing)
 
         # Grid pequeno e barato

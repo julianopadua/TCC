@@ -374,7 +374,7 @@ def _article_temporal_test_size_years(cfg: Dict[str, Any]) -> int:
 
 
 class TrainingOrchestrator:
-    def __init__(self, scenario_key: str):
+    def __init__(self, scenario_key: str, *, use_article_data: bool = False):
         self.cfg = utils.loadConfig()
         self.log = utils.get_logger("runner.train", kind="train", per_run_file=True)
 
@@ -382,6 +382,9 @@ class TrainingOrchestrator:
         self.scenario_folder = self.cfg["modeling_scenarios"].get(scenario_key)
         if not self.scenario_folder:
             raise ValueError(f"Cenario {scenario_key} invalido.")
+
+        self.use_article_data = bool(use_article_data)
+        self._parquet_source = "article" if self.use_article_data else "tcc"
 
         self.random_seed = int(self.cfg.get("project", {}).get("random_seed", 42))
 
@@ -427,7 +430,9 @@ class TrainingOrchestrator:
         try:
             import pyarrow.parquet as pq
 
-            path = resolve_parquet_dir(self.cfg, self.scenario_folder)
+            path = resolve_parquet_dir(
+                self.cfg, self.scenario_folder, source=self._parquet_source
+            )
             first = next(path.glob("*.parquet"), None)
             if first is None:
                 return
@@ -443,8 +448,13 @@ class TrainingOrchestrator:
             self.log.warning(f"[TSF] Could not auto-detect tsf_* columns: {e}")
 
     def _discover_files(self) -> List[Path]:
-        path = resolve_parquet_dir(self.cfg, self.scenario_folder)
-        self.log.info(f"[LOAD] scenario_folder={self.scenario_folder} | path={path}")
+        path = resolve_parquet_dir(
+            self.cfg, self.scenario_folder, source=self._parquet_source
+        )
+        self.log.info(
+            f"[LOAD] parquet_source={self._parquet_source} | "
+            f"scenario_folder={self.scenario_folder} | path={path}"
+        )
         files = sorted(path.glob("*.parquet"))
         if not files:
             raise FileNotFoundError(f"Sem parquets em {path}")
@@ -728,18 +738,35 @@ class TrainingOrchestrator:
 
             trainer = None
 
+            ar = self.use_article_data
+
             if m == "logistic":
-                trainer = LogisticTrainer(self.scenario_folder, random_state=self.random_seed)
+                trainer = LogisticTrainer(
+                    self.scenario_folder, random_state=self.random_seed, article_results=ar
+                )
             elif m == "xgboost":
-                trainer = XGBoostTrainer(self.scenario_folder, random_state=self.random_seed)
+                trainer = XGBoostTrainer(
+                    self.scenario_folder, random_state=self.random_seed, article_results=ar
+                )
             elif m == "naive_bayes" and NaiveBayesTrainer is not None:
-                trainer = NaiveBayesTrainer(self.scenario_folder, random_state=self.random_seed)
+                trainer = NaiveBayesTrainer(
+                    self.scenario_folder, random_state=self.random_seed, article_results=ar
+                )
             elif m == "svm" and SVMTrainer is not None:
-                trainer = SVMTrainer(self.scenario_folder, random_state=self.random_seed)
+                trainer = SVMTrainer(
+                    self.scenario_folder, random_state=self.random_seed, article_results=ar
+                )
             elif m == "random_forest" and RandomForestTrainer is not None:
-                trainer = RandomForestTrainer(self.scenario_folder, random_state=self.random_seed)
+                trainer = RandomForestTrainer(
+                    self.scenario_folder, random_state=self.random_seed, article_results=ar
+                )
             elif m.startswith("dummy_"):
-                trainer = DummyTrainer(self.scenario_folder, m.split("_", 1)[1], random_state=self.random_seed)
+                trainer = DummyTrainer(
+                    self.scenario_folder,
+                    m.split("_", 1)[1],
+                    random_state=self.random_seed,
+                    article_results=ar,
+                )
 
             if trainer is None:
                 self.log.warning(f"[SKIP] modelo indisponivel/desconhecido: {m}")
@@ -803,6 +830,7 @@ class TrainingOrchestrator:
                 run_meta = {
                     "scenario_key": self.scenario_key,
                     "scenario_folder": self.scenario_folder,
+                    "parquet_source": self._parquet_source,
                     "features_used": valid,
                     "target": self.target,
                     "year_col": self.year_col,
@@ -958,8 +986,9 @@ def _cli_epilog() -> str:
   describe-variations Mostra opcoes de variacao (1-4) para um --model.
   interactive         Menu legado com input() (bases, modelos, variacoes, overwrite).
 
-Exemplo:
+Exemplos:
   python src/train_runner.py run --scenario base_E_calculated --model logistic --variations 1
+  python src/train_runner.py run --article -s base_E_calculated -m logistic -v 1
 """
 
 
@@ -984,6 +1013,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         epilog=(
             "Exemplos:\n"
             "  python src/train_runner.py run -s base_E_calculated -m logistic -v 1\n"
+            "  python src/train_runner.py run --article -s base_E_calculated -m logistic -v 1\n"
             "  python src/train_runner.py run --scenario tf_E_champion --model xgboost --variations 1 2\n"
             "  python src/train_runner.py run -s base_A -s base_B -m logistic --model-variation logistic=2,3\n"
             "  python src/train_runner.py run -s base_E_calculated -m logistic --dry-run\n"
@@ -1035,6 +1065,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="So valida entradas e imprime o plano; nao carrega dados nem treina.",
+    )
+    pr.add_argument(
+        "--article",
+        action="store_true",
+        help=(
+            "Le parquets do pipeline do artigo: paths.data.article / "
+            "0_datasets_with_coords (ou 1_datasets_with_fusion para tf_*). "
+            "Grava metricas/modelos em data/_article/results/ (nao sobrescreve runs do TCC em data/modeling/results)."
+        ),
     )
 
     # --- list-scenarios ---
@@ -1148,6 +1187,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     print(f"\n{'=' * 40}")
     print(f"PLANO: {len(bases)} cenario(s) x {len(plan)} run(s) por cenario")
     print(f"Cenarios: {bases}")
+    print(f"Fonte dos parquets: {'article (data/_article/...)' if args.article else 'tcc (data/modeling/ ou temporal_fusion/)'}")
     print(f"Modelos/variacoes: {len(plan)} entradas no plano")
     print(f"on-exist: {args.on_exist}")
     print(f"{'=' * 40}")
@@ -1163,7 +1203,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     for i, b in enumerate(bases):
         print(f"\n>>> [CENARIO {i + 1}/{len(bases)}] {b}")
         try:
-            orc = TrainingOrchestrator(b)
+            orc = TrainingOrchestrator(b, use_article_data=args.article)
             overwrite_all, skip_all = orc.run(
                 plan,
                 overwrite_all=overwrite_all,
@@ -1212,6 +1252,20 @@ def cmd_interactive(_args: argparse.Namespace) -> None:
         print("[CRITICAL] modeling_scenarios vazio no config.yaml")
         return
 
+    print("\n--- Fonte dos Parquets ---")
+    print("[1] TCC — data/modeling/ ou data/temporal_fusion/ (padrao)")
+    print("[2] Artigo — data/_article/0_datasets_with_coords/ ou 1_datasets_with_fusion/ (tf_*)")
+    use_article_data = False
+    while True:
+        x = input(">> Fonte [1]: ").strip().lower()
+        if not x or x in ("1", "tcc", "t"):
+            use_article_data = False
+            break
+        if x in ("2", "article", "art", "a"):
+            use_article_data = True
+            break
+        print("Entrada invalida. Digite 1 ou 2.")
+
     bases = _select_many({i + 1: k for i, k in enumerate(sorted(scens.keys()))}, "Bases")
 
     models_dict = {i + 1: name for i, name in enumerate(available_model_names())}
@@ -1221,6 +1275,9 @@ def cmd_interactive(_args: argparse.Namespace) -> None:
 
     print(f"\n{'=' * 40}")
     print(f"BATCH START: {len(bases)} Bases x {len(plan)} Runs")
+    print(
+        f"Fonte dos parquets: {'article' if use_article_data else 'tcc'}"
+    )
     print(f"{'=' * 40}")
 
     overwrite_all = False
@@ -1229,7 +1286,7 @@ def cmd_interactive(_args: argparse.Namespace) -> None:
     for i, b in enumerate(bases):
         print(f"\n>>> [BASE {i + 1}/{len(bases)}] {b}")
         try:
-            orc = TrainingOrchestrator(b)
+            orc = TrainingOrchestrator(b, use_article_data=use_article_data)
             overwrite_all, skip_all = orc.run(
                 plan,
                 overwrite_all=overwrite_all,

@@ -18,8 +18,15 @@ class DummyTrainer(BaseModelTrainer):
       data/modeling/results/DummyClassifier/<strategy>/<scenario>/
     """
 
-    def __init__(self, scenario_name: str, strategy: str = "stratified", random_state: int = 42):
-        super().__init__(scenario_name, "DummyClassifier", random_state)
+    def __init__(
+        self,
+        scenario_name: str,
+        strategy: str = "stratified",
+        random_state: int = 42,
+        *,
+        article_results: bool = False,
+    ):
+        super().__init__(scenario_name, "DummyClassifier", random_state, article_results=article_results)
         self.strategy = str(strategy)
 
         # strategy vira variação (subpasta)

@@ -132,21 +132,46 @@ def get_path(*keys: str) -> Path:
     return Path(node)
 
 
-def resolve_parquet_dir(cfg: Dict[str, Any], scenario_folder: str) -> Path:
+def resolve_parquet_dir(
+    cfg: Dict[str, Any],
+    scenario_folder: str,
+    *,
+    source: str = "tcc",
+) -> Path:
     """
     Resolve o diretório de parquets de um cenário.
 
-    - Se o scenario_folder aparecer em cfg['temporal_fusion_paths'], o parquet
-      está em paths.data.temporal_fusion / subcaminho mapeado.
-    - Caso contrário usa o comportamento legado: paths.data.modeling / scenario_folder.
+    source:
+      - ``"tcc"`` (default): cenários clássicos em ``paths.data.modeling``;
+        se ``scenario_folder`` estiver em ``temporal_fusion_paths``, usa
+        ``paths.data.temporal_fusion`` + subcaminho (fusão temporal do TCC).
+      - ``"article"``: mesma lógica de subcaminho que ``temporal_fusion_paths``,
+        porém sob ``paths.data.article``: coords em
+        ``article_pipeline.temporal_fusion.input_subdir`` (default
+        ``0_datasets_with_coords``) e fusão em ``output_subdir`` (default
+        ``1_datasets_with_fusion``).
 
     Isso separa os cenários tf_* (data/temporal_fusion/…) dos cenários clássicos
     (data/modeling/…) sem precisar armazenar caminhos absolutos no YAML.
     """
     tf_paths: Dict[str, str] = cfg.get("temporal_fusion_paths", {}) or {}
+    ap = cfg.get("article_pipeline") or {}
+    tf = ap.get("temporal_fusion") or {}
+    coords_sub = str(tf.get("input_subdir", "0_datasets_with_coords"))
+    fusion_sub = str(tf.get("output_subdir", "1_datasets_with_fusion"))
+
     if scenario_folder in tf_paths:
+        rel = tf_paths[scenario_folder]
+        if source == "article":
+            base = Path(cfg["paths"]["data"]["article"])
+            return base / fusion_sub / rel
         base = Path(cfg["paths"]["data"]["temporal_fusion"])
-        return base / tf_paths[scenario_folder]
+        return base / rel
+
+    if source == "article":
+        base = Path(cfg["paths"]["data"]["article"])
+        return base / coords_sub / scenario_folder
+
     return Path(cfg["paths"]["data"]["modeling"]) / scenario_folder
 
 

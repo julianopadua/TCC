@@ -39,8 +39,8 @@ class XGBoostTrainer(BaseModelTrainer):
       - model_n_jobs: threads no fit do XGBoost (GridSearch segue serial em n_jobs=1 para poupar RAM)
     """
 
-    def __init__(self, scenario_name: str, random_state: int = 42):
-        super().__init__(scenario_name, "XGBoost", random_state)
+    def __init__(self, scenario_name: str, random_state: int = 42, *, article_results: bool = False):
+        super().__init__(scenario_name, "XGBoost", random_state, article_results=article_results)
 
         # Grid FULL (o seu atual)
         self.param_grid_full = {

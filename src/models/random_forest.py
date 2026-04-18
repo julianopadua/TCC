@@ -65,8 +65,10 @@ class RandomForestTrainer(BaseModelTrainer):
         n_estimators: int = 300,
         max_depth: Optional[int] = None,
         min_samples_leaf: int = 1,
+        *,
+        article_results: bool = False,
     ):
-        super().__init__(scenario_name, "RandomForest", random_state)
+        super().__init__(scenario_name, "RandomForest", random_state, article_results=article_results)
 
         self.n_estimators = int(n_estimators)
         self.max_depth = max_depth
