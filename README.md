@@ -65,7 +65,7 @@ A partir do **dataset conjunto** (`BDQ + INMET`): em paralelo, **auditoria de fa
 
 ### 3. Treino e teste — cenário “todas as bases × todos os modelos”
 
-Ilustra o fluxo do **`train_runner.py`** quando o utilizador escolhe **todas** as entradas de `modeling_scenarios` no menu de bases e **todos** os modelos disponíveis: para cada base, o orquestrador percorre modelos e variações (GridSearch, SMOTE, pesos, etc.), com **partição temporal** entre treino e teste e escrita de métricas/modelos por *run*.
+Ilustra o fluxo do **`train_runner.py`** quando se percorre **todas** as entradas de `modeling_scenarios` e **todos** os modelos (via CLI `run` com vários `--scenario` / `--model`, ou modo `interactive`): para cada cenário, o orquestrador percorre modelos e variações (GridSearch, SMOTE, pesos, etc.), com **partição temporal** entre treino e teste e escrita de métricas/modelos por *run*.
 
 ![Lógica de treino e teste com seleção completa de bases e modelos](images/TCC_testTrainLogic.png)
 
@@ -79,7 +79,7 @@ Cópias destas imagens também existem em `doc/tcc/imagens/` para compilação d
 * **INMET:** `inmet_scraper.py` + `inmet_consolidated.py` produzem séries anuais homogêneas; consolidação por bioma alimenta o join horário.
 * **Dataset horário:** `build_dataset.py` faz *left join* INMET × alvos BDQ por `cidade_norm`/`municipio_norm` + `ts_hour`, com `HAS_FOCO`.
 * **Modelagem:** `modeling_build_datasets.py` gera cenários A–F em Parquet; `feature_engineering_physics.py` adiciona pastas `*_calculated`; `feature_engineering_temporal.py` adiciona `*_tsfusion` e métricas de Camada A.
-* **Treino:** `train_runner.py` (menu interativo) e biblioteca de modelos em `src/models/`.
+* **Treino:** `train_runner.py` (CLI com subcomandos; modo `interactive` opcional) e biblioteca de modelos em `src/models/`. Detalhes: [Treino (`train_runner`)](#treino-train_runner).
 
 Decisões e justificativas: [followup_decisions.md](doc/followups/followup_decisions.md).
 
@@ -352,7 +352,7 @@ Caminhos centrais vêm de **`config.yaml`** (`paths.data.*`). Hoje `paths.data.e
 7. **Parquets A–F:** `modeling_build_datasets.py`.
 8. **Features físicas:** `feature_engineering_physics.py` → pastas `*_calculated`.
 9. **Fusão temporal (legado):** `feature_engineering_temporal.py --output-layout split` → `data/temporal_fusion/{base}/{método}/` + `data/eda/temporal_fusion/`.
-10. **Treino:** `train_runner.py` (cenários `tf_*_ewma_lags`, `tf_*_sarimax_exog`, `tf_*_champion` no menu).
+10. **Treino:** `train_runner.py` — passar chaves de `modeling_scenarios` (ex.: `tf_E_ewma_lags`, `tf_E_champion`) via `run --scenario …`; ver [Treino (`train_runner`)](#treino-train_runner).
 11. **Pós-processamento:** `run_results_consolidator.py` / `run_results_visualization.py` / `plot_confusion.py`.
 
 ---
@@ -373,7 +373,7 @@ Caminhos centrais vêm de **`config.yaml`** (`paths.data.*`). Hoje `paths.data.e
 | `feature_engineering_physics.py` | Features estilo INPE → `*_calculated` |
 | `feature_engineering_temporal.py` | Fusão temporal legada (ewma + sarimax_exog) → `data/temporal_fusion/` |
 | `tsf_constants.py` | Constantes COL_* / TSF_FAIL_DETAIL_LOG_CAP (partilhadas com `src/article/`) |
-| `train_runner.py` | Orquestrador interativo de experimentos |
+| `train_runner.py` | Orquestrador de experimentos (CLI: `run`, `list-scenarios`, `list-models`, `describe-variations`, `interactive`) |
 | `audit_*`, `explore_risco_fogo.py`, `merge_risco_validation.py` | Auditorias e validações |
 | `modeling/results_*.py`, `run_results_*.py`, `plot_confusion.py` | Consolidação e gráficos |
 | `ml/core.py` | Split temporal, monitor de memória |
@@ -484,10 +484,51 @@ python src/feature_engineering_physics.py
 python src/feature_engineering_temporal.py --methods ewma_lags sarimax_exog --years 2018 2019
 ```
 
-### Treino (interativo)
+### Treino (`train_runner`)
+
+O treino usa **chaves** de `modeling_scenarios` no [`config.yaml`](config.yaml) (não caminhos crus no disco): cada chave resolve para uma pasta de Parquets (ex.: `base_E_with_rad_knn_calculated`, cenários `tf_*_*` com `temporal_fusion_paths`, etc.). Ajuda integrada:
 
 ```bash
-python src/train_runner.py
+python src/train_runner.py --help
+python src/train_runner.py run --help
+```
+
+**Subcomandos**
+
+| Comando | Descrição |
+|--------|-----------|
+| `run` | Treino em lote: cenários e modelos por flags (não interativo). |
+| `list-scenarios` | Lista chaves de `modeling_scenarios` (opção `--show-folders` mostra a pasta mapeada). |
+| `list-models` | Lista modelos disponíveis neste ambiente (dummy, logistic, xgboost, e opcionalmente NB/SVM/RF se importarem). |
+| `describe-variations` | Mostra as variações 1–4 (`_variation_menu_legacy`) para um `--model`. |
+| `interactive` | Menu legado com `input()` (bases, modelos, variações, conflito de pastas). |
+
+**Exemplos (`run`)**
+
+```bash
+# Um cenário, um modelo, variação default 1
+python src/train_runner.py run --scenario base_E_calculated --model logistic
+
+# Atalhos -s / -m / -v; vários cenários e variações 1 e 2
+python src/train_runner.py run -s base_A -s base_B -m xgboost -v 1 2
+
+# Dry-run: só valida e imprime o plano (sem carregar dados)
+python src/train_runner.py run -s base_E_calculated -m logistic --dry-run
+
+# Variações por modelo (sobrescreve o -v global para esse modelo)
+python src/train_runner.py run -s base_E_calculated -m logistic -m xgboost \
+  --model-variation logistic=1,2 --model-variation xgboost=4
+
+# Se já existir saída: skip (default), overwrite ou error (útil em CI)
+python src/train_runner.py run -s base_E_calculated -m logistic --on-exist skip
+python src/train_runner.py run -s base_E_calculated -m logistic --on-exist overwrite
+python src/train_runner.py run -s base_E_calculated -m logistic --on-exist error
+```
+
+**Modo interativo (legado)**
+
+```bash
+python src/train_runner.py interactive
 ```
 
 ---
@@ -499,8 +540,9 @@ Chaves em `modeling_scenarios` mapeiam **nome lógico → pasta sob `data/modeli
 * `base_F_full_original`, `base_A_no_rad`, … `base_E_with_rad_knn`
 * `base_F_calculated`, `base_D_calculated` (pós física)
 * `base_F_calculated_tsfusion`, `base_D_calculated_tsfusion` (pós fusão temporal)
+* Cenários de fusão por método: `tf_D_ewma_lags`, `tf_E_champion`, etc. (ver `temporal_fusion_paths` no `config.yaml`)
 
-O `train_runner` lista todas as chaves ordenadas no menu.
+Para listar as chaves disponíveis: `python src/train_runner.py list-scenarios` (ou `list-scenarios --show-folders`).
 
 ---
 
@@ -521,4 +563,4 @@ O `train_runner` lista todas as chaves ordenadas no menu.
 
 ---
 
-*Última atualização: 2026-04-17 — limpeza do fusão temporal legado (só `ewma_lags` + `sarimax_exog`), `tsf_constants.py`, remoção de `build_champion_temporal_bases.py`.*
+*Última atualização: 2026-04-17 — CLI do `train_runner` (subcomandos, `run` com flags, `interactive` legado); documentação acima e `python src/train_runner.py --help`.*
