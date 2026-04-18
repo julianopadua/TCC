@@ -205,15 +205,36 @@ def list_article_coord_dataset_folders(cfg: Dict[str, Any]) -> List[str]:
     return out
 
 
-def list_article_tf_scenario_keys(cfg: Dict[str, Any]) -> List[str]:
-    """Chaves ``tf_*`` em ``modeling_scenarios`` cujo path no artigo tem parquets."""
+def article_fusion_output_root(cfg: Dict[str, Any]) -> Path:
+    """Raiz ``.../1_datasets_with_fusion`` (ou ``output_subdir`` do artigo)."""
+    article_root = Path(cfg["paths"]["data"]["article"])
+    ap = cfg.get("article_pipeline") or {}
+    tf = ap.get("temporal_fusion") or {}
+    sub = str(tf.get("output_subdir", "1_datasets_with_fusion"))
+    return article_root / sub
+
+
+def list_article_fusion_train_menu_keys(cfg: Dict[str, Any]) -> List[str]:
+    """
+    Menu interativo do train_runner (fonte artigo): só cenários cuja subpasta de método
+    em ``temporal_fusion_paths`` é ``ewma_lags`` ou ``minirocket``, e com parquets no artigo.
+    (SARIMAX/champion ficam fora desta lista — descomente no config se precisar no CLI.)
+    """
     scens = cfg.get("modeling_scenarios") or {}
+    tf_paths: Dict[str, str] = cfg.get("temporal_fusion_paths") or {}
+    allowed = frozenset({"ewma_lags", "minirocket"})
     out: List[str] = []
     for k in sorted(scens.keys()):
         if not k.startswith("tf_"):
             continue
         v = scens[k]
         if not isinstance(v, str):
+            continue
+        rel = tf_paths.get(v)
+        if not rel:
+            continue
+        method = rel.rstrip("/").rsplit("/", 1)[-1].lower()
+        if method not in allowed:
             continue
         if article_parquet_dir_has_files(cfg, v):
             out.append(k)

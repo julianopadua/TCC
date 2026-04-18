@@ -57,29 +57,37 @@ modeling_scenarios:
   # Temporal fusion enriched — legado (layout merged, mantido para compatibilidade)
   base_D_calculated_tsfusion: "base_D_with_rad_drop_rows_calculated_tsfusion"
   base_F_calculated_tsfusion: "base_F_full_original_calculated_tsfusion"
-  # Temporal fusion — por método (legado: só ewma_lags + sarimax_exog + champion)
-  tf_D_ewma_lags:   "tf_D_ewma_lags"
-  tf_D_sarimax_exog: "tf_D_sarimax_exog"
-  tf_D_champion:    "tf_D_champion"
-  tf_E_ewma_lags:   "tf_E_ewma_lags"
-  tf_E_sarimax_exog: "tf_E_sarimax_exog"
-  tf_E_champion:    "tf_E_champion"
-  tf_F_ewma_lags:   "tf_F_ewma_lags"
-  tf_F_sarimax_exog: "tf_F_sarimax_exog"
-  tf_F_champion:    "tf_F_champion"
+  # Temporal fusion — artigo / train_runner: menu interativo usa só ewma_lags + minirocket
+  tf_D_ewma_lags:    "tf_D_ewma_lags"
+  tf_D_minirocket:   "tf_D_minirocket"
+  tf_E_ewma_lags:    "tf_E_ewma_lags"
+  tf_E_minirocket:   "tf_E_minirocket"
+  tf_F_ewma_lags:    "tf_F_ewma_lags"
+  tf_F_minirocket:   "tf_F_minirocket"
+  # SARIMAX / champion: descomente as linhas abaixo (e o bloco em temporal_fusion_paths) para usar no CLI.
+  # Desativados no menu interativo do artigo:
+  # tf_D_sarimax_exog: "tf_D_sarimax_exog"
+  # tf_D_champion:    "tf_D_champion"
+  # tf_E_sarimax_exog: "tf_E_sarimax_exog"
+  # tf_E_champion:    "tf_E_champion"
+  # tf_F_sarimax_exog: "tf_F_sarimax_exog"
+  # tf_F_champion:    "tf_F_champion"
 
 # Mapeamento de scenario_folder -> subcaminho dentro de paths.data.temporal_fusion
 # Strings com "/" aqui NÃO são resolvidas pelo _resolve_paths (apenas cfg["paths"] é processado)
 temporal_fusion_paths:
   tf_D_ewma_lags:    "base_D_with_rad_drop_rows_calculated/ewma_lags"
-  tf_D_sarimax_exog: "base_D_with_rad_drop_rows_calculated/sarimax_exog"
-  tf_D_champion:     "base_D_with_rad_drop_rows_calculated_champion_tsfusion"
+  tf_D_minirocket:   "base_D_with_rad_drop_rows_calculated/minirocket"
   tf_E_ewma_lags:    "base_E_with_rad_knn_calculated/ewma_lags"
-  tf_E_sarimax_exog: "base_E_with_rad_knn_calculated/sarimax_exog"
-  tf_E_champion:     "base_E_with_rad_knn_calculated_champion_tsfusion"
+  tf_E_minirocket:   "base_E_with_rad_knn_calculated/minirocket"
   tf_F_ewma_lags:    "base_F_full_original_calculated/ewma_lags"
-  tf_F_sarimax_exog: "base_F_full_original_calculated/sarimax_exog"
-  tf_F_champion:     "base_F_full_original_calculated_champion_tsfusion"
+  tf_F_minirocket:   "base_F_full_original_calculated/minirocket"
+  # tf_D_sarimax_exog: "base_D_with_rad_drop_rows_calculated/sarimax_exog"
+  # tf_D_champion:     "base_D_with_rad_drop_rows_calculated_champion_tsfusion"
+  # tf_E_sarimax_exog: "base_E_with_rad_knn_calculated/sarimax_exog"
+  # tf_E_champion:     "base_E_with_rad_knn_calculated_champion_tsfusion"
+  # tf_F_sarimax_exog: "base_F_full_original_calculated/sarimax_exog"
+  # tf_F_champion:     "base_F_full_original_calculated_champion_tsfusion"
 
 logging:
   level: "INFO"
@@ -328,6 +336,9 @@ article_pipeline:
       random_state: 42
       # Fit global: no maximo N janelas/ano (amostragem aleatoria) para evitar OOM.
       fit_max_windows_per_year: 10000
+      # Janelas por batch no .transform() (e no loop pos-fit). O aeon aloca buffers
+      # float64 internos O(canais * batch * L); valores ~225k estouram RAM comum.
+      transform_chunk_size: 10000
       # Paralelismo no MiniRocket (aeon), se suportado pela versao instalada.
       n_jobs: -1
 

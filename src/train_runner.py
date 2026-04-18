@@ -40,9 +40,10 @@ try:
     import src.utils as utils
     from src.utils import (
         article_coords_root,
+        article_fusion_output_root,
         article_parquet_dir_has_files,
         list_article_coord_dataset_folders,
-        list_article_tf_scenario_keys,
+        list_article_fusion_train_menu_keys,
         resolve_parquet_dir,
     )
     from src.ml.core import MemoryMonitor, TemporalSplitter
@@ -167,13 +168,22 @@ def _flatten_variation_args(tokens: List[str]) -> List[int]:
     return out
 
 
-def _select_many(opts: Dict[int, Any], title: str) -> List[Any]:
+def _select_many(
+    opts: Dict[int, Any],
+    title: str,
+    *,
+    allow_empty: bool = False,
+) -> List[Any]:
     print(f"\n--- {title} ---")
     for k, v in opts.items():
         print(f"[{k}] {v}")
+    if allow_empty:
+        print("    (Enter vazio = nenhuma desta secao)")
 
     while True:
         x = input(">> Select (ex: 1,3 | 1 3 | 1;3 | all): ").strip().lower()
+        if allow_empty and x == "":
+            return []
         if x == "all":
             return list(opts.values())
 
@@ -1253,9 +1263,9 @@ def cmd_run(args: argparse.Namespace) -> None:
                 cr = article_coords_root(cfg)
                 coords = list_article_coord_dataset_folders(cfg)
                 print(
-                    f"  Com --article, pode usar nome de pasta em {cr} com *.parquet, "
-                    f"ou chave tf_* com dados em 1_datasets_with_fusion/. "
-                    f"Exemplos de pastas coords: {coords[:12]}{'...' if len(coords) > 12 else ''}"
+                    f"  Com --article: pasta em {cr} com *.parquet, ou chave tf_* (ewma_lags/minirocket) "
+                    f"com dados em {article_fusion_output_root(cfg)}. "
+                    f"Exemplos coords: {coords[:12]}{'...' if len(coords) > 12 else ''}"
                 )
             sys.exit(2)
 
@@ -1372,7 +1382,7 @@ def cmd_interactive(_args: argparse.Namespace) -> None:
 
     print("\n--- Fonte dos Parquets ---")
     print("[1] TCC — data/modeling/ ou data/temporal_fusion/ (padrao)")
-    print("[2] Artigo — data/_article/0_datasets_with_coords/ ou 1_datasets_with_fusion/ (tf_*)")
+    print("[2] Artigo — coords (0_datasets_with_coords) e fusao (1_datasets_with_fusion: ewma_lags | minirocket)")
     use_article_data = False
     while True:
         x = input(">> Fonte [1]: ").strip().lower()
@@ -1385,31 +1395,51 @@ def cmd_interactive(_args: argparse.Namespace) -> None:
         print("Entrada invalida. Digite 1 ou 2.")
 
     if use_article_data:
-        coord = list_article_coord_dataset_folders(cfg)
-        tf_avail = list_article_tf_scenario_keys(cfg)
-        base_opts: Dict[int, str] = {}
-        n = 1
         cr = article_coords_root(cfg)
+        fusion_root = article_fusion_output_root(cfg)
+        coord = list_article_coord_dataset_folders(cfg)
+        fusion_keys = list_article_fusion_train_menu_keys(cfg)
+
+        coord_bases: List[str] = []
+        fusion_bases: List[str] = []
+
         if coord:
-            print(f"\nPastas com *.parquet em (coords):\n  {cr}")
-            for name in coord:
-                base_opts[n] = name
-                n += 1
-        if tf_avail:
-            print(
-                "\nCenarios tf_* com parquets no artigo (1_datasets_with_fusion/): "
-                + ", ".join(tf_avail)
+            print("\n=== [COORDS] Bases em 0_datasets_with_coords (com *.parquet) ===")
+            print(f"    Raiz: {cr.resolve()}")
+            coord_opts = {i + 1: name for i, name in enumerate(coord)}
+            coord_bases = _select_many(
+                coord_opts,
+                "Selecione coords (Enter vazio = nenhuma)",
+                allow_empty=True,
             )
-            for name in tf_avail:
-                base_opts[n] = name
-                n += 1
-        if not base_opts:
-            print(
-                f"\n[WARN] Nenhuma pasta com parquets encontrada em {cr} "
-                f"nem tf_* com dados no artigo. Usando lista do config (modeling_scenarios)."
+        else:
+            print(f"\n[INFO] Nenhuma subpasta com *.parquet em {cr.resolve()}")
+
+        if fusion_keys:
+            print("\n=== [FUSAO] Cenarios em 1_datasets_with_fusion — metodos: ewma_lags | minirocket ===")
+            print(f"    Raiz: {fusion_root.resolve()}")
+            print("    (SARIMAX/champion nao aparecem aqui; descomente no config.yaml se precisar.)")
+            fusion_opts = {i + 1: k for i, k in enumerate(fusion_keys)}
+            fusion_bases = _select_many(
+                fusion_opts,
+                "Selecione fusao (Enter vazio = nenhuma)",
+                allow_empty=True,
             )
-            base_opts = {i + 1: k for i, k in enumerate(sorted(scens.keys()))}
-        bases = _select_many(base_opts, "Bases (artigo: coords + tf_*)")
+        else:
+            print(
+                f"\n[INFO] Nenhum cenario ewma_lags/minirocket com parquets sob {fusion_root.resolve()}"
+            )
+
+        bases = coord_bases + fusion_bases
+        if not bases:
+            print(
+                "\n[WARN] Nenhuma base selecionada e nada encontrado no disco. "
+                "Usando lista completa do config (modeling_scenarios)."
+            )
+            bases = _select_many(
+                {i + 1: k for i, k in enumerate(sorted(scens.keys()))},
+                "Bases (fallback: config)",
+            )
     else:
         bases = _select_many({i + 1: k for i, k in enumerate(sorted(scens.keys()))}, "Bases (TCC)")
 

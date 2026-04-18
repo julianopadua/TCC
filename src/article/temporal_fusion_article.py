@@ -70,8 +70,22 @@ BIOMASS_SLUGS: List[str] = ["ndvi_buffer", "evi_buffer"]
 
 ALLOWED_METHODS: Set[str] = {"ewma_lags", "sarimax_exog", "minirocket"}
 
-# MiniRocket transform: batch size (linhas de janela) para limitar pico de RAM no .transform().
-_MINIROCKET_TRANSFORM_CHUNK = 225_000
+# Default para transform_chunk_size (config minirocket): o MiniRocket (aeon) materializa
+# buffers internos float64 O(n_canais_internos * n_janelas * L); chunks grandes (~225k)
+# estouram RAM tipica de notebook. Ver article_pipeline.temporal_fusion.minirocket.
+_MINIROCKET_TRANSFORM_CHUNK_DEFAULT = 10_000
+
+
+def _minirocket_jitter_f32(
+    shape: Tuple[int, ...], scale: float, rng: np.random.Generator
+) -> np.ndarray:
+    """Ruido gaussiano em float32 sem alocar um array float64 do tamanho de `shape`."""
+    try:
+        noise = rng.standard_normal(shape, dtype=np.float32)
+    except TypeError:
+        noise = rng.standard_normal(shape).astype(np.float32, copy=False)
+    noise *= np.float32(scale)
+    return noise
 
 # ---------------------------------------------------------------------------
 # Guardrail de memoria — thresholds (% de RAM usada)
@@ -253,6 +267,16 @@ class ArticleTemporalFusion:
 
         # Modelos treinados reutilizados entre anos de teste (MiniRocket).
         self._minirocket_model = None
+        mr_cfg = self.fcfg.get("minirocket", {}) or {}
+        self._minirocket_transform_chunk = max(
+            256,
+            int(
+                mr_cfg.get(
+                    "transform_chunk_size",
+                    _MINIROCKET_TRANSFORM_CHUNK_DEFAULT,
+                )
+            ),
+        )
 
         # Numero de workers para sarimax_exog (CLI > config > 1).
         if sarimax_workers is not None:
@@ -771,9 +795,7 @@ class ArticleTemporalFusion:
                 pass
 
         mr = MiniRocket(**mr_kwargs)
-        X_train_global += np.random.normal(0, 1e-5, X_train_global.shape).astype(
-            np.float32
-        )
+        X_train_global += _minirocket_jitter_f32(X_train_global.shape, 1e-5, rng)
         mr.fit(X_train_global)
         del X_train_global
         gc.collect()
@@ -839,11 +861,12 @@ class ArticleTemporalFusion:
         gc.collect()
 
         feat_j = result.columns.get_indexer(feat_cols)
-        chunk_sz = _MINIROCKET_TRANSFORM_CHUNK
+        chunk_sz = self._minirocket_transform_chunk
+        rng_tr = np.random.default_rng(int(cfg.get("random_state", 42)))
         for start in range(0, n_windows, chunk_sz):
             end = min(start + chunk_sz, n_windows)
             X_chunk = np.ascontiguousarray(X_valid[start:end])
-            X_chunk += np.random.normal(0, 1e-5, X_chunk.shape).astype(np.float32)
+            X_chunk += _minirocket_jitter_f32(X_chunk.shape, 1e-5, rng_tr)
             transformed = mr.transform(X_chunk)
             out_f32 = np.asarray(transformed, dtype=np.float32)
             del transformed, X_chunk

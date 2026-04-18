@@ -36,6 +36,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+import numpy as np
 import pandas as pd
 
 _project_root = Path(__file__).resolve().parents[2]
@@ -209,11 +210,26 @@ def _build_champion(
             new_feat_cols = [c for c in feat_df.columns if c not in ("cidade_norm", "ts_hour")]
             if not new_feat_cols:
                 continue
+            # Parquets de fusao podem repetir (cidade_norm, ts_hour) N vezes (ex.: artefatos
+            # de join). Merge com duplicatas no DIREITO faz produto cartesiano (NxM por chave)
+            # e explode linhas + RAM — ex.: 2.36M -> 37.8M linhas e bloco float64 ~2.8GiB.
+            key_cols = ["cidade_norm", "ts_hour"]
+            n_feat_before = len(feat_df)
+            feat_df = feat_df.drop_duplicates(subset=key_cols, keep="last")
+            if len(feat_df) < n_feat_before:
+                log.warning(
+                    f"[champion] {year}/{method}: dedup {key_cols}: "
+                    f"{n_feat_before} -> {len(feat_df)} linhas (evita explosao no merge)"
+                )
+            for c in new_feat_cols:
+                if pd.api.types.is_float_dtype(feat_df[c].dtype):
+                    feat_df[c] = feat_df[c].astype(np.float32)
             merged = merged.merge(
                 feat_df,
-                on=["cidade_norm", "ts_hour"],
+                on=key_cols,
                 how="left",
                 suffixes=("", "_dup"),
+                validate="many_to_one",
             )
             # Descarta possiveis colunas duplicadas.
             dup_cols = [c for c in merged.columns if c.endswith("_dup")]
