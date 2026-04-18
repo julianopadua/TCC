@@ -162,6 +162,8 @@ data/_article/
 │   └── base_E_with_rad_knn_calculated/inmet_bdq_{ANO}_cerrado.parquet
 ├── 1_datasets_with_fusion/         # gerado pelo orquestrador
 │   └── base_E_with_rad_knn_calculated/
+│       ├── README.md               # ponte para audit.md
+│       ├── audit.md                # auditoria schema/linhas (regenerável)
 │       ├── ewma_lags/              # Etapa 1 — método EWMA+lags
 │       ├── sarimax_exog/           # Etapa 1 — método SARIMAX c/ biomassa exog
 │       ├── minirocket/             # Etapa 1 — embeddings multicanal
@@ -185,6 +187,7 @@ data/eda/temporal_fusion/
 | `src/article/temporal_fusion_article.py` | Etapa 1 — fusão temporal (3 métodos elite). |
 | `src/article/feature_selection_article.py` | Etapa 2 — Camada A (Spearman + MI). |
 | `src/article/article_orchestrator.py` | CLI unificado que encadeia as 3 etapas. |
+| `src/article/audit_fusion_dataset.py` | Gera `audit.md` por cenário em `1_datasets_with_fusion/{cenario}/` (schema, `tsf_*`, `num_rows` vs coords). |
 
 ### Orquestrador — argumentos
 
@@ -248,11 +251,17 @@ python src/article/article_orchestrator.py --skip-fusion --skip-train
 python src/article/article_orchestrator.py --overwrite --top-k 30
 ```
 
-**8. Usar a base consolidada existente direto no train_runner (pulando tudo):**
+**8. Treinar com a base champion (TOP-K `tsf_*` + originais), após a etapa 3:**
+
+```bash
+python src/train_runner.py run --article -s tf_E_champion -m xgboost -v 1
+# `tf_E_champion` mapeia para .../1_datasets_with_fusion/base_E_with_rad_knn_calculated/champion/
+```
+
+**9. Pular todas as etapas do orquestrador (no-op só de log):**
 
 ```bash
 python src/article/article_orchestrator.py --skip-fusion --skip-selection --skip-train
-# (no-op informacional; útil apenas para auditoria dos logs)
 ```
 
 ### Métodos elite — o que cada um gera
@@ -540,7 +549,7 @@ Chaves em `modeling_scenarios` mapeiam **nome lógico → pasta sob `data/modeli
 * `base_F_full_original`, `base_A_no_rad`, … `base_E_with_rad_knn`
 * `base_F_calculated`, `base_D_calculated` (pós física)
 * `base_F_calculated_tsfusion`, `base_D_calculated_tsfusion` (pós fusão temporal)
-* Cenários de fusão por método: `tf_D_ewma_lags`, `tf_E_champion`, etc. (ver `temporal_fusion_paths` no `config.yaml`)
+* Cenários de fusão por método: `tf_D_ewma_lags`, `tf_E_minirocket`, `tf_E_champion` (pasta `champion` com TOP-K + originais), etc. — ver `temporal_fusion_paths`; com dados em `data/_article/`, use **`train_runner.py run --article -s …`**
 
 Para listar as chaves disponíveis: `python src/train_runner.py list-scenarios` (ou `list-scenarios --show-folders`).
 

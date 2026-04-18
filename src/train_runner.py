@@ -1133,7 +1133,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "Exemplos:\n"
             "  python src/train_runner.py run -s base_E_calculated -m logistic -v 1\n"
             "  python src/train_runner.py run --article -s base_E_calculated -m logistic -v 1\n"
-            "  python src/train_runner.py run --scenario tf_E_champion --model xgboost --variations 1 2\n"
+            "  python src/train_runner.py run --article -s tf_E_champion -m xgboost -v 1 2\n"
             "  python src/train_runner.py run -s base_A -s base_B -m logistic --model-variation logistic=2,3\n"
             "  python src/train_runner.py run -s base_E_calculated -m logistic --dry-run\n"
         ),
@@ -1263,8 +1263,8 @@ def cmd_run(args: argparse.Namespace) -> None:
                 cr = article_coords_root(cfg)
                 coords = list_article_coord_dataset_folders(cfg)
                 print(
-                    f"  Com --article: pasta em {cr} com *.parquet, ou chave tf_* (ewma_lags/minirocket) "
-                    f"com dados em {article_fusion_output_root(cfg)}. "
+                    f"  Com --article: pasta em {cr} com *.parquet, ou chave tf_* "
+                    f"(ewma_lags/minirocket/champion) com dados em {article_fusion_output_root(cfg)}. "
                     f"Exemplos coords: {coords[:12]}{'...' if len(coords) > 12 else ''}"
                 )
             sys.exit(2)
@@ -1382,7 +1382,7 @@ def cmd_interactive(_args: argparse.Namespace) -> None:
 
     print("\n--- Fonte dos Parquets ---")
     print("[1] TCC — data/modeling/ ou data/temporal_fusion/ (padrao)")
-    print("[2] Artigo — coords (0_datasets_with_coords) e fusao (1_datasets_with_fusion: ewma_lags | minirocket)")
+    print("[2] Artigo — coords (0_datasets_with_coords) e fusao (1_datasets_with_fusion: ewma_lags | minirocket | champion)")
     use_article_data = False
     while True:
         x = input(">> Fonte [1]: ").strip().lower()
@@ -1416,9 +1416,9 @@ def cmd_interactive(_args: argparse.Namespace) -> None:
             print(f"\n[INFO] Nenhuma subpasta com *.parquet em {cr.resolve()}")
 
         if fusion_keys:
-            print("\n=== [FUSAO] Cenarios em 1_datasets_with_fusion — metodos: ewma_lags | minirocket ===")
+            print("\n=== [FUSAO] Cenarios em 1_datasets_with_fusion — metodos: ewma_lags | minirocket | champion ===")
             print(f"    Raiz: {fusion_root.resolve()}")
-            print("    (SARIMAX/champion nao aparecem aqui; descomente no config.yaml se precisar.)")
+            print("    (SARIMAX: adicione tf_*_sarimax_exog em modeling_scenarios + temporal_fusion_paths se precisar.)")
             fusion_opts = {i + 1: k for i, k in enumerate(fusion_keys)}
             fusion_bases = _select_many(
                 fusion_opts,
@@ -1427,7 +1427,7 @@ def cmd_interactive(_args: argparse.Namespace) -> None:
             )
         else:
             print(
-                f"\n[INFO] Nenhum cenario ewma_lags/minirocket com parquets sob {fusion_root.resolve()}"
+                f"\n[INFO] Nenhum cenario ewma_lags/minirocket/champion com parquets sob {fusion_root.resolve()}"
             )
 
         bases = coord_bases + fusion_bases

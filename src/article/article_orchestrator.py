@@ -426,10 +426,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 f"[etapa 3/3] Champion concluido em {time.time() - t3:.0f}s"
             )
             log.info(
-                "[etapa 3/3] NOTA: treino XGBoost/RF para artigo ainda nao "
-                "implementado. Os parquets em 1_datasets_with_fusion/"
-                f"{scenario_folder}/champion/ ja podem ser consumidos por um "
-                "train_runner adaptado num proximo milestone."
+                "[etapa 3/3] Treino: use train_runner com --article e cenario "
+                f"tf_*_champion (ex.: python src/train_runner.py run --article "
+                f"-s tf_E_champion -m xgboost -v 1). Parquets: 1_datasets_with_fusion/"
+                f"{scenario_folder}/champion/"
             )
         except Exception as exc:
             log.error(f"[etapa 3/3] Falha: {exc}", exc_info=True)

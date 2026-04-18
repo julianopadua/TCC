@@ -64,14 +64,14 @@ modeling_scenarios:
   tf_E_minirocket:   "tf_E_minirocket"
   tf_F_ewma_lags:    "tf_F_ewma_lags"
   tf_F_minirocket:   "tf_F_minirocket"
-  # SARIMAX / champion: descomente as linhas abaixo (e o bloco em temporal_fusion_paths) para usar no CLI.
-  # Desativados no menu interativo do artigo:
+  # Champion TOP-K tsf_* + colunas originais (1_datasets_with_fusion/{base}/champion/)
+  tf_D_champion:    "tf_D_champion"
+  tf_E_champion:    "tf_E_champion"
+  tf_F_champion:    "tf_F_champion"
+  # SARIMAX: descomente no temporal_fusion_paths e aqui se precisar no CLI.
   # tf_D_sarimax_exog: "tf_D_sarimax_exog"
-  # tf_D_champion:    "tf_D_champion"
   # tf_E_sarimax_exog: "tf_E_sarimax_exog"
-  # tf_E_champion:    "tf_E_champion"
   # tf_F_sarimax_exog: "tf_F_sarimax_exog"
-  # tf_F_champion:    "tf_F_champion"
 
 # Mapeamento de scenario_folder -> subcaminho dentro de paths.data.temporal_fusion
 # Strings com "/" aqui NÃO são resolvidas pelo _resolve_paths (apenas cfg["paths"] é processado)
@@ -82,12 +82,12 @@ temporal_fusion_paths:
   tf_E_minirocket:   "base_E_with_rad_knn_calculated/minirocket"
   tf_F_ewma_lags:    "base_F_full_original_calculated/ewma_lags"
   tf_F_minirocket:   "base_F_full_original_calculated/minirocket"
+  tf_D_champion:     "base_D_with_rad_drop_rows_calculated/champion"
+  tf_E_champion:     "base_E_with_rad_knn_calculated/champion"
+  tf_F_champion:     "base_F_full_original_calculated/champion"
   # tf_D_sarimax_exog: "base_D_with_rad_drop_rows_calculated/sarimax_exog"
-  # tf_D_champion:     "base_D_with_rad_drop_rows_calculated_champion_tsfusion"
   # tf_E_sarimax_exog: "base_E_with_rad_knn_calculated/sarimax_exog"
-  # tf_E_champion:     "base_E_with_rad_knn_calculated_champion_tsfusion"
   # tf_F_sarimax_exog: "base_F_full_original_calculated/sarimax_exog"
-  # tf_F_champion:     "base_F_full_original_calculated_champion_tsfusion"
 
 logging:
   level: "INFO"

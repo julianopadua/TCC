@@ -216,13 +216,13 @@ def article_fusion_output_root(cfg: Dict[str, Any]) -> Path:
 
 def list_article_fusion_train_menu_keys(cfg: Dict[str, Any]) -> List[str]:
     """
-    Menu interativo do train_runner (fonte artigo): só cenários cuja subpasta de método
-    em ``temporal_fusion_paths`` é ``ewma_lags`` ou ``minirocket``, e com parquets no artigo.
-    (SARIMAX/champion ficam fora desta lista — descomente no config se precisar no CLI.)
+    Menu interativo do train_runner (fonte artigo): cenários cuja subpasta de método
+    em ``temporal_fusion_paths`` é ``ewma_lags``, ``minirocket`` ou ``champion``,
+    com parquets presentes sob ``paths.data.article`` / ``1_datasets_with_fusion``.
     """
     scens = cfg.get("modeling_scenarios") or {}
     tf_paths: Dict[str, str] = cfg.get("temporal_fusion_paths") or {}
-    allowed = frozenset({"ewma_lags", "minirocket"})
+    allowed = frozenset({"ewma_lags", "minirocket", "champion"})
     out: List[str] = []
     for k in sorted(scens.keys()):
         if not k.startswith("tf_"):
