@@ -31,8 +31,31 @@ try:
 except ImportError:
     pq = None  # type: ignore
 
+try:
+    import pandas as pd  # lazy stats (só para --deep)
+except Exception:  # pragma: no cover
+    pd = None  # type: ignore
+
 # Colunas que o train_runner e o artigo assumem em geral.
 CORE_LABEL_KEYS = ("cidade_norm", "ts_hour", "HAS_FOCO", "ANO")
+
+# Quando --deep estiver ligado, lemos apenas estas colunas para estatistica
+# leve (NaN ratio, pos_rate). O custo por arquivo é O(linhas * len(cols)).
+_DEEP_STATS_COLS = (
+    "ANO",
+    "HAS_FOCO",
+    "PRECIPITAÇÃO TOTAL, HORÁRIO (mm)",
+    "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)",
+    "UMIDADE RELATIVA DO AR, HORARIA (%)",
+    "RADIACAO GLOBAL (KJ/m²)",
+    "NDVI_buffer",
+    "EVI_buffer",
+)
+
+# Intervalo explicitamente validado pelo usuario apos re-geracao da base
+# champion. O audit sinaliza se cobertura e qualidade deles bate com os anos
+# "antigos" (ex.: 2007+).
+RECENTLY_GENERATED_YEARS = (2003, 2004, 2005, 2006)
 
 METHOD_SUBDIRS = (
     "ewma_lags",
@@ -52,12 +75,26 @@ class FileAudit:
 
 
 @dataclass
+class YearStats:
+    """Estatistica por ano calculada na passagem --deep."""
+    year: int
+    rows: int
+    pos_count: int
+    nan_ratios: Dict[str, float] = field(default_factory=dict)
+
+    @property
+    def pos_rate(self) -> float:
+        return (self.pos_count / self.rows) if self.rows else 0.0
+
+
+@dataclass
 class MethodAudit:
     name: str
     path: Path
     files: List[FileAudit] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    year_stats: Dict[int, YearStats] = field(default_factory=dict)
 
 
 def _year_from_name(name: str) -> Optional[int]:
@@ -171,7 +208,43 @@ def _only_float_precision_drift(type_keys: List[str]) -> bool:
     return kinds == {"f32", "f64"}
 
 
-def audit_method_dir(method_dir: Path) -> MethodAudit:
+def _collect_year_stats(path: Path) -> Optional[YearStats]:
+    """Le colunas do subset _DEEP_STATS_COLS e devolve YearStats ou None."""
+    if pq is None or pd is None:
+        return None
+    y = _year_from_name(path.name)
+    if y is None:
+        return None
+    try:
+        pf = pq.ParquetFile(str(path))
+        avail = set(pf.schema_arrow.names)
+        cols = [c for c in _DEEP_STATS_COLS if c in avail]
+        if not cols:
+            return YearStats(year=y, rows=int(pf.metadata.num_rows), pos_count=0)
+
+        total_rows = 0
+        pos = 0
+        nan_sum: Dict[str, int] = {c: 0 for c in cols if c != "ANO"}
+        for batch in pf.iter_batches(batch_size=500_000, columns=cols):
+            df = batch.to_pandas()
+            n = len(df)
+            total_rows += n
+            if "HAS_FOCO" in df.columns:
+                pos += int(pd.to_numeric(df["HAS_FOCO"], errors="coerce").fillna(0).astype(int).sum())
+            for c in nan_sum:
+                if c in df.columns:
+                    nan_sum[c] += int(df[c].isna().sum())
+
+        nan_ratios = {
+            c: (nan_sum[c] / total_rows) if total_rows else 0.0
+            for c in nan_sum
+        }
+        return YearStats(year=y, rows=total_rows, pos_count=pos, nan_ratios=nan_ratios)
+    except Exception:
+        return None
+
+
+def audit_method_dir(method_dir: Path, *, deep: bool = False) -> MethodAudit:
     name = method_dir.name
     ma = MethodAudit(name=name, path=method_dir)
     if not method_dir.is_dir():
@@ -193,6 +266,12 @@ def audit_method_dir(method_dir: Path) -> MethodAudit:
         _, issues, warns = _compare_schemas(ma.files)
         ma.errors.extend(issues)
         ma.warnings.extend(warns)
+
+    if deep:
+        for p in parquets:
+            ys = _collect_year_stats(p)
+            if ys is not None:
+                ma.year_stats[ys.year] = ys
 
     return ma
 
@@ -438,11 +517,89 @@ def render_audit_md(
             lines.append(f"- {n}")
         lines.append("")
 
+    # Deep stats (ligado por --deep): positive rate + NaN ratios por ano.
+    deep_any = any(m.year_stats for m in method_audits)
+    if deep_any:
+        lines.append("## Integridade por ano (`--deep`)")
+        lines.append("")
+        lines.append(
+            "Estatisticas calculadas lendo um subconjunto de colunas (ANO, HAS_FOCO, "
+            "meteo-core, NDVI/EVI). Use para validar anos recem regenerados contra o resto da base."
+        )
+        lines.append("")
+
+        for ma in method_audits:
+            if not ma.year_stats:
+                continue
+            lines.append(f"### `{ma.name}/`")
+            lines.append("")
+            lines.append("| Ano | Linhas | Pos (HAS_FOCO=1) | pos_rate | NaN ratio (colunas amostradas) |")
+            lines.append("|-----|--------|------------------|----------|---------------------------------|")
+            for y in sorted(ma.year_stats):
+                ys = ma.year_stats[y]
+                nans = ", ".join(
+                    f"`{c}`={r:.4f}" for c, r in sorted(ys.nan_ratios.items()) if r > 0
+                )
+                if not nans:
+                    nans = "sem NaN nas amostradas"
+                lines.append(
+                    f"| {ys.year} | {ys.rows:,} | {ys.pos_count:,} | {ys.pos_rate:.4%} | {nans} |"
+                )
+            lines.append("")
+
+            # Validacao especifica dos anos recem regenerados.
+            yrs_here = set(ma.year_stats.keys())
+            check_years = [y for y in RECENTLY_GENERATED_YEARS if y in yrs_here]
+            other_years = sorted(yrs_here - set(RECENTLY_GENERATED_YEARS))
+            if check_years and other_years:
+                avg_pos_rate_others = sum(
+                    ma.year_stats[y].pos_rate for y in other_years
+                ) / len(other_years)
+                avg_pos_rate_new = sum(
+                    ma.year_stats[y].pos_rate for y in check_years
+                ) / len(check_years)
+                lines.append(f"**Validacao {RECENTLY_GENERATED_YEARS[0]}-{RECENTLY_GENERATED_YEARS[-1]}**")
+                lines.append("")
+                lines.append(
+                    f"- pos_rate medio (anos recentes {check_years}): **{avg_pos_rate_new:.4%}**"
+                )
+                lines.append(
+                    f"- pos_rate medio (demais anos, n={len(other_years)}): **{avg_pos_rate_others:.4%}**"
+                )
+                # Sinais simples
+                if avg_pos_rate_new == 0 and avg_pos_rate_others > 0:
+                    lines.append(
+                        "- ⚠️  Anos recentes com **0 focos** — provavelmente o merge com bdq nao ocorreu para esses anos."
+                    )
+                elif avg_pos_rate_others > 0 and abs(avg_pos_rate_new - avg_pos_rate_others) / avg_pos_rate_others > 5.0:
+                    lines.append(
+                        "- ⚠️  Divergencia grande de pos_rate vs demais anos; inspecionar ingestao."
+                    )
+                else:
+                    lines.append(
+                        "- OK: pos_rate dos anos recentes em ordem de grandeza compativel com o resto da base."
+                    )
+                # NaN sanity: se anos recentes tiverem >50% NaN em colunas meteo-core, provavel falha de join.
+                bad_nan = []
+                for y in check_years:
+                    for c, r in ma.year_stats[y].nan_ratios.items():
+                        if r > 0.5:
+                            bad_nan.append((y, c, r))
+                if bad_nan:
+                    lines.append(
+                        "- ⚠️  NaN>50% nas colunas amostradas: "
+                        + "; ".join(f"{y}/{c}={r:.2f}" for y, c, r in bad_nan)
+                    )
+                lines.append("")
+
+        lines.append("---")
+        lines.append("")
+
     lines.append("## Como regenerar")
     lines.append("")
     lines.append("```bash")
     lines.append(
-        f"python -m src.article.audit_fusion_dataset --scenario {scenario_root.name}"
+        f"python -m src.article.audit_fusion_dataset --scenario {scenario_root.name} --deep"
     )
     lines.append("```")
     lines.append("")
@@ -489,6 +646,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Não comparar contagens com a base de coords.",
     )
     ap.add_argument(
+        "--deep",
+        action="store_true",
+        help=(
+            "Calcula estatisticas por ano (pos_rate, NaN ratios) lendo um subset de "
+            "colunas. Valida integracao de anos recem gerados (ex.: 2003-2006)."
+        ),
+    )
+    ap.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -520,7 +685,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     for sub in METHOD_SUBDIRS:
         d = scenario_root / sub
         if d.is_dir():
-            method_audits.append(audit_method_dir(d))
+            method_audits.append(audit_method_dir(d, deep=bool(args.deep)))
 
     coords_notes: List[str] = []
     if not args.no_coords_compare:

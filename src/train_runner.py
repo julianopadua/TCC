@@ -19,9 +19,13 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import pandas as pd
+
+# Default streaming batch size (rows) when reading parquets. Keeps
+# peak-RAM bounded even on wide minirocket schemas (~200 cols).
+_DEFAULT_BATCH_ROWS = int(os.environ.get("TRAIN_RUNNER_BATCH_ROWS", "500000"))
 
 try:
     from tqdm.auto import tqdm
@@ -621,15 +625,89 @@ class TrainingOrchestrator:
             return None
 
     def _load_concat(self, files: List[Path], cols: Optional[List[str]]) -> pd.DataFrame:
+        # Concat legado para o fallback sem filename-year: ainda usa o streaming
+        # para que nenhum arquivo unico estoure a RAM. Cada chunk ja vem em f32.
         dfs: List[pd.DataFrame] = []
         for f in files:
-            df = pd.read_parquet(f, columns=cols)
-            _downcast_floats(df)
-            dfs.append(df)
+            for df_chunk in self._iter_parquet_chunks_f32(f, cols):
+                dfs.append(df_chunk)
+        if not dfs:
+            return pd.DataFrame(columns=cols or [])
         out = pd.concat(dfs, ignore_index=True)
         del dfs
         gc.collect()
         return out
+
+    def _iter_parquet_chunks_f32(
+        self,
+        path: Path,
+        columns: Optional[List[str]],
+        batch_rows: Optional[int] = None,
+    ) -> Iterator[pd.DataFrame]:
+        """
+        Le um parquet em batches pequenos usando PyArrow e materializa cada
+        batch como DataFrame com floats ja em float32 (via cast Arrow-side).
+
+        Evita o pico de ~4-5 GiB observado em load_split_batched: o binding
+        pandas padrao aloca blocos float64 gigantes ao converter a tabela
+        inteira, mesmo quando os dados sao float32. Com row-batch streaming
+        + cast Arrow + self_destruct, o pico por chunk cai para:
+          batch_rows * n_cols * 4 bytes  (ex.: 500_000 x 200 x 4 ~= 380 MiB).
+        """
+        try:
+            import pyarrow as pa  # type: ignore
+            import pyarrow.parquet as pq  # type: ignore
+        except Exception as exc:
+            # Fallback absoluto: le tudo de uma vez (preserva compat, mas
+            # imprime aviso para que o gargalo nao passe despercebido).
+            self.log.warning(
+                f"[LOAD] pyarrow indisponivel ({exc}); usando pd.read_parquet integral."
+            )
+            df = pd.read_parquet(path, columns=columns)
+            _downcast_floats(df)
+            yield df
+            return
+
+        bs = int(batch_rows if batch_rows is not None else _DEFAULT_BATCH_ROWS)
+        if bs < 10_000:
+            bs = 10_000  # proteger contra batches patologicamente pequenos
+
+        pf = pq.ParquetFile(str(path))
+
+        # Constroi schema-alvo com float64 -> float32 para evitar pico f64
+        # durante a conversao para pandas.
+        try:
+            arrow_schema = pf.schema_arrow
+            requested = set(columns) if columns is not None else None
+            target_fields: List[Any] = []
+            for fld in arrow_schema:
+                if requested is not None and fld.name not in requested:
+                    continue
+                if pa.types.is_floating(fld.type) and fld.type == pa.float64():
+                    target_fields.append(pa.field(fld.name, pa.float32()))
+                else:
+                    target_fields.append(fld)
+            target_schema = pa.schema(target_fields)
+        except Exception:
+            target_schema = None  # type: ignore
+
+        iter_kwargs: Dict[str, Any] = {"batch_size": bs}
+        if columns is not None:
+            iter_kwargs["columns"] = columns
+
+        for batch in pf.iter_batches(**iter_kwargs):
+            if target_schema is not None:
+                try:
+                    batch = batch.cast(target_schema)
+                except Exception:
+                    pass  # segue sem cast; downcast pandas-side cobre o resto
+
+            # self_destruct libera os buffers Arrow apos a conversao.
+            df = batch.to_pandas(split_blocks=True, self_destruct=True)
+
+            # Garantia defensiva (ex.: caso cast tenha falhado).
+            _downcast_floats(df)
+            yield df
 
     def load_split_batched(
         self,
@@ -639,6 +717,7 @@ class TrainingOrchestrator:
         max_test_rows: Optional[int] = None,
         neg_pos_ratio: int = 200,
         min_neg_keep_per_chunk: int = 50_000,
+        batch_rows: Optional[int] = None,
     ) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
         """
         Carrega em batches por parquet (idealmente 1 por ano).
@@ -711,77 +790,118 @@ class TrainingOrchestrator:
             total=len(file_years),
             leave=True,
         )
+
+        eff_batch_rows = int(batch_rows if batch_rows is not None else _DEFAULT_BATCH_ROWS)
+        self.log.info(
+            f"[LOAD] streaming chunks batch_rows={eff_batch_rows:,} "
+            f"(pyarrow iter_batches + float32 cast)"
+        )
+
         for f, y_from_name in pbar:
             try:
                 pbar.set_postfix_str(f.name[:28], refresh=False)
-                df = pd.read_parquet(f, columns=cols)
+
+                # Partition e decidida pelo ano do nome do arquivo; todo o
+                # arquivo vai inteiro para train ou test. Se nao tiver ano
+                # no nome, cairia no fallback de _load_concat acima.
+                is_train = (
+                    bool(y_from_name <= train_max_year)
+                    if y_from_name is not None
+                    else None
+                )
+
+                chunk_idx = 0
+                budget_hit = False
+                for df in self._iter_parquet_chunks_f32(f, cols, batch_rows=eff_batch_rows):
+                    chunk_idx += 1
+
+                    if valid_features is None:
+                        valid_features = [ft for ft in self.features if ft in df.columns]
+
+                    if not valid_features:
+                        raise RuntimeError("Nenhuma feature valida encontrada no parquet.")
+
+                    # Limpeza / coerção (sempre in-place para evitar copias).
+                    df.dropna(subset=valid_features + [self.target, self.year_col], inplace=True)
+
+                    df[self.year_col] = pd.to_numeric(df[self.year_col], errors="coerce")
+                    df.dropna(subset=[self.year_col], inplace=True)
+                    df[self.year_col] = df[self.year_col].astype("int32")
+
+                    _coerce_binary_target(df, self.target)
+
+                    total_rows_seen += int(len(df))
+
+                    # Para filenames sem ano, decide por chunk usando y_max.
+                    if is_train is None:
+                        y_max = int(df[self.year_col].max()) if len(df) else -999999
+                        chunk_is_train = bool(y_max <= train_max_year)
+                    else:
+                        chunk_is_train = is_train
+
+                    # Downsampling por chunk: mantem 100% dos positivos e
+                    # limita negativos de acordo com budget global restante.
+                    if chunk_is_train and max_train_rows is not None:
+                        remaining = max(0, int(max_train_rows) - int(kept_train))
+                        if remaining <= 0:
+                            budget_hit = True
+                            del df
+                            continue
+                        df = _downsample_keep_all_pos(
+                            df=df,
+                            target=self.target,
+                            max_rows_remaining=remaining,
+                            neg_pos_ratio=neg_pos_ratio,
+                            min_neg_keep=min_neg_keep_per_chunk,
+                            seed=self.random_seed + int(y_from_name or 0) + chunk_idx,
+                        )
+
+                    if (not chunk_is_train) and max_test_rows is not None:
+                        remaining = max(0, int(max_test_rows) - int(kept_test))
+                        if remaining <= 0:
+                            budget_hit = True
+                            del df
+                            continue
+                        df = _downsample_keep_all_pos(
+                            df=df,
+                            target=self.target,
+                            max_rows_remaining=remaining,
+                            neg_pos_ratio=neg_pos_ratio,
+                            min_neg_keep=min_neg_keep_per_chunk,
+                            seed=self.random_seed + 10_000 + int(y_from_name or 0) + chunk_idx,
+                        )
+
+                    if chunk_is_train:
+                        train_parts.append(df)
+                        kept_train += int(len(df))
+                    else:
+                        test_parts.append(df)
+                        kept_test += int(len(df))
+
+                    # Libera referencia local antes do proximo batch.
+                    del df
+
+                if budget_hit:
+                    # Stream pode ter parado cedo por causa do orcamento;
+                    # ainda conta como leitura bem-sucedida.
+                    self.log.debug(f"[LOAD] budget_hit em {f.name} apos {chunk_idx} chunks")
+
                 read_ok += 1
 
-                if valid_features is None:
-                    valid_features = [ft for ft in self.features if ft in df.columns]
+                # gc entre arquivos: reduz heap-fragmentation em long runs.
+                gc.collect()
 
-                if not valid_features:
-                    raise RuntimeError("Nenhuma feature valida encontrada no parquet.")
-
-                df.dropna(subset=valid_features + [self.target, self.year_col], inplace=True)
-
-                df[self.year_col] = pd.to_numeric(df[self.year_col], errors="coerce")
-                df.dropna(subset=[self.year_col], inplace=True)
-                df[self.year_col] = df[self.year_col].astype("int32")
-
-                _coerce_binary_target(df, self.target)
-                _downcast_floats(df)
-
-                total_rows_seen += int(len(df))
-
-                if y_from_name is not None:
-                    is_train = bool(y_from_name <= train_max_year)
-                else:
-                    y_max = int(df[self.year_col].max()) if len(df) else -999999
-                    is_train = bool(y_max <= train_max_year)
-
-                if is_train and max_train_rows is not None:
-                    remaining = max(0, int(max_train_rows) - int(kept_train))
-                    if remaining <= 0:
-                        continue
-                    df = _downsample_keep_all_pos(
-                        df=df,
-                        target=self.target,
-                        max_rows_remaining=remaining,
-                        neg_pos_ratio=neg_pos_ratio,
-                        min_neg_keep=min_neg_keep_per_chunk,
-                        seed=self.random_seed + int(y_from_name or 0),
-                    )
-
-                if (not is_train) and max_test_rows is not None:
-                    remaining = max(0, int(max_test_rows) - int(kept_test))
-                    if remaining <= 0:
-                        continue
-                    df = _downsample_keep_all_pos(
-                        df=df,
-                        target=self.target,
-                        max_rows_remaining=remaining,
-                        neg_pos_ratio=neg_pos_ratio,
-                        min_neg_keep=min_neg_keep_per_chunk,
-                        seed=self.random_seed + 10_000 + int(y_from_name or 0),
-                    )
-
-                if is_train:
-                    train_parts.append(df)
-                    kept_train += int(len(df))
-                else:
-                    test_parts.append(df)
-                    kept_test += int(len(df))
-
-                if read_ok % 5 == 0:
+                if read_ok % 3 == 0:
                     self.log.info(
-                        f"[LOAD] batches_ok={read_ok}/{len(files)} | rows_seen={total_rows_seen} | kept_train={kept_train} kept_test={kept_test}"
+                        f"[LOAD] ok={read_ok}/{len(files)} | rows_seen={total_rows_seen:,} | "
+                        f"kept_train={kept_train:,} kept_test={kept_test:,}"
                     )
-                    MemoryMonitor.log_usage(self.log, "durante load batched")
+                    MemoryMonitor.log_usage(self.log, "durante load streaming")
 
             except Exception as e:
                 read_fail += 1
                 self.log.warning(f"[LOAD] falha ao ler {f.name}: {e}")
+                gc.collect()
 
         if valid_features is None:
             raise RuntimeError("[LOAD] nenhum parquet foi carregado com sucesso.")
@@ -821,6 +941,9 @@ class TrainingOrchestrator:
         overwrite_all: bool,
         skip_all: bool,
         on_exist: str = "interactive",
+        batch_rows: Optional[int] = None,
+        max_train_rows_override: Optional[int] = None,
+        max_test_rows_override: Optional[int] = None,
     ) -> Tuple[bool, bool]:
         """
         overwrite_all:
@@ -841,14 +964,29 @@ class TrainingOrchestrator:
 
         self._log_run_banner()
 
+        # Limites default por cenario, com overrides do CLI quando presentes.
+        default_max_train = 8_000_000 if is_calculated else None
+        default_max_test = 2_000_000 if is_calculated else None
+        max_train = (
+            max_train_rows_override
+            if max_train_rows_override is not None
+            else default_max_train
+        )
+        max_test = (
+            max_test_rows_override
+            if max_test_rows_override is not None
+            else default_max_test
+        )
+
         try:
             train_df, test_df, valid = self.load_split_batched(
                 test_size_years=_article_temporal_test_size_years(self.cfg),
                 gap_years=0,
-                max_train_rows=(8_000_000 if is_calculated else None),
-                max_test_rows=(2_000_000 if is_calculated else None),
+                max_train_rows=max_train,
+                max_test_rows=max_test,
                 neg_pos_ratio=200,
                 min_neg_keep_per_chunk=50_000,
+                batch_rows=batch_rows,
             )
         except Exception as e:
             self.log.error(f"[CRITICAL] load_split_batched: {e}")
@@ -1236,6 +1374,30 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="So valida entradas e imprime o plano; nao carrega dados nem treina.",
     )
     pr.add_argument(
+        "--batch-rows",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Rows por batch no streaming de parquets (default: env TRAIN_RUNNER_BATCH_ROWS "
+            f"ou {_DEFAULT_BATCH_ROWS}). Reduza em maquinas com pouca RAM (ex.: 200000)."
+        ),
+    )
+    pr.add_argument(
+        "--max-train-rows",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Override do limite de linhas de treino (default: 8M em cenarios *_calculated/tf_*).",
+    )
+    pr.add_argument(
+        "--max-test-rows",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Override do limite de linhas de teste (default: 2M em cenarios *_calculated/tf_*).",
+    )
+    pr.add_argument(
         "--article",
         action="store_true",
         help=(
@@ -1387,6 +1549,9 @@ def cmd_run(args: argparse.Namespace) -> None:
                 overwrite_all=overwrite_all,
                 skip_all=skip_all,
                 on_exist=on_exist,
+                batch_rows=getattr(args, "batch_rows", None),
+                max_train_rows_override=getattr(args, "max_train_rows", None),
+                max_test_rows_override=getattr(args, "max_test_rows", None),
             )
         except TrainRunnerOutputExistsError as e:
             print(f"[ERROR] {e}")

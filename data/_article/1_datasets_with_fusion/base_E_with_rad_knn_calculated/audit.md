@@ -1,6 +1,6 @@
 # Auditoria — `base_E_with_rad_knn_calculated`
 
-**Gerado em:** 2026-04-18 16:59 UTC
+**Gerado em:** 2026-04-24 10:23 UTC
 **Caminho:** `D:\Projetos\TCC\data\_article\1_datasets_with_fusion\base_E_with_rad_knn_calculated`
 
 Este ficheiro resume consistência de **schema**, **colunas** e **contagens de linhas** 
@@ -164,7 +164,7 @@ entre todos os parquets por subpasta de método (`ewma_lags`, `minirocket`, `cha
 ## `champion/`
 
 ### Avisos leves (precisão float)
-- 25 coluna(s) com `float` vs `double` entre ficheiros (comum entre anos). Leitura em pandas unifica sem perda de desenho experimental.
+- 12 coluna(s) com `float` vs `double` entre ficheiros (comum entre anos). Leitura em pandas unifica sem perda de desenho experimental.
 
 ### Avisos relevantes
 - tipo divergente para 'RISCO_FOGO': double em 11 ficheiro(s); string em 11 ficheiro(s)
@@ -173,10 +173,10 @@ entre todos os parquets por subpasta de método (`ewma_lags`, `minirocket`, `cha
 
 | Ano | Ficheiro | Linhas | Colunas | tsf_* |
 |-----|----------|--------|---------|-------|
-| 2003 | `inmet_bdq_2003_cerrado.parquet` | 6,336,896 | 89 | 50 |
-| 2004 | `inmet_bdq_2004_cerrado.parquet` | 6,343,808 | 89 | 50 |
-| 2005 | `inmet_bdq_2005_cerrado.parquet` | 9,566,464 | 89 | 50 |
-| 2006 | `inmet_bdq_2006_cerrado.parquet` | 9,668,160 | 89 | 50 |
+| 2003 | `inmet_bdq_2003_cerrado.parquet` | 396,056 | 89 | 50 |
+| 2004 | `inmet_bdq_2004_cerrado.parquet` | 396,488 | 89 | 50 |
+| 2005 | `inmet_bdq_2005_cerrado.parquet` | 597,904 | 89 | 50 |
+| 2006 | `inmet_bdq_2006_cerrado.parquet` | 604,260 | 89 | 50 |
 | 2007 | `inmet_bdq_2007_cerrado.parquet` | 2,363,172 | 89 | 50 |
 | 2008 | `inmet_bdq_2008_cerrado.parquet` | 4,000,732 | 89 | 50 |
 | 2009 | `inmet_bdq_2009_cerrado.parquet` | 4,371,032 | 89 | 50 |
@@ -213,21 +213,8 @@ entre todos os parquets por subpasta de método (`ewma_lags`, `minirocket`, `cha
 
 ---
 
-## Comparação com `0_datasets_with_coords` (mesmo cenário)
-
-Por ano, **`num_rows`** de cada método deve coincidir com o parquet de **coords** (mesma base de observações horárias).
-
-**Interpretação:** se `champion` tem **mais** linhas que `coords`, costuma ser efeito de chaves duplicadas no merge (produto cartesiano). O `article_orchestrator` deduplica `(cidade_norm, ts_hour)` no `feat_df` antes do join — regenere champion com `--overwrite` se estes deltas forem inesperados.
-
-Divergências registadas:
-
-- [champion] 2003: rows=6336896 vs coords=396056 (delta 5940840)
-- [champion] 2004: rows=6343808 vs coords=396488 (delta 5947320)
-- [champion] 2005: rows=9566464 vs coords=597904 (delta 8968560)
-- [champion] 2006: rows=9668160 vs coords=604260 (delta 9063900)
-
 ## Como regenerar
 
 ```bash
-python -m src.article.audit_fusion_dataset --scenario base_E_with_rad_knn_calculated
+python -m src.article.audit_fusion_dataset --scenario base_E_with_rad_knn_calculated --deep
 ```
