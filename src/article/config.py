@@ -158,7 +158,9 @@ def biomass_modeling_columns_for_schema(
         candidates = [COL_NDVI_POINT, COL_EVI_POINT]
     elif mode == "all_four":
         candidates = [COL_NDVI_BUFFER, COL_EVI_BUFFER, COL_NDVI_POINT, COL_EVI_POINT]
-    elif mode == "buffers":
+    elif mode in ("buffers", "biomass_only"):
+        # "biomass_only" restricts the full feature set to NDVI/EVI in train_runner;
+        # the set of biomass columns itself is still buffer-based.
         candidates = [COL_NDVI_BUFFER, COL_EVI_BUFFER]
     else:
         candidates = [COL_NDVI_BUFFER, COL_EVI_BUFFER]

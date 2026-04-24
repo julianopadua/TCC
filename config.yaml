@@ -235,7 +235,11 @@ article_pipeline:
   train_runner_results_subdir: "_results"
 
   # train_runner --article: quais colunas GEE NDVI/EVI incluir no modelo (intersecao com o schema).
-  # buffers = NDVI_buffer + EVI_buffer (alinha com fusao temporal); points = NDVI_point + EVI_point; all_four = as quatro.
+  # buffers      = NDVI_buffer + EVI_buffer (alinha com fusao temporal)
+  # points       = NDVI_point + EVI_point
+  # all_four     = as quatro colunas acima
+  # biomass_only = APENAS NDVI_buffer + EVI_buffer; descarta todas as features meteo/physics
+  #                (artigo, etapa 5 — validacao simplificada com vegetacao somente)
   modeling_biomass_mode: buffers
 
   # Cenários a processar (chaves em modeling_scenarios).

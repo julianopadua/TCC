@@ -462,12 +462,12 @@ class TemporalFusionEngineer:
             for aname, alpha in alphas.items():
                 colname = f"tsf_ewma_{tname}_{aname}"
                 result[colname] = series.transform(
-                    lambda x: x.ewm(alpha=alpha, adjust=False).mean()
+                    lambda x, a=alpha: x.ewm(alpha=a, adjust=False).mean()
                 )
 
             for lag_h in [1, 24, 168]:
                 colname = f"tsf_lag_{tname}_{lag_h}h"
-                result[colname] = series.transform(lambda x: x.shift(lag_h))
+                result[colname] = series.transform(lambda x, lh=lag_h: x.shift(lh))
 
         return result, {}
 

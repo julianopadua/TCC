@@ -110,8 +110,10 @@ def _coerce_binary_target(df: pd.DataFrame, target: str) -> None:
     # Garante target binario 0/1 em int8 e remove valores invalidos
     df[target] = pd.to_numeric(df[target], errors="coerce")
     df.dropna(subset=[target], inplace=True)
-    df = df.loc[df[target].isin([0, 1])]
-    # Reatribui no df original (mantem referencia)
+    # drop rows where target is not 0 or 1 (e.g. fractional values after coercion)
+    non_binary = ~df[target].isin([0, 1])
+    if non_binary.any():
+        df.drop(index=df.index[non_binary], inplace=True)
     df[target] = df[target].astype("int8")
 
 
@@ -461,9 +463,21 @@ class TrainingOrchestrator:
             "fator_propagacao",
         ]
 
+        # article_pipeline.modeling_biomass_mode == "biomass_only" restricts
+        # the feature set to NDVI/EVI exclusively (article stage 5 simplification).
+        ap = self.cfg.get("article_pipeline") or {}
+        self._biomass_only_mode = (
+            str(ap.get("modeling_biomass_mode", "buffers")).strip().lower()
+            == "biomass_only"
+        )
+
         # For tsfusion / tf_* scenarios, auto-detect tsf_* columns from the
         # first parquet so they enter the feature set without hard-coding names.
-        self.features = list(self._base_features)
+        if self._biomass_only_mode and self.use_article_data:
+            self.features = []
+        else:
+            self.features = list(self._base_features)
+
         if self._is_temporal_fusion_scenario():
             self._extend_with_tsf_columns()
         if self.use_article_data:
@@ -486,7 +500,8 @@ class TrainingOrchestrator:
         if self.use_article_data:
             self.log.info(f"article_coords_root={article_coords_root(self.cfg)}")
         self.log.info(
-            f"n_features={len(self.features)} | target={self.target} | year_col={self.year_col}"
+            f"n_features={len(self.features)} | target={self.target} | year_col={self.year_col} | "
+            f"biomass_only_mode={getattr(self, '_biomass_only_mode', False)}"
         )
         self.log.info(
             f"pid={os.getpid()} | python={sys.version.split()[0]} | random_seed={self.random_seed}"

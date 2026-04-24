@@ -239,6 +239,19 @@ def _build_champion(
             del feat_df
             gc.collect()
 
+        expected_rows = len(base)
+        actual_rows = len(merged)
+        if actual_rows > expected_rows * 1.05:
+            log.error(
+                f"[champion] ABORTED {out_path.name}: row count exploded "
+                f"({actual_rows} vs expected ~{expected_rows}). "
+                "Likely duplicate (cidade_norm, ts_hour) keys in a fusion parquet. "
+                "Regenerate fusion parquets with --overwrite and retry."
+            )
+            del merged, base
+            gc.collect()
+            continue
+
         merged.to_parquet(out_path, index=False)
         log.info(
             f"[champion] SAVED {out_path.name} | {len(merged)} rows | "
