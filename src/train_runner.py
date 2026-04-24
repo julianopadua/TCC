@@ -583,6 +583,55 @@ class TrainingOrchestrator:
         except Exception as e:
             self.log.warning(f"[BIOM] Nao foi possivel adicionar NDVI/EVI: {e}")
 
+    def _audit_source_parquets(self, files: List[Path]) -> Dict[str, Any]:
+        """Le apenas (cidade_norm, ts_hour) de cada parquet fonte e computa
+        ratio de duplicacao. Custa 2 colunas por arquivo, barato."""
+        import pyarrow.parquet as pq  # type: ignore
+
+        per_file: List[Dict[str, Any]] = []
+        anomalies: List[Dict[str, Any]] = []
+        total_rows = 0
+        total_unique = 0
+        for f in files:
+            entry: Dict[str, Any] = {"file": f.name, "path": str(f)}
+            try:
+                pf = pq.ParquetFile(f)
+                num_rows = int(pf.metadata.num_rows)
+                entry["rows"] = num_rows
+                schema_names = set(pf.schema_arrow.names)
+                key_cols = [c for c in ("cidade_norm", "ts_hour") if c in schema_names]
+                if len(key_cols) == 2:
+                    tbl = pf.read(columns=key_cols)
+                    df_keys = tbl.to_pandas()
+                    uniq = int(df_keys.drop_duplicates().shape[0])
+                    ratio = (num_rows / uniq) if uniq else 0.0
+                    entry["unique_keys"] = uniq
+                    entry["dup_ratio"] = round(ratio, 4)
+                    entry["status"] = "OK" if ratio < 1.01 else "DUPLICATED"
+                    total_rows += num_rows
+                    total_unique += uniq
+                    if ratio >= 1.01:
+                        anomalies.append(entry)
+                else:
+                    entry["status"] = "NO_KEYS"
+                    entry["missing_cols"] = [
+                        c for c in ("cidade_norm", "ts_hour") if c not in schema_names
+                    ]
+            except Exception as e:
+                entry["status"] = "ERROR"
+                entry["error"] = repr(e)
+            per_file.append(entry)
+
+        overall_ratio = (total_rows / total_unique) if total_unique else 0.0
+        return {
+            "per_file": per_file,
+            "anomalies": anomalies,
+            "total_source_rows": total_rows,
+            "total_source_unique_keys": total_unique,
+            "overall_dup_ratio": round(overall_ratio, 4),
+            "source_clean": bool(total_unique and overall_ratio < 1.01),
+        }
+
     def _discover_files(self) -> List[Path]:
         path = resolve_parquet_dir(
             self.cfg, self.scenario_folder, source=self._parquet_source
@@ -732,6 +781,26 @@ class TrainingOrchestrator:
         preview = names[:40]
         tail = " ..." if len(names) > 40 else ""
         self.log.info(f"[LOAD] n_parquets={len(files)} arquivos: {', '.join(preview)}{tail}")
+
+        # Pre-flight audit: detecta duplicacao em (cidade_norm, ts_hour) na fonte.
+        source_audit = self._audit_source_parquets(files)
+        if source_audit["anomalies"]:
+            self.log.warning(
+                f"[AUDIT] duplicacao detectada em {len(source_audit['anomalies'])} "
+                f"parquet(s) fonte. overall_ratio={source_audit['overall_dup_ratio']}x"
+            )
+            for a in source_audit["anomalies"][:5]:
+                self.log.warning(
+                    f"[AUDIT]   {a['file']}: rows={a.get('rows')} "
+                    f"unique={a.get('unique_keys')} ratio={a.get('dup_ratio')}x"
+                )
+        else:
+            self.log.info(
+                f"[AUDIT] fonte OK | {len(files)} parquet(s) | "
+                f"overall_ratio={source_audit['overall_dup_ratio']}x"
+            )
+        self._last_source_audit = source_audit
+
         cols = self._select_columns(files[0])
 
         years: List[int] = []
@@ -927,6 +996,46 @@ class TrainingOrchestrator:
             f"[LOAD] ok={read_ok} fail={read_fail} | train_rows={len(train_df)} test_rows={len(test_df)} | "
             f"features={len(valid_features)} | downsample={'ON' if downsample_on else 'OFF'}"
         )
+
+        # Audit pos-load: anos efetivos, dups, pos_rate
+        def _split_summary(df: pd.DataFrame) -> Dict[str, Any]:
+            n = int(len(df))
+            if n == 0:
+                return {"rows": 0, "unique_rows": 0, "dup_ratio": 0.0,
+                        "years": [], "pos_count": 0, "pos_rate": 0.0}
+            exact_uniq = int(df.drop_duplicates().shape[0])
+            years_list = sorted({int(y) for y in df[self.year_col].unique().tolist()})
+            pos = int((df[self.target] == 1).sum())
+            return {
+                "rows": n,
+                "unique_rows": exact_uniq,
+                "dup_ratio": round(n / exact_uniq, 4) if exact_uniq else 0.0,
+                "years": years_list,
+                "pos_count": pos,
+                "pos_rate": round(pos / n, 6),
+            }
+
+        train_stats = _split_summary(train_df)
+        test_stats = _split_summary(test_df)
+
+        self._last_data_audit = {
+            "scenario_key": self.scenario_key,
+            "scenario_folder": self.scenario_folder,
+            "parquet_source": self._parquet_source,
+            "n_parquets": len(files),
+            "read_ok": read_ok,
+            "read_fail": read_fail,
+            "n_features": len(valid_features),
+            "downsample": downsample_on,
+            "max_train_rows": max_train_rows,
+            "max_test_rows": max_test_rows,
+            "train_max_year": train_max_year if years else None,
+            "test_size_years": test_size_years,
+            "gap_years": gap_years,
+            "source": self._last_source_audit,
+            "train": train_stats,
+            "test": test_stats,
+        }
         MemoryMonitor.log_usage(self.log, "apos load batched/concat")
 
         del train_parts, test_parts
@@ -1147,6 +1256,7 @@ class TrainingOrchestrator:
                     "threshold": thr,
                     "host_snapshot": MemoryMonitor.get_snapshot(),
                     "train_wall_s": round(train_wall_s, 3),
+                    "data_audit": getattr(self, "_last_data_audit", None),
                 }
 
                 trainer.save_artifacts(metrics, run_meta=run_meta)

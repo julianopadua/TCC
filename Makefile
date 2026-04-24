@@ -18,6 +18,7 @@
 # Usar python como shell para tudo que precisar de logica cross-platform.
 # Receitas simples de uma linha funcionam em qualquer shell.
 MAKEFLAGS += --no-print-directory
+METHODS=ewma_lags minirocket
 
 # -----------------------------------------------------------------------------
 # Configuracao
@@ -96,17 +97,26 @@ pipeline-eda: ## Apenas EDA (plots + correlacoes)
 ##@ Fusao temporal e champion base
 
 .PHONY: fusion
-fusion: ## Regenera fusao temporal (ewma_lags/minirocket/sarimax/champion)
-	$(PY) -m src.article.article_orchestrator --scenario $(SCENARIO) $(EXTRA)
+fusion:
+	$(PY) -m src.article.article_orchestrator \
+		--scenario $(SCENARIO) \
+		--methods $(METHODS) \
+		$(EXTRA)
 
 .PHONY: champion
-champion: ## Regenera a base champion (fusao + selecao + champion builder)
-	$(PY) -m src.article.article_orchestrator --scenario $(SCENARIO) $(EXTRA)
+champion:
+	$(PY) -m src.article.article_orchestrator \
+		--scenario $(SCENARIO) \
+		--methods $(METHODS) \
+		$(EXTRA)
 
 .PHONY: champion-overwrite
-champion-overwrite: ## Regenera champion sobrescrevendo parquets existentes
-	$(PY) -m src.article.article_orchestrator --scenario $(SCENARIO) --overwrite $(EXTRA)
-
+champion-overwrite:
+	$(PY) -m src.article.article_orchestrator \
+		--scenario $(SCENARIO) \
+		--methods $(METHODS) \
+		--overwrite \
+		$(EXTRA)
 ##@ Auditoria de dados
 
 .PHONY: audit

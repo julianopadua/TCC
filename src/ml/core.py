@@ -413,6 +413,126 @@ class ModelOptimizer:
 
 
 # -----------------------------------------------------------------------------
+# Relatorio humano-legivel de validacao dos dados (salvo junto com metrics)
+# -----------------------------------------------------------------------------
+def _render_data_validation_md(
+    audit: Dict[str, Any],
+    run_meta: Dict[str, Any],
+    metrics: Dict[str, Any],
+    ts: str,
+) -> str:
+    src = audit.get("source", {}) or {}
+    tr = audit.get("train", {}) or {}
+    te = audit.get("test", {}) or {}
+
+    source_clean = bool(src.get("source_clean"))
+    train_clean = tr.get("rows", 0) == tr.get("unique_rows", 0)
+    test_clean = te.get("rows", 0) == te.get("unique_rows", 0)
+    overall_ok = source_clean and train_clean and test_clean
+
+    def _badge(ok: bool) -> str:
+        return "OK" if ok else "FAIL"
+
+    lines: list[str] = []
+    lines.append(f"# Data Validation Report — {run_meta.get('scenario_key','?')}")
+    lines.append("")
+    lines.append(f"- **Timestamp:** `{ts}`")
+    lines.append(f"- **Model:** `{run_meta.get('settings',{}).get('label') or metrics.get('model_type','?')}`")
+    lines.append(f"- **Scenario folder:** `{audit.get('scenario_folder','?')}`")
+    lines.append(f"- **Parquet source:** `{audit.get('parquet_source','?')}`")
+    lines.append(f"- **Overall status:** **{_badge(overall_ok)}**")
+    lines.append("")
+    lines.append("## Summary")
+    lines.append("")
+    lines.append("| Check | Status | Observed | Expected |")
+    lines.append("|---|---|---|---|")
+    lines.append(
+        f"| Source parquets (cidade_norm, ts_hour) dedup | {_badge(source_clean)} "
+        f"| ratio={src.get('overall_dup_ratio','?')}x | ratio ~ 1.0x |"
+    )
+    lines.append(
+        f"| Train: no exact-row duplicates | {_badge(train_clean)} "
+        f"| rows={tr.get('rows',0):,} / unique={tr.get('unique_rows',0):,} | equal |"
+    )
+    lines.append(
+        f"| Test: no exact-row duplicates | {_badge(test_clean)} "
+        f"| rows={te.get('rows',0):,} / unique={te.get('unique_rows',0):,} | equal |"
+    )
+    lines.append("")
+
+    lines.append("## Split")
+    lines.append("")
+    lines.append("| Field | Value |")
+    lines.append("|---|---|")
+    lines.append(f"| test_size_years | {audit.get('test_size_years')} |")
+    lines.append(f"| gap_years | {audit.get('gap_years')} |")
+    lines.append(f"| train_max_year | {audit.get('train_max_year')} |")
+    lines.append(f"| downsample | {'ON' if audit.get('downsample') else 'OFF'} |")
+    lines.append(f"| max_train_rows | {audit.get('max_train_rows')} |")
+    lines.append(f"| max_test_rows | {audit.get('max_test_rows')} |")
+    lines.append(f"| n_features | {audit.get('n_features')} |")
+    lines.append(f"| n_parquets | {audit.get('n_parquets')} (ok={audit.get('read_ok')}, fail={audit.get('read_fail')}) |")
+    lines.append("")
+
+    lines.append("## Train / Test")
+    lines.append("")
+    lines.append("| Metric | Train | Test |")
+    lines.append("|---|---|---|")
+    lines.append(f"| rows | {tr.get('rows',0):,} | {te.get('rows',0):,} |")
+    lines.append(f"| unique_rows | {tr.get('unique_rows',0):,} | {te.get('unique_rows',0):,} |")
+    lines.append(f"| dup_ratio | {tr.get('dup_ratio',0)}x | {te.get('dup_ratio',0)}x |")
+    lines.append(f"| pos_count | {tr.get('pos_count',0):,} | {te.get('pos_count',0):,} |")
+    lines.append(f"| pos_rate | {tr.get('pos_rate',0):.4%} | {te.get('pos_rate',0):.4%} |")
+    tr_years = tr.get("years") or []
+    te_years = te.get("years") or []
+    lines.append(
+        f"| years | {tr_years[0] if tr_years else '-'}..{tr_years[-1] if tr_years else '-'} ({len(tr_years)}) "
+        f"| {te_years[0] if te_years else '-'}..{te_years[-1] if te_years else '-'} ({len(te_years)}) |"
+    )
+    lines.append("")
+
+    per_file = src.get("per_file") or []
+    if per_file:
+        lines.append("## Source parquets")
+        lines.append("")
+        lines.append("| File | Rows | Unique keys | Ratio | Status |")
+        lines.append("|---|---:|---:|---:|---|")
+        for e in per_file:
+            lines.append(
+                f"| `{e.get('file','?')}` "
+                f"| {e.get('rows',0):,} "
+                f"| {e.get('unique_keys','-')} "
+                f"| {e.get('dup_ratio','-')}x "
+                f"| {e.get('status','?')} |"
+            )
+        lines.append("")
+
+    anomalies = src.get("anomalies") or []
+    if anomalies:
+        lines.append("## Anomalies")
+        lines.append("")
+        lines.append("> Parquets com dup_ratio > 1.01x.")
+        lines.append("")
+        for a in anomalies:
+            lines.append(
+                f"- `{a.get('file','?')}` rows={a.get('rows',0):,} "
+                f"unique={a.get('unique_keys','-')} ratio={a.get('dup_ratio','-')}x"
+            )
+        lines.append("")
+
+    if not overall_ok:
+        lines.append("## Action required")
+        lines.append("")
+        if not source_clean:
+            lines.append("- Rodar `make dedupe` e regenerar fusao (physics-features + pipeline-coords + champion-overwrite).")
+        if not train_clean or not test_clean:
+            lines.append("- Duplicatas exatas aparecem no split carregado. Se a fonte esta limpa, investigar downsample/merge.")
+        lines.append("")
+
+    return "\n".join(lines) + "\n"
+
+
+# -----------------------------------------------------------------------------
 # 5. TRAINER BASE
 # -----------------------------------------------------------------------------
 class BaseModelTrainer(ABC):
@@ -592,5 +712,19 @@ class BaseModelTrainer(ABC):
         with open(metrics_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=4, ensure_ascii=False)
 
-        self.log.info(f"[SAVE] model={model_path.name} | metrics={metrics_path.name} | dir={self.output_dir}")
+        # Relatorio de validacao dos dados (humano-legivel), se houver audit.
+        md_path = None
+        try:
+            audit = (run_meta or {}).get("data_audit")
+            if audit:
+                md = _render_data_validation_md(audit, run_meta or {}, metrics, ts)
+                md_path = self.output_dir / f"data_validation_{ts}.md"
+                md_path.write_text(md, encoding="utf-8")
+        except Exception as e:
+            self.log.warning(f"[SAVE] falha ao gerar data_validation.md: {e}")
+
+        suffix = f" | validation={md_path.name}" if md_path else ""
+        self.log.info(
+            f"[SAVE] model={model_path.name} | metrics={metrics_path.name}{suffix} | dir={self.output_dir}"
+        )
         MemoryMonitor.log_usage(self.log, "apos salvar")
