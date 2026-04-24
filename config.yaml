@@ -270,6 +270,13 @@ article_pipeline:
     tile_scale: 2
     pause_between_chunks_s: 0.5
     gee_retry_max_attempts: 3
+    # Número de chunks processados em paralelo por imagem MOD13.
+    # Cada chunk sempre roda buf+pt concorrentemente (2 threads internas).
+    # Chamadas GEE em vôo simultâneo = workers * 2.
+    # workers=1  → serial original (buf depois pt, com pause_between_chunks_s)
+    # workers=2  → 2 chunks ao mesmo tempo, 4 chamadas GEE simultâneas
+    # workers=4  → 4 chunks ao mesmo tempo, 8 chamadas GEE simultâneas (agressivo)
+    workers: 2
 
   # EDA — cidades benchmark (lista explícita para reprodutibilidade).
   # Deve coincidir com valores em cidade_norm nos Parquets.

@@ -103,6 +103,45 @@ def _pos_rate(y: pd.Series) -> float:
         return 0.0
 
 
+def _source_rows_by_split(
+    source_audit: Dict[str, Any],
+    train_years: List[int],
+    test_years: List[int],
+) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Soma linhas brutas (pré-downsampling) por split, usando o per-file audit.
+
+    Retorna (train_total, test_total) — None se não for possível calcular.
+    """
+    if not source_audit:
+        return None, None
+    per_file = source_audit.get("per_file") or []
+    if not per_file:
+        return None, None
+
+    train_set = set(train_years)
+    test_set = set(test_years)
+    tr_total = 0
+    te_total = 0
+
+    for entry in per_file:
+        fname = entry.get("file", "")
+        m = _YEAR_RE.search(fname)
+        if not m:
+            continue
+        try:
+            y = int(m.group(1))
+        except Exception:
+            continue
+        rows = int(entry.get("rows") or 0)
+        if y in train_set:
+            tr_total += rows
+        elif y in test_set:
+            te_total += rows
+
+    return (tr_total if tr_total else None), (te_total if te_total else None)
+
+
 def _downcast_floats(df: pd.DataFrame) -> None:
     # float64 -> float32 (impacto grande em RAM)
     cols = df.select_dtypes(include=["float64"]).columns
@@ -1239,6 +1278,16 @@ class TrainingOrchestrator:
                 metrics = trainer.evaluate(X_te, y_te, thr=thr)
                 MemoryMonitor.log_usage(self.log, "pos-eval")
 
+                _da = getattr(self, "_last_data_audit", None) or {}
+                _train_audit = _da.get("train") or {}
+                _test_audit = _da.get("test") or {}
+                _src_audit = _da.get("source") or {}
+                _tr_years: List[int] = _train_audit.get("years") or []
+                _te_years: List[int] = _test_audit.get("years") or []
+                _tr_src_rows, _te_src_rows = _source_rows_by_split(
+                    _src_audit, _tr_years, _te_years
+                )
+
                 run_meta = {
                     "scenario_key": self.scenario_key,
                     "scenario_folder": self.scenario_folder,
@@ -1248,8 +1297,17 @@ class TrainingOrchestrator:
                     "n_features": len(valid),
                     "target": self.target,
                     "year_col": self.year_col,
+                    # --- split temporal ---
+                    "split_train_max_year": _da.get("train_max_year"),
+                    "split_test_size_years": _da.get("test_size_years"),
+                    "train_years": _tr_years if _tr_years else None,
+                    "test_years": _te_years if _te_years else None,
+                    # --- linhas usadas (pos-downsampling, o que o modelo viu) ---
                     "train_rows": int(len(y_tr)),
                     "test_rows": int(len(y_te)),
+                    # --- linhas brutas nos parquets dos anos de treino/teste ---
+                    "train_rows_total": _tr_src_rows,
+                    "test_rows_total": _te_src_rows,
                     "train_pos_rate": _pos_rate(y_tr),
                     "test_pos_rate": _pos_rate(y_te),
                     "settings": st,

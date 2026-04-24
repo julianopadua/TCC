@@ -22,11 +22,13 @@ import logging
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
 _project_root = Path(__file__).resolve().parents[2]
 if str(_project_root) not in sys.path:
@@ -89,6 +91,73 @@ def ensure_gee_site_key(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out[SITE_KEY_COL] = compute_gee_site_key(out)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Paridade de linhas — validação pré-GEE
+# ---------------------------------------------------------------------------
+def _read_parquet_rowcount(path: Path) -> int:
+    """Lê contagem de linhas do footer Parquet (sem carregar dados)."""
+    return pq.read_metadata(str(path)).num_rows
+
+
+def _validate_rowcount_parity(
+    year: int,
+    scenarios: Dict[str, str],
+    output_root: Path,
+    modeling_dir: Path,
+    log: logging.Logger,
+) -> bool:
+    """
+    Antes do GEE, verifica que cada parquet em 0_datasets_with_coords tem o
+    mesmo número de linhas que o parquet-fonte em data/modeling.
+
+    Retorna True se todos os cenários passam; False se qualquer um falha.
+    O GEE não deve rodar em dados corrompidos.
+    """
+    all_ok = True
+    log.info("[rowcount] === Verificação de paridade de linhas — ano %d ===", year)
+    for key, folder in sorted(scenarios.items()):
+        coords_path = output_root / "0_datasets_with_coords" / folder / PARQUET_TEMPLATE.format(year=year)
+        modeling_path = modeling_dir / folder / PARQUET_TEMPLATE.format(year=year)
+
+        if not coords_path.exists():
+            log.error(
+                "[rowcount] AUSENTE  cenario=%-2s ano=%d  coords=%s",
+                key, year, coords_path,
+            )
+            all_ok = False
+            continue
+
+        if not modeling_path.exists():
+            log.warning(
+                "[rowcount] SKIP     cenario=%-2s ano=%d  fonte de modeling nao encontrada: %s",
+                key, year, modeling_path,
+            )
+            continue
+
+        try:
+            n_coords = _read_parquet_rowcount(coords_path)
+            n_modeling = _read_parquet_rowcount(modeling_path)
+        except Exception as exc:
+            log.error("[rowcount] ERRO     cenario=%-2s ano=%d  lendo metadata: %s", key, year, exc)
+            all_ok = False
+            continue
+
+        if n_coords == n_modeling:
+            log.info(
+                "[rowcount] OK      cenario=%-2s ano=%d  coords=%d == modeling=%d",
+                key, year, n_coords, n_modeling,
+            )
+        else:
+            log.error(
+                "[rowcount] FAIL    cenario=%-2s ano=%d  coords=%d  !=  modeling=%d  (diff=%+d)"
+                " — GEE ABORTADO para este ano.",
+                key, year, n_coords, n_modeling, n_coords - n_modeling,
+            )
+            all_ok = False
+
+    return all_ok
 
 
 # ---------------------------------------------------------------------------
@@ -223,71 +292,38 @@ def extract_weekly_biomass_gee(
 
         img = _mod13_prepare_image(img_raw, ee, bands)
 
-        for chunk in chunks:
-            buf_feats = []
-            pt_feats = []
-            for rec in chunk:
-                lat = float(rec["lat_foco"])
-                lon = float(rec["lon_foco"])
-                sk = str(rec["gee_site_key"])
-                cid = str(rec["cidade_norm"])
-                pt_geom = ee.Geometry.Point([lon, lat])
-                buf_geom = pt_geom.buffer(buffer_m)
-                props = {"gee_site_key": sk, "cidade_norm": cid}
-                buf_feats.append(ee.Feature(buf_geom, props))
-                pt_feats.append(ee.Feature(pt_geom, props))
+        workers = max(1, gcfg.workers)
 
-            buf_fc = ee.FeatureCollection(buf_feats)
-            pt_fc = ee.FeatureCollection(pt_feats)
-
-            def _reduce_buf():
-                return img.reduceRegions(
-                    collection=buf_fc,
-                    reducer=ee.Reducer.mean(),
-                    scale=gcfg.scale_m,
-                    tileScale=tile_scale,
-                ).getInfo()
-
-            def _reduce_pt():
-                return img.reduceRegions(
-                    collection=pt_fc,
-                    reducer=ee.Reducer.mean(),
-                    scale=gcfg.scale_m,
-                    tileScale=tile_scale,
-                ).getInfo()
-
-            buf_info = call_gee_with_retry(log, _reduce_buf, max_attempts=ra)
-            if pause_s > 0:
-                time.sleep(pause_s)
-            pt_info = call_gee_with_retry(log, _reduce_pt, max_attempts=ra)
-            if pause_s > 0:
-                time.sleep(pause_s)
-
-            if buf_info is None or pt_info is None:
-                log.warning(
-                    "reduceRegions falhou (imagem %d/%d, chunk com %d sites).",
-                    i + 1,
-                    n_images,
-                    len(chunk),
+        if workers == 1:
+            # Serial: comportamento original — buf depois pt, com pause entre chunks.
+            for chunk in chunks:
+                chunk_rows = _extract_chunk(
+                    chunk, img, ee, bands, buffer_m, gcfg.scale_m,
+                    tile_scale, ra, log, composite_start, i + 1, int(n_images),
                 )
-                continue
-
-            bm = _features_to_map(buf_info, bands + ["cidade_norm"])
-            pm = _features_to_map(pt_info, bands)
-
-            for rec in chunk:
-                sk = str(rec["gee_site_key"])
-                bprops = bm.get(sk, {})
-                pprops = pm.get(sk, {})
-                row: Dict[str, Any] = {
-                    "cidade_norm": rec["cidade_norm"],
-                    "gee_site_key": sk,
-                    "composite_start": composite_start,
-                }
-                for b in bands:
-                    row[f"{b}_buffer"] = bprops.get(b)
-                    row[f"{b}_point"] = pprops.get(b)
-                rows.append(row)
+                rows.extend(chunk_rows)
+                if pause_s > 0:
+                    time.sleep(pause_s)
+        else:
+            # Paralelo: até `workers` chunks concorrentes por imagem.
+            # Cada chunk sempre executa buf+pt simultaneamente (2 threads internas).
+            # Chamadas GEE em vôo = workers * 2.  pause_between_chunks_s ignorado.
+            with ThreadPoolExecutor(max_workers=workers) as _outer:
+                futs = [
+                    _outer.submit(
+                        _extract_chunk,
+                        chunk, img, ee, bands, buffer_m, gcfg.scale_m,
+                        tile_scale, ra, log, composite_start, i + 1, int(n_images),
+                    )
+                    for chunk in chunks
+                ]
+                for fut in as_completed(futs):
+                    try:
+                        rows.extend(fut.result())
+                    except Exception as exc:
+                        log.warning(
+                            "Chunk falhou (imagem %d/%d): %s", i + 1, int(n_images), exc
+                        )
 
         if (i + 1) % 5 == 0 or (i + 1) == n_images:
             log.info("  Processadas %d/%d imagens MOD13 (%d).", i + 1, n_images, year)
@@ -295,6 +331,96 @@ def extract_weekly_biomass_gee(
     if not rows:
         return None
     return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# Worker de chunk — buf + pt sempre concorrentes por chunk
+# ---------------------------------------------------------------------------
+def _extract_chunk(
+    chunk: List[Dict],
+    img: Any,
+    ee: Any,
+    bands: List[str],
+    buffer_m: float,
+    scale_m: int,
+    tile_scale: int,
+    ra: int,
+    log: logging.Logger,
+    composite_start: Any,
+    img_idx: int,
+    n_images: int,
+) -> List[Dict[str, Any]]:
+    """
+    Executa reduceRegions (buffer e ponto) para um chunk de sites em uma imagem.
+
+    buf e pt são submetidos a um ThreadPoolExecutor(max_workers=2) interno para
+    rodar concorrentemente — ambas são chamadas HTTP ao GEE, portanto I/O-bound.
+    Retorna lista de dicts de linha prontos para acumular em `rows`.
+    """
+    buf_feats: List[Any] = []
+    pt_feats: List[Any] = []
+    for rec in chunk:
+        lat = float(rec["lat_foco"])
+        lon = float(rec["lon_foco"])
+        sk = str(rec["gee_site_key"])
+        cid = str(rec["cidade_norm"])
+        pt_geom = ee.Geometry.Point([lon, lat])
+        buf_geom = pt_geom.buffer(buffer_m)
+        props = {"gee_site_key": sk, "cidade_norm": cid}
+        buf_feats.append(ee.Feature(buf_geom, props))
+        pt_feats.append(ee.Feature(pt_geom, props))
+
+    buf_fc = ee.FeatureCollection(buf_feats)
+    pt_fc = ee.FeatureCollection(pt_feats)
+
+    def _rbuf() -> Optional[Dict]:
+        return img.reduceRegions(
+            collection=buf_fc,
+            reducer=ee.Reducer.mean(),
+            scale=scale_m,
+            tileScale=tile_scale,
+        ).getInfo()
+
+    def _rpt() -> Optional[Dict]:
+        return img.reduceRegions(
+            collection=pt_fc,
+            reducer=ee.Reducer.mean(),
+            scale=scale_m,
+            tileScale=tile_scale,
+        ).getInfo()
+
+    with ThreadPoolExecutor(max_workers=2) as _ex:
+        f_buf = _ex.submit(call_gee_with_retry, log, _rbuf, max_attempts=ra)
+        f_pt = _ex.submit(call_gee_with_retry, log, _rpt, max_attempts=ra)
+        buf_info = f_buf.result()
+        pt_info = f_pt.result()
+
+    if buf_info is None or pt_info is None:
+        log.warning(
+            "reduceRegions falhou (imagem %d/%d, chunk com %d sites).",
+            img_idx, n_images, len(chunk),
+        )
+        return []
+
+    bm = _features_to_map(buf_info, bands + ["cidade_norm"])
+    pm = _features_to_map(pt_info, bands)
+
+    chunk_rows: List[Dict[str, Any]] = []
+    for rec in chunk:
+        sk = str(rec["gee_site_key"])
+        bprops = bm.get(sk, {})
+        pprops = pm.get(sk, {})
+        row: Dict[str, Any] = {
+            "cidade_norm": rec["cidade_norm"],
+            "gee_site_key": sk,
+            "composite_start": composite_start,
+        }
+        for b in bands:
+            row[f"{b}_buffer"] = bprops.get(b)
+            row[f"{b}_point"] = pprops.get(b)
+        chunk_rows.append(row)
+
+    return chunk_rows
 
 
 # ---------------------------------------------------------------------------
@@ -549,6 +675,23 @@ def run_gee_pipeline(
 
     for year in years_to_run:
         log.info("=== Ano %d ===", year)
+
+        # ------------------------------------------------------------------
+        # Paridade de linhas: coords vs. modeling (idempotência de qualidade)
+        # ------------------------------------------------------------------
+        if not _validate_rowcount_parity(
+            year,
+            dict(acfg.scenarios),
+            acfg.output_root,
+            acfg.modeling_dir,
+            log,
+        ):
+            log.error(
+                "=== Ano %d ABORTADO: paridade de linhas falhou. "
+                "Verifique enrich_coords antes de rodar o GEE. ===",
+                year,
+            )
+            continue
 
         canon_path = canonical_dir / PARQUET_TEMPLATE.format(year=year)
         df_canon = pd.read_parquet(canon_path)

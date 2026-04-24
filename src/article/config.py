@@ -33,6 +33,9 @@ class GeeArticleConfig:
     tile_scale: int
     pause_between_chunks_s: float
     gee_retry_max_attempts: int
+    # Chunks processados em paralelo por imagem (buf+pt sempre concorrentes por chunk).
+    # Chamadas GEE em vôo = workers * 2. workers=1 → comportamento serial original.
+    workers: int
 
 
 @dataclass
@@ -107,6 +110,7 @@ def load_article_config() -> ArticlePipelineConfig:
         tile_scale=int(gee_raw.get("tile_scale", 2)),
         pause_between_chunks_s=float(gee_raw.get("pause_between_chunks_s", 0.5)),
         gee_retry_max_attempts=int(gee_raw.get("gee_retry_max_attempts", 3)),
+        workers=max(1, int(gee_raw.get("workers", 2))),
     )
 
     eda_raw = raw.get("eda", {})
