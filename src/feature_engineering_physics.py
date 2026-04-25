@@ -241,10 +241,16 @@ class PhysicsFeatureEngineer:
                          # Caso precise converter (geralmente parquets já estao ok)
                          pass
                     
-                    # O Merge
+                    # Dedup df_features em (cidade_norm, ts_hour): features fisicas
+                    # sao per-hora-per-cidade, nao per-foco. Sem essa dedup, linhas
+                    # multi-foco em df_target x df_features viram produto cartesiano
+                    # (ex: 2x em target * 2x em features = 4x no merge).
+                    df_features_keyed = df_features.drop_duplicates(
+                        subset=['cidade_norm', 'ts_hour'], keep='first'
+                    )
                     df_enriched = df_target.merge(
-                        df_features, 
-                        on=['cidade_norm', 'ts_hour'], 
+                        df_features_keyed,
+                        on=['cidade_norm', 'ts_hour'],
                         how='left'
                     )
                     

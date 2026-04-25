@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 
 # Default streaming batch size (rows) when reading parquets. Keeps
@@ -147,6 +148,63 @@ def _downcast_floats(df: pd.DataFrame) -> None:
     cols = df.select_dtypes(include=["float64"]).columns
     for c in cols:
         df[c] = df[c].astype("float32")
+
+
+def _concat_parts_low_mem(
+    parts: List[pd.DataFrame],
+    features: List[str],
+    target_col: str,
+    year_col: str,
+    log,
+) -> pd.DataFrame:
+    """Concatena partes em um DataFrame final usando buffers numpy pre-alocados.
+
+    Por que existe: pd.concat consolida colunas same-dtype no BlockManager,
+    o que exige ~2x a RAM final (partes originais + bloco consolidado vivos
+    simultaneamente). Em cenarios largos como minirocket (180 features
+    float32 x 7M+ linhas = ~5 GiB), isso estoura a RAM mesmo com streaming
+    chunked do parquet. Aqui o pico fica em ~1x (buffer final) + 1 chunk
+    temporario, pois cada parte e liberada imediatamente apos a copia.
+    """
+    if not parts:
+        return pd.DataFrame(columns=list(features) + [target_col, year_col])
+
+    parts = [p for p in parts if p is not None and len(p) > 0]
+    if not parts:
+        return pd.DataFrame(columns=list(features) + [target_col, year_col])
+
+    n_total = sum(len(p) for p in parts)
+    n_feat = len(features)
+    bytes_x = n_total * n_feat * 4  # float32
+
+    log.info(
+        f"[CONCAT] low-mem: rows={n_total:,} x feats={n_feat} float32 "
+        f"~ {bytes_x / 1024**3:.2f} GiB | parts={len(parts)}"
+    )
+
+    X = np.empty((n_total, n_feat), dtype=np.float32)
+    y = np.empty(n_total, dtype=np.int8)
+    yr = np.empty(n_total, dtype=np.int32)
+
+    offset = 0
+    for i in range(len(parts)):
+        p = parts[i]
+        m = len(p)
+        if m == 0:
+            parts[i] = None
+            continue
+        X[offset:offset + m, :] = p[features].to_numpy(dtype=np.float32, copy=False)
+        y[offset:offset + m] = p[target_col].to_numpy(dtype=np.int8, copy=False)
+        yr[offset:offset + m] = p[year_col].to_numpy(dtype=np.int32, copy=False)
+        offset += m
+        parts[i] = None
+
+    gc.collect()
+
+    df = pd.DataFrame(X, columns=list(features), copy=False)
+    df[target_col] = y
+    df[year_col] = yr
+    return df
 
 
 def _coerce_binary_target(df: pd.DataFrame, target: str) -> None:
@@ -1014,21 +1072,38 @@ class TrainingOrchestrator:
         if valid_features is None:
             raise RuntimeError("[LOAD] nenhum parquet foi carregado com sucesso.")
 
-        train_df = (
-            pd.concat(train_parts, ignore_index=True)
-            if train_parts
-            else pd.DataFrame(columns=(valid_features + [self.target, self.year_col]))
+        train_df = _concat_parts_low_mem(
+            train_parts, valid_features, self.target, self.year_col, self.log
         )
-        test_df = (
-            pd.concat(test_parts, ignore_index=True)
-            if test_parts
-            else pd.DataFrame(columns=(valid_features + [self.target, self.year_col]))
-        )
+        train_parts.clear()
+        gc.collect()
 
-        if len(train_df):
-            train_df = train_df.sort_values(self.year_col).reset_index(drop=True)
-        if len(test_df):
-            test_df = test_df.sort_values(self.year_col).reset_index(drop=True)
+        test_df = _concat_parts_low_mem(
+            test_parts, valid_features, self.target, self.year_col, self.log
+        )
+        test_parts.clear()
+        gc.collect()
+
+        # Os parquets sao descobertos por ordem alfabetica do filename
+        # (inmet_bdq_YYYY_*.parquet) -> ja chegam em ordem cronologica e
+        # cada arquivo cai inteiro em train OU test. Logo train_df/test_df
+        # sao monotonic non-decreasing em year_col na entrada. Reordenar
+        # alocaria uma copia full (~5 GiB para minirocket) sem necessidade.
+        # Sort defensivo somente se detectarmos quebra de ordem.
+        def _maybe_sort_by_year(df: pd.DataFrame) -> pd.DataFrame:
+            if not len(df):
+                return df
+            yrs = df[self.year_col].to_numpy(copy=False)
+            if yrs.size > 1 and not bool(np.all(yrs[1:] >= yrs[:-1])):
+                self.log.warning(
+                    f"[SORT] {self.year_col} fora de ordem; aplicando sort_values "
+                    f"(pico de RAM esperado para esta operacao)."
+                )
+                return df.sort_values(self.year_col, kind="mergesort").reset_index(drop=True)
+            return df.reset_index(drop=True)
+
+        train_df = _maybe_sort_by_year(train_df)
+        test_df = _maybe_sort_by_year(test_df)
 
         downsample_on = bool(max_train_rows is not None or max_test_rows is not None)
         self.log.info(
@@ -1036,22 +1111,37 @@ class TrainingOrchestrator:
             f"features={len(valid_features)} | downsample={'ON' if downsample_on else 'OFF'}"
         )
 
-        # Audit pos-load: anos efetivos, dups, pos_rate
+        # Audit pos-load: anos efetivos, dups, pos_rate.
+        # Para datasets muito largos (e.g. minirocket), drop_duplicates faria
+        # hash em ~7M linhas x 180 cols e alocaria uma copia da saida -> pico
+        # >2x. Skip nesse caso; auditoria de duplicacao ja e feita upstream
+        # via _audit_source_parquets() (na fonte) e via dedupe-stage.
+        _DUP_CHECK_MAX_ROWS = 3_000_000
+
         def _split_summary(df: pd.DataFrame) -> Dict[str, Any]:
             n = int(len(df))
             if n == 0:
                 return {"rows": 0, "unique_rows": 0, "dup_ratio": 0.0,
-                        "years": [], "pos_count": 0, "pos_rate": 0.0}
-            exact_uniq = int(df.drop_duplicates().shape[0])
+                        "years": [], "pos_count": 0, "pos_rate": 0.0,
+                        "exact_dup_check": "empty"}
+            if n > _DUP_CHECK_MAX_ROWS:
+                exact_uniq = None
+                dup_ratio = None
+                check_status = f"skipped (n={n:,} > {_DUP_CHECK_MAX_ROWS:,})"
+            else:
+                exact_uniq = int(df.drop_duplicates().shape[0])
+                dup_ratio = round(n / exact_uniq, 4) if exact_uniq else 0.0
+                check_status = "ok"
             years_list = sorted({int(y) for y in df[self.year_col].unique().tolist()})
             pos = int((df[self.target] == 1).sum())
             return {
                 "rows": n,
                 "unique_rows": exact_uniq,
-                "dup_ratio": round(n / exact_uniq, 4) if exact_uniq else 0.0,
+                "dup_ratio": dup_ratio,
                 "years": years_list,
                 "pos_count": pos,
                 "pos_rate": round(pos / n, 6),
+                "exact_dup_check": check_status,
             }
 
         train_stats = _split_summary(train_df)

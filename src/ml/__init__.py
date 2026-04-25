@@ -10,11 +10,15 @@ from .core import (
     ModelOptimizer,
     MemoryMonitor
 )
+from . import _resource as resource
+from . import _gs_cache as gs_cache
 
 __all__ = [
     "BaseModelTrainer",
     "TCCMetrics",
     "TemporalSplitter",
     "ModelOptimizer",
-    "MemoryMonitor"
+    "MemoryMonitor",
+    "resource",
+    "gs_cache",
 ]

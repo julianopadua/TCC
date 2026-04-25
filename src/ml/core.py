@@ -426,12 +426,35 @@ def _render_data_validation_md(
     te = audit.get("test", {}) or {}
 
     source_clean = bool(src.get("source_clean"))
-    train_clean = tr.get("rows", 0) == tr.get("unique_rows", 0)
-    test_clean = te.get("rows", 0) == te.get("unique_rows", 0)
-    overall_ok = source_clean and train_clean and test_clean
 
-    def _badge(ok: bool) -> str:
+    def _split_clean(s: Dict[str, Any]) -> Optional[bool]:
+        """None se a checagem de dup foi pulada (dataset muito grande)."""
+        u = s.get("unique_rows")
+        if u is None:
+            return None
+        return s.get("rows", 0) == u
+
+    train_clean = _split_clean(tr)
+    test_clean = _split_clean(te)
+    # Overall: source_clean obrigatorio; splits sao OK se True ou se skipped (None).
+    overall_ok = (
+        source_clean
+        and (train_clean is None or train_clean)
+        and (test_clean is None or test_clean)
+    )
+
+    def _badge(ok: Optional[bool]) -> str:
+        if ok is None:
+            return "SKIP"
         return "OK" if ok else "FAIL"
+
+    def _fmt_uniq(s: Dict[str, Any]) -> str:
+        u = s.get("unique_rows")
+        return f"{u:,}" if isinstance(u, int) else "-"
+
+    def _fmt_ratio(s: Dict[str, Any]) -> str:
+        r = s.get("dup_ratio")
+        return f"{r}x" if r is not None else "-"
 
     lines: list[str] = []
     lines.append(f"# Data Validation Report — {run_meta.get('scenario_key','?')}")
@@ -450,13 +473,15 @@ def _render_data_validation_md(
         f"| Source parquets (cidade_norm, ts_hour) dedup | {_badge(source_clean)} "
         f"| ratio={src.get('overall_dup_ratio','?')}x | ratio ~ 1.0x |"
     )
+    tr_check = tr.get("exact_dup_check") or ("skipped" if tr.get("unique_rows") is None else "ok")
+    te_check = te.get("exact_dup_check") or ("skipped" if te.get("unique_rows") is None else "ok")
     lines.append(
         f"| Train: no exact-row duplicates | {_badge(train_clean)} "
-        f"| rows={tr.get('rows',0):,} / unique={tr.get('unique_rows',0):,} | equal |"
+        f"| rows={tr.get('rows',0):,} / unique={_fmt_uniq(tr)} ({tr_check}) | equal |"
     )
     lines.append(
         f"| Test: no exact-row duplicates | {_badge(test_clean)} "
-        f"| rows={te.get('rows',0):,} / unique={te.get('unique_rows',0):,} | equal |"
+        f"| rows={te.get('rows',0):,} / unique={_fmt_uniq(te)} ({te_check}) | equal |"
     )
     lines.append("")
 
@@ -479,8 +504,8 @@ def _render_data_validation_md(
     lines.append("| Metric | Train | Test |")
     lines.append("|---|---|---|")
     lines.append(f"| rows | {tr.get('rows',0):,} | {te.get('rows',0):,} |")
-    lines.append(f"| unique_rows | {tr.get('unique_rows',0):,} | {te.get('unique_rows',0):,} |")
-    lines.append(f"| dup_ratio | {tr.get('dup_ratio',0)}x | {te.get('dup_ratio',0)}x |")
+    lines.append(f"| unique_rows | {_fmt_uniq(tr)} | {_fmt_uniq(te)} |")
+    lines.append(f"| dup_ratio | {_fmt_ratio(tr)} | {_fmt_ratio(te)} |")
     lines.append(f"| pos_count | {tr.get('pos_count',0):,} | {te.get('pos_count',0):,} |")
     lines.append(f"| pos_rate | {tr.get('pos_rate',0):.4%} | {te.get('pos_rate',0):.4%} |")
     tr_years = tr.get("years") or []

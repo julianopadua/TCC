@@ -68,11 +68,19 @@ help: ## Lista comandos disponiveis
 
 .PHONY: dedupe-dry
 dedupe-dry: ## Dry-run: reporta duplicatas em data/modeling/base_* (nao escreve)
-	$(PY) -m src.dedupe_base_datasets $(EXTRA)
+	$(PY) -m src.dedupe_base_datasets --stage modeling $(EXTRA)
 
 .PHONY: dedupe
 dedupe: ## Remove duplicatas exatas em data/modeling/base_* (sobrescreve!)
-	$(PY) -m src.dedupe_base_datasets --apply $(EXTRA)
+	$(PY) -m src.dedupe_base_datasets --stage modeling --apply $(EXTRA)
+
+.PHONY: dedupe-coords-dry
+dedupe-coords-dry: ## Dry-run: reporta duplicatas de chave em 0_datasets_with_coords/
+	$(PY) -m src.dedupe_base_datasets --stage coords $(EXTRA)
+
+.PHONY: dedupe-coords
+dedupe-coords: ## Remove duplicatas de (cidade_norm, ts_hour) em 0_datasets_with_coords/ (sobrescreve!)
+	$(PY) -m src.dedupe_base_datasets --stage coords --apply $(EXTRA)
 
 ##@ Engenharia de features fisicas (regenera base_*_calculated)
 
@@ -117,6 +125,20 @@ champion-overwrite:
 		--methods $(METHODS) \
 		--overwrite \
 		$(EXTRA)
+##@ Auditoria do pipeline (detecta duplicacao em cada estagio)
+
+.PHONY: audit-pipeline
+audit-pipeline: ## Audita todos os estagios (modeling -> calculated -> coords -> fusion). Grava em data/_article/_audits/
+	$(PY) -m src.audit_pipeline --stage all $(EXTRA)
+
+.PHONY: audit-stage
+audit-stage: ## Audita um estagio especifico. Use: make audit-stage STAGE=modeling|calculated|coords|fusion
+	$(PY) -m src.audit_pipeline --stage $(STAGE) $(EXTRA)
+
+.PHONY: audit-pipeline-latest
+audit-pipeline-latest: ## Abre/mostra o LATEST.md dos audits
+	@$(PY) -c "from pathlib import Path; p=Path('data/_article/_audits/LATEST.md'); print(p.read_text(encoding='utf-8') if p.exists() else 'Nenhum audit encontrado. Rode make audit-pipeline.')"
+
 ##@ Auditoria de dados
 
 .PHONY: audit
