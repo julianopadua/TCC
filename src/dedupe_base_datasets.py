@@ -2,21 +2,18 @@
 
 Estagios:
     modeling  (default)
-        Remove linhas bit-identicas de data/modeling/base_* (6 bases pre-calc).
-        Usa drop_duplicates() em todas as colunas.
+        data/modeling/base_* — **mesma regra que coords**:
+        drop_duplicates(subset=['cidade_norm','ts_hour'], keep='first').
+        Opcional --full-row para o antigo modo (linhas bit-identicas em todas as colunas).
 
     coords
-        Remove duplicatas de chave em data/_article/0_datasets_with_coords/*.
-        Usa drop_duplicates(subset=['cidade_norm','ts_hour'], keep='first').
-        Garante exatamente 1 linha por par (cidade_norm, ts_hour) sem re-rodar
-        o pipeline GEE, que e custoso.
+        data/_article/0_datasets_with_coords/* — chave (cidade_norm, ts_hour).
 
 Uso:
-    python -m src.dedupe_base_datasets                       # dry-run modeling
-    python -m src.dedupe_base_datasets --apply               # aplica modeling
-    python -m src.dedupe_base_datasets --apply --bases base_E_with_rad_knn
+    python -m src.dedupe_base_datasets                       # dry-run modeling (por chave)
+    python -m src.dedupe_base_datasets --apply
+    python -m src.dedupe_base_datasets --apply --full-row       # modo legado: somente linhas identicas
 
-    python -m src.dedupe_base_datasets --stage coords        # dry-run coords
     python -m src.dedupe_base_datasets --stage coords --apply
 """
 from __future__ import annotations
@@ -72,9 +69,13 @@ def _dedupe_parquet_full(path: Path, log, apply: bool) -> dict:
 
 
 def _dedupe_parquet_keys(path: Path, log, apply: bool) -> dict:
-    """Drop duplicate (cidade_norm, ts_hour) keys, keep='first' (coords stage)."""
+    """Drop duplicate (cidade_norm, ts_hour) keys, keep='first'."""
     df = pd.read_parquet(path)
     before = len(df)
+    miss = [c for c in KEY_COLS if c not in df.columns]
+    if miss:
+        log.error(f"  {path.name}: colunas ausentes {miss} — skip")
+        return {"file": str(path), "before": before, "after": before, "removed": 0}
     df2 = df.drop_duplicates(subset=KEY_COLS, keep="first")
     after = len(df2)
     removed = before - after
@@ -128,11 +129,19 @@ def _run_stage(
         log.info("Dry-run. Rode novamente com --apply para escrever.")
 
 
-def run_modeling(bases: List[str], apply: bool, year: Optional[int] = None) -> None:
+def run_modeling(
+    bases: List[str],
+    apply: bool,
+    year: Optional[int] = None,
+    use_full_row: bool = False,
+) -> None:
     cfg = loadConfig()
     log = get_logger("dedupe.modeling")
     root = Path(cfg["paths"]["data"]["modeling"])
-    _run_stage("modeling", root, bases, apply, year, _dedupe_parquet_full, log)
+    fn = _dedupe_parquet_full if use_full_row else _dedupe_parquet_keys
+    tag = "full_row" if use_full_row else "key_subset"
+    log.info(f"modeling dedupe mode = {tag} {KEY_COLS}")
+    _run_stage("modeling", root, bases, apply, year, fn, log)
 
 
 def run_coords(bases: List[str], apply: bool, year: Optional[int] = None) -> None:
@@ -152,11 +161,17 @@ def main() -> None:
     p.add_argument("--bases", nargs="+", default=None,
                    help="Bases a processar (default: todas do estagio).")
     p.add_argument("--year", type=int, default=None, help="Ano especifico (default: todos).")
+    p.add_argument(
+        "--full-row",
+        action="store_true",
+        help="Somente modeling: remove apenas linhas identicas em todas as colunas (legado). "
+        "Sem esta flag, usa subset cidade_norm+ts_hour como coords.",
+    )
     args = p.parse_args()
 
     if args.stage == "modeling":
         bases = args.bases or list(DEFAULT_MODELING_BASES)
-        run_modeling(bases, args.apply, args.year)
+        run_modeling(bases, args.apply, args.year, use_full_row=args.full_row)
     else:
         bases = args.bases or list(DEFAULT_COORDS_BASES)
         run_coords(bases, args.apply, args.year)

@@ -4,7 +4,7 @@ Aponta para o ultimo relatorio de cada estagio do pipeline.
 
 | Stage | Status | Total | OK | Soft dup | Duplicated | Path |
 |---|---|---:|---:|---:|---:|---|
-| `modeling` | - | - | - | - | - | (nao rodado) |
+| `modeling` | OK | 66 | 60 | 6 | 0 | [20260428_192401_modeling/summary.md](20260428_192401_modeling/summary.md) |
 | `calculated` | - | - | - | - | - | (nao rodado) |
-| `coords` | OK | 66 | 66 | 0 | 0 | [20260424_153619_coords/summary.md](20260424_153619_coords/summary.md) |
+| `coords` | - | - | - | - | - | (nao rodado) |
 | `fusion` | - | - | - | - | - | (nao rodado) |

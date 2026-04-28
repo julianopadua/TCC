@@ -67,11 +67,11 @@ help: ## Lista comandos disponiveis
 ##@ Correcao de duplicatas (dedup upstream)
 
 .PHONY: dedupe-dry
-dedupe-dry: ## Dry-run: reporta duplicatas em data/modeling/base_* (nao escreve)
+dedupe-dry: ## Dry-run: duplicatas (cidade_norm+ts_hour) em data/modeling/base_*
 	$(PY) -m src.dedupe_base_datasets --stage modeling $(EXTRA)
 
 .PHONY: dedupe
-dedupe: ## Remove duplicatas exatas em data/modeling/base_* (sobrescreve!)
+dedupe: ## Remove duplicatas por chave em data/modeling/base_* — use EXTRA=--full-row p/ modo legado
 	$(PY) -m src.dedupe_base_datasets --stage modeling --apply $(EXTRA)
 
 .PHONY: dedupe-coords-dry
@@ -138,6 +138,10 @@ audit-stage: ## Audita um estagio especifico. Use: make audit-stage STAGE=modeli
 .PHONY: audit-pipeline-latest
 audit-pipeline-latest: ## Abre/mostra o LATEST.md dos audits
 	@$(PY) -c "from pathlib import Path; p=Path('data/_article/_audits/LATEST.md'); print(p.read_text(encoding='utf-8') if p.exists() else 'Nenhum audit encontrado. Rode make audit-pipeline.')"
+
+.PHONY: audit-row-parity
+audit-row-parity: ## Conta linhas: consolidated/INMET vs data/modeling/base_* (parquet). Gera _audits/*_row_parity/
+	$(PY) -m src.audit_row_parity $(EXTRA)
 
 ##@ Auditoria de dados
 

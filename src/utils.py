@@ -466,10 +466,13 @@ def unzip_file(zip_path: Path | str, out_dir: Path | str, skip_if_exists: bool =
 
     zip_path = Path(zip_path)
     out_dir = Path(out_dir)
+    # Só pula se já houver arquivo extraído; pasta vazia (ou só dirs) permite nova extração
     if skip_if_exists and out_dir.exists():
-        if log:
-            log.info(f"[SKIP] {zip_path.name} já extraído em {out_dir}")
-        return list(out_dir.rglob("*"))
+        has_any_file = any(p.is_file() for p in out_dir.rglob("*"))
+        if has_any_file:
+            if log:
+                log.info(f"[SKIP] {zip_path.name} já extraído em {out_dir}")
+            return list(out_dir.rglob("*"))
 
     ensure_dir(out_dir)
     try:

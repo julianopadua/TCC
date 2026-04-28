@@ -448,10 +448,15 @@ raw = get_path("paths", "data", "raw")
 python src/bdqueimadas_scraper.py --years 2019 2020
 ```
 
-### Consolidação manual × processado (Cerrado)
+### Consolidação BDQueimadas (COIDS → `data/consolidated/BDQUEIMADAS`)
+
+Por padrão o script usa os CSV em `data/processed/ID_BDQUEIMADAS/` (cada ano = arquivo nacional).
+Se só existirem os `.zip` em `data/raw/ID_BDQUEIMADAS/`, ele **extrai automaticamente** antes de consolidar
+(use `--no-auto-extract` para desligar). Opcional `--legacy-manual-merge` cruza exportador manual em `raw/BDQUEIMADAS`.
 
 ```bash
 python src/bdqueimadas_consolidated.py --years 2019 --biome "Cerrado"
+python src/bdqueimadas_consolidated.py --legacy-manual-merge --years 2019 --biome "Cerrado"
 ```
 
 ### INMET

@@ -52,13 +52,25 @@ OUT_CERRADO = Path(OUT_DIR) / "municipios_cerrado.csv"
 # [SEÇÃO 2] FUNÇÕES DE SUPORTE
 # -----------------------------------------------------------------------------
 def _year_paths(processed_root: Path, years: Iterable[int]) -> List[Path]:
+    """Resolve focos_br_ref_YYYY.csv tolerando pasta extra dentro do zip COIDS."""
     paths: List[Path] = []
     for y in years:
-        p = processed_root / f"focos_br_ref_{y}" / f"focos_br_ref_{y}.csv"
-        if p.exists():
-            paths.append(p)
+        stem = f"focos_br_ref_{y}"
+        fname = f"{stem}.csv"
+        direct = processed_root / stem / fname
+        if direct.is_file():
+            paths.append(direct)
+            continue
+        matches = sorted(
+            [p for p in processed_root.rglob(fname) if p.is_file()],
+            key=lambda p: len(p.parts),
+        )
+        if len(matches) >= 1:
+            if len(matches) > 1:
+                log.warning("Varios %s — usando %s", fname, matches[0])
+            paths.append(matches[0])
         else:
-            log.warning(f"[SKIP] CSV inexistente para {y}: {p}")
+            log.warning("[SKIP] CSV inexistente para %s (esperado sob %s)", y, processed_root)
     return paths
 
 def _read_minimal_columns(csv_path: Path) -> pd.DataFrame:

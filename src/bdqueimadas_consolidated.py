@@ -1,17 +1,23 @@
 # src/consolidated_bdqueimadas.py
 # =============================================================================
-# BDQUEIMADAS — Consolidação (RAW exportador_*_ref_YYYY.csv × PROCESSADO focos_br_ref_YYYY.csv)
-# Regra: junção 1:1 por (HORA + PAIS + ESTADO + MUNICIPIO) com filtro opcional por Bioma.
+# BDQUEIMADAS — Consolidação a partir dos CSV COIDS (data/processed/ID_BDQUEIMADAS)
+#
+# Modo default (integração atual):
+#   - Lê focos_br_ref_{ANO}/focos_br_ref_{ANO}.csv (baixados pelo bdqueimadas_scraper.py).
+#   - Normaliza datas/geo-chaves como antes; filtro opcional por bioma (coluna Bioma/bioma).
+#   - Dedup por (__DT_H à hora + país + UF + município) — primeira ocorrência (compatível).
+# Opção legado (--legacy-manual-merge):
+#   - Cruza exportador_* manual em raw/BDQUEIMADAS com o processado (fluxo antigo).
+#
 # Saídas:
 #   - data/consolidated/BDQUEIMADAS/bdq_targets_{YYYY}[_<bioma>].csv        (por ano)
 #   - data/consolidated/BDQUEIMADAS/bdq_targets_all_years[_<bioma>].csv     (multi-anos)
-#   - OU bdq_targets_{Y1}_{Y2}[_<bioma>].csv se especificar um intervalo explícito
 # Dep.: utils.py (loadConfig, get_logger, get_path, ensure_dir, normalize_key)
 # =============================================================================
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Iterable, Tuple, Set
+from typing import Iterable, List, Optional, Tuple
 import re
 import time
 import unicodedata
@@ -25,6 +31,7 @@ from utils import (
     get_path,
     ensure_dir,
     normalize_key,
+    unzip_all_in_dir,
 )
 
 # =============================================================================
@@ -36,9 +43,11 @@ log = get_logger("bdqueimadas.consolidate", kind="load", per_run_file=True)
 # =============================================================================
 # PATHS
 # =============================================================================
-RAW_BDQ_DIR  = Path(get_path("paths", "data", "raw")) / "BDQUEIMADAS"
+RAW_BDQ_DIR = Path(get_path("paths", "data", "raw")) / "BDQUEIMADAS"
+# Zips COIDS (mesmo layout do bdqueimadas_scraper.py)
+RAW_ID_BDQ_DIR = Path(get_path("paths", "data", "raw")) / "ID_BDQUEIMADAS"
 PROC_BDQ_DIR = Path(get_path("paths", "data", "processed")) / "ID_BDQUEIMADAS"
-OUT_DIR      = ensure_dir(Path(get_path("paths", "data", "external")) / "BDQUEIMADAS")
+OUT_DIR = ensure_dir(Path(get_path("paths", "data", "external")) / "BDQUEIMADAS")
 
 # =============================================================================
 # HELPERS — ENCODING, NORMALIZAÇÃO, DATAS
@@ -103,10 +112,99 @@ def list_manual_year_files(raw_dir: Path = RAW_BDQ_DIR) -> List[Tuple[int, Path]
     cand.sort(key=lambda t: t[0])
     return cand
 
-def processed_file_for_year(year: int, proc_root: Path = PROC_BDQ_DIR) -> Optional[Path]:
-    subdir = proc_root / f"focos_br_ref_{year}"
-    p = subdir / f"focos_br_ref_{year}.csv"
-    return p if p.exists() else None
+_FOCOS_FILENAME_RE = re.compile(r"^focos_br_ref_(\d{4})\.csv$", re.IGNORECASE)
+
+
+def resolve_processed_focos_csv(year: int, proc_root: Path = PROC_BDQ_DIR) -> Optional[Path]:
+    """
+    Localiza focos_br_ref_{ano}.csv sob proc_root.
+
+    O zip do COIDS às vezes gera uma pasta extra (ex.:
+    .../focos_br_ref_2003/focos_br_ref_2003/focos_br_ref_2003.csv),
+    então não basta o path “plano” de um só nível.
+    """
+    if not proc_root.is_dir():
+        return None
+
+    stem = f"focos_br_ref_{year}"
+    canonical = proc_root / stem / f"{stem}.csv"
+    if canonical.is_file():
+        return canonical
+
+    fname = f"{stem}.csv"
+    matches = [p for p in proc_root.rglob(fname) if p.is_file()]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        matches.sort(key=lambda p: len(p.parts))
+        log.warning(
+            "Varios %s em %s — usando %s",
+            fname,
+            proc_root,
+            matches[0],
+        )
+        return matches[0]
+    return None
+
+
+def discover_processed_years(proc_root: Path = PROC_BDQ_DIR) -> List[int]:
+    """Anos com focos_br_ref_YYYY.csv em qualquer subpasta de proc_root."""
+    if not proc_root.is_dir():
+        return []
+    years: set[int] = set()
+    for p in proc_root.rglob("focos_br_ref_*.csv"):
+        if not p.is_file():
+            continue
+        m = _FOCOS_FILENAME_RE.match(p.name)
+        if m:
+            years.add(int(m.group(1)))
+    return sorted(years)
+
+
+def _has_any_focos_csv(proc_root: Path = PROC_BDQ_DIR) -> bool:
+    return proc_root.is_dir() and any(proc_root.rglob("focos_br_ref_*.csv"))
+
+
+def maybe_extract_zips_from_raw(auto: bool = True) -> None:
+    """
+    Se não há CSV processado mas existem *.zip em RAW_ID_BDQ_DIR, extrai para PROC_BDQ_DIR
+    (mesmo comportamento do bdqueimadas_scraper). Cada zip já é Brasil inteiro naquele ano.
+    """
+    if not auto:
+        return
+    if _has_any_focos_csv(PROC_BDQ_DIR):
+        return
+    if not RAW_ID_BDQ_DIR.is_dir():
+        return
+    zips = sorted(RAW_ID_BDQ_DIR.glob("*.zip"))
+    if not zips:
+        return
+    log.info(
+        "Sem focos_br_ref_*.csv em %s — extraindo %d zip(s) de %s (1 arquivo CSV por ano).",
+        PROC_BDQ_DIR,
+        len(zips),
+        RAW_ID_BDQ_DIR,
+    )
+    ensure_dir(PROC_BDQ_DIR)
+    unzip_all_in_dir(RAW_ID_BDQ_DIR, PROC_BDQ_DIR, make_subdir_from_zip=True, log=log)
+
+
+def _hint_missing_focos_data() -> str:
+    return (
+        f"Ainda sem focos_br_ref_*.csv em {PROC_BDQ_DIR}. "
+        f"Coloque os zips em {RAW_ID_BDQ_DIR} ou rode: python src/bdqueimadas_scraper.py"
+    )
+
+
+def _column_ci(df: pd.DataFrame, candidates: Tuple[str, ...]) -> Optional[str]:
+    """Resolve nome real da coluna (case-insensitive)."""
+    cmap = {str(c).strip().lower(): c for c in df.columns}
+    for cand in candidates:
+        key = cand.strip().lower()
+        if key in cmap:
+            return cmap[key]
+    return None
+
 
 # =============================================================================
 # NOMEAÇÃO DE SAÍDAS (compatível com INMET)
@@ -144,13 +242,24 @@ MANUAL_DT_COL = "DataHora"  # no MANUAL
 PROC_DT_COL   = "data_pas"  # no PROCESSADO
 
 def _maybe_filter_biome(df: pd.DataFrame, biome: Optional[str]) -> Tuple[pd.DataFrame, int]:
+    """Filtra por bioma usando coluna Bioma/bioma (aliases case-insensitive)."""
     total = len(df)
-    if biome and "Bioma" in df.columns:
-        tgt = normalize_key(biome)
-        df = df.loc[df["__BIO_KEY"] == tgt].copy()
-        log.info(f"  filtro Bioma={biome} (key={tgt}): {len(df):,} / {total:,}")
-    else:
+    if not biome:
         log.info(f"  sem filtro de Bioma: {total:,} linhas")
+        return df, len(df)
+
+    bio_src = _column_ci(df, ("Bioma", "bioma", "BIOMA"))
+    if bio_src is None:
+        log.warning(
+            f"  bioma solicitado ({biome!r}) mas CSV sem coluna de bioma — mantendo todas as {total:,} linhas"
+        )
+        return df, len(df)
+
+    tgt = normalize_key(biome)
+    df = df.copy()
+    df["__BIO_KEY"] = df[bio_src].map(normalize_key)
+    df = df.loc[df["__BIO_KEY"] == tgt].copy()
+    log.info(f"  filtro Bioma={biome} (key={tgt}): {len(df):,} / {total:,}")
     return df, len(df)
 
 def load_manual(path: Path, biome: Optional[str] = None, validation: bool = False) -> Tuple[pd.DataFrame, int]:
@@ -166,10 +275,9 @@ def load_manual(path: Path, biome: Optional[str] = None, validation: bool = Fals
     df["__DT_H"] = _floor_hour(df["__DT"])
 
     # Chaves de junção (robustas) — usam utils.normalize_key (minúsculo, sem diacríticos)
-    df["__PAIS_KEY"]  = df["Pais"].map(normalize_key)
-    df["__UF_KEY"]    = df["Estado"].map(normalize_key)
-    df["__MUN_KEY"]   = df["Municipio"].map(normalize_key)
-    df["__BIO_KEY"]   = df["Bioma"].map(normalize_key) if "Bioma" in df.columns else ""
+    df["__PAIS_KEY"] = df["Pais"].map(normalize_key)
+    df["__UF_KEY"] = df["Estado"].map(normalize_key)
+    df["__MUN_KEY"] = df["Municipio"].map(normalize_key)
 
     # Colunas de saída (legíveis) — sem diacríticos, UPPER (sem perder letras)
     df["PAIS_OUT"]      = df["Pais"].map(_ascii_upper_no_diacritics)
@@ -209,44 +317,162 @@ def load_manual(path: Path, biome: Optional[str] = None, validation: bool = Fals
     return df, expected_rows
 
 def load_processed(path: Path, restrict_pairs: Optional[pd.DataFrame] = None, validation: bool = False) -> pd.DataFrame:
-    log.info(f"[PHASE] Lendo PROCESSADO: {path.name}")
+    """Somente IDs/coords para merge legado MANUAL × processado (schema fixo lowercase)."""
+    log.info(f"[PHASE] Lendo PROCESSADO (merge legado): {path.name}")
     t0 = time.time()
     df = _read_csv_smart(path)
     log.info(f"  linhas lidas (proc): {len(df):,} | tempo={time.time()-t0:,.2f}s")
 
     log.info("[PHASE] Normalizando PROCESSADO (datas, strings)")
     t1 = time.time()
-    df["__DT"]   = _parse_proc_datetime(df[PROC_DT_COL])
+    if PROC_DT_COL not in df.columns:
+        dt_col = _column_ci(df, ("data_pas", "datahora", "data_hora"))
+        if dt_col is None:
+            raise ValueError(f"[legacy merge] Sem coluna de data ({PROC_DT_COL}). Colunas: {list(df.columns)}")
+        df["__DT"] = pd.to_datetime(df[dt_col], errors="coerce")
+    else:
+        df["__DT"] = _parse_proc_datetime(df[PROC_DT_COL])
     df["__DT_H"] = _floor_hour(df["__DT"])
 
-    # Chaves de junção (mesma normalização)
-    df["__PAIS_KEY"] = df["pais"].map(normalize_key)
-    df["__UF_KEY"]   = df["estado"].map(normalize_key)
-    df["__MUN_KEY"]  = df["municipio"].map(normalize_key)
+    mun_col = _column_ci(df, ("municipio",))
+    uf_col = _column_ci(df, ("estado",))
+    pais_col = _column_ci(df, ("pais",))
+    if not mun_col or not uf_col:
+        raise ValueError(f"[legacy merge] CSV precisa estado/municipio. Colunas: {list(df.columns)}")
 
-    # Chave exata
+    if pais_col:
+        df["__PAIS_KEY"] = df[pais_col].map(normalize_key)
+    else:
+        df["__PAIS_KEY"] = normalize_key("brasil")
+    df["__UF_KEY"] = df[uf_col].map(normalize_key)
+    df["__MUN_KEY"] = df[mun_col].map(normalize_key)
+
     df["__KEY"] = (
         df["__DT_H"].astype("int64").astype("string") + "|" +
         df["__PAIS_KEY"].astype(str) + "|" +
-        df["__UF_KEY"].astype(str)   + "|" +
+        df["__UF_KEY"].astype(str) + "|" +
         df["__MUN_KEY"].astype(str)
     )
 
-    # Redução de colunas
-    keep = ["__KEY", "foco_id", "id_bdq", "lat", "lon"]
-    df = df[keep].copy()
+    foco_col = _column_ci(df, ("foco_id",))
+    id_col = _column_ci(df, ("id_bdq",))
+    lat_col = _column_ci(df, ("lat", "latitude"))
+    lon_col = _column_ci(df, ("lon", "longitude", "long"))
 
-    # Deduplicar por __KEY (1:1) — mantém a primeira ocorrência
-    before = len(df)
-    df = df.drop_duplicates(subset="__KEY", keep="first")
-    log.info(f"  dedup PROCESSADO por __KEY: {len(df):,} (removidas {before - len(df):,})")
+    slim = pd.DataFrame({"__KEY": df["__KEY"]})
+    slim["foco_id"] = df[foco_col] if foco_col else pd.NA
+    slim["id_bdq"] = df[id_col] if id_col else pd.NA
+    slim["lat"] = pd.to_numeric(df[lat_col], errors="coerce") if lat_col else np.nan
+    slim["lon"] = pd.to_numeric(df[lon_col], errors="coerce") if lon_col else np.nan
+
+    before = len(slim)
+    slim = slim.drop_duplicates(subset="__KEY", keep="first")
+    log.info(f"  dedup PROCESSADO por __KEY: {len(slim):,} (removidas {before - len(slim):,})")
 
     if validation:
-        df = df.head(500_000).copy()
+        slim = slim.head(500_000).copy()
         log.info("  [VALIDATION] PROCESSADO truncado a 500k linhas (após dedup).")
 
     log.info(f"  normalização (proc) ok | tempo={time.time()-t1:,.2f}s")
-    return df
+    return slim
+
+
+def load_processed_sources_only(
+    path: Path,
+    biome: Optional[str] = None,
+    validation: bool = False,
+) -> Tuple[pd.DataFrame, int]:
+    """
+    Fonte única: CSV focos_br_ref_* do diretório ID_BDQUEIMADAS (COIDS).
+    Detecta colunas de forma tolerante (maiúsc/minús e aliases).
+    """
+    log.info(f"[PHASE] Consolidação só COIDS: {path}")
+    t0 = time.time()
+    df = _read_csv_smart(path)
+    log.info(f"  linhas brutas: {len(df):,} | tempo={time.time()-t0:,.2f}s")
+
+    if validation:
+        df = df.head(500_000).copy()
+        log.info("  [VALIDATION] truncado a 500k linhas após leitura.")
+
+    dt_col = _column_ci(df, ("data_pas", "datahora", "data_hora", "dat_passagem"))
+    if dt_col is None:
+        raise ValueError(f"Coluna de data/hora não encontrada. Colunas: {list(df.columns)}")
+
+    mun_col = _column_ci(df, ("municipio",))
+    uf_col = _column_ci(df, ("estado",))
+    if not mun_col or not uf_col:
+        raise ValueError(f"Colunas estado/municipio obrigatórias. Colunas: {list(df.columns)}")
+
+    pais_col = _column_ci(df, ("pais", "país"))
+    bio_src_dbg = _column_ci(df, ("bioma", "Bioma", "BIOMA"))
+    frp_col = _column_ci(df, ("frp",))
+    risk_col = _column_ci(
+        df,
+        ("risco_fogo", "riscofogo", "risco fog", "risco_incendio", "risco incêndio", "risco_incêndio"),
+    )
+    foco_col = _column_ci(df, ("foco_id", "id_foco"))
+    idbdq_col = _column_ci(df, ("id_bdq", "id bdq"))
+
+    log.info(
+        "  colunas: dt=%s pais=%s uf=%s mun=%s bioma=%s frp=%s risco=%s foco=%s id_bdq=%s",
+        dt_col,
+        pais_col or "(default Brasil)",
+        uf_col,
+        mun_col,
+        bio_src_dbg or "-",
+        frp_col or "-",
+        risk_col or "-",
+        foco_col or "-",
+        idbdq_col or "-",
+    )
+
+    t1 = time.time()
+    df["__DT"] = pd.to_datetime(df[dt_col], errors="coerce")
+    df["__DT_H"] = _floor_hour(df["__DT"])
+
+    pais_series = df[pais_col] if pais_col else pd.Series(["Brasil"] * len(df))
+    df["PAIS_OUT"] = pais_series.map(_ascii_upper_no_diacritics)
+    df["ESTADO_OUT"] = df[uf_col].map(_ascii_upper_no_diacritics)
+    df["MUNICIPIO_OUT"] = df[mun_col].map(_ascii_upper_no_diacritics)
+
+    df["__PAIS_KEY"] = pais_series.map(normalize_key)
+    df["__UF_KEY"] = df[uf_col].map(normalize_key)
+    df["__MUN_KEY"] = df[mun_col].map(normalize_key)
+
+    df, expected_rows = _maybe_filter_biome(df, biome)
+
+    df["__KEY"] = (
+        df["__DT_H"].astype("int64").astype("string") + "|" +
+        df["__PAIS_KEY"].astype(str) + "|" +
+        df["__UF_KEY"].astype(str) + "|" +
+        df["__MUN_KEY"].astype(str)
+    )
+
+    df["RiscoFogo"] = df[risk_col] if risk_col else pd.NA
+    df["FRP"] = pd.to_numeric(df[frp_col], errors="coerce") if frp_col else pd.NA
+    df["foco_id"] = df[foco_col] if foco_col else pd.NA
+    df["id_bdq"] = df[idbdq_col] if idbdq_col else pd.NA
+
+    keep = [
+        "__KEY",
+        "__DT_H",
+        "PAIS_OUT",
+        "ESTADO_OUT",
+        "MUNICIPIO_OUT",
+        "RiscoFogo",
+        "FRP",
+        "foco_id",
+        "id_bdq",
+    ]
+    df = df[keep].copy()
+
+    before = len(df)
+    df = df.drop_duplicates(subset="__KEY", keep="first")
+    log.info(f"  dedup por __KEY: {len(df):,} linhas (removidas {before - len(df):,})")
+
+    log.info(f"  normalização COIDS ok | tempo={time.time()-t1:,.2f}s")
+    return df, len(df)
 
 # =============================================================================
 # MATCHING — 1:1 (MANUAL × PROCESSADO)
@@ -254,7 +480,7 @@ def load_processed(path: Path, restrict_pairs: Optional[pd.DataFrame] = None, va
 def merge_manual_processed(df_m: pd.DataFrame, df_p: pd.DataFrame) -> pd.DataFrame:
     log.info("[PHASE] MERGE 1:1 (left) por __KEY (hora+país+UF+município)")
     t0 = time.time()
-    cols_p = ["__KEY", "id_bdq", "foco_id", "lat", "lon"]
+    cols_p = [c for c in ("__KEY", "id_bdq", "foco_id", "lat", "lon") if c in df_p.columns]
     merged = df_m.merge(df_p[cols_p], on="__KEY", how="left", validate="m:1", copy=False)
     log.info(f"  linhas pós-merge: {len(merged):,} | tempo={time.time()-t0:,.2f}s")
     return merged
@@ -263,6 +489,8 @@ def merge_manual_processed(df_m: pd.DataFrame, df_p: pd.DataFrame) -> pd.DataFra
 # BUILD OUTPUT E ESCRITA
 # =============================================================================
 def build_output(merged: pd.DataFrame) -> pd.DataFrame:
+    id_bdq = merged["id_bdq"] if "id_bdq" in merged.columns else pd.NA
+    foco_id = merged["foco_id"] if "foco_id" in merged.columns else pd.NA
     out = pd.DataFrame({
         "DATAHORA":   merged["__DT_H"].dt.strftime("%Y-%m-%d %H:%M:%S"),
         "PAIS":       merged["PAIS_OUT"],
@@ -270,8 +498,8 @@ def build_output(merged: pd.DataFrame) -> pd.DataFrame:
         "MUNICIPIO":  merged["MUNICIPIO_OUT"],
         "RISCO_FOGO": merged["RiscoFogo"],
         "FRP":        merged["FRP"],
-        "ID_BDQ":     merged.get("id_bdq"),
-        "FOCO_ID":    merged.get("foco_id"),
+        "ID_BDQ":     id_bdq,
+        "FOCO_ID":    foco_id,
     })
     out = out.sort_values(["DATAHORA", "ESTADO", "MUNICIPIO"], kind="stable").reset_index(drop=True)
     return out
@@ -285,26 +513,63 @@ def write_output(df: pd.DataFrame, path: Path, encoding: str = "utf-8") -> Path:
 # =============================================================================
 # PIPELINE POR ANO
 # =============================================================================
+def _consolidate_year_legacy_manual_merge(
+    year: int,
+    proc_file: Path,
+    out_path: Path,
+    overwrite: bool,
+    validation: bool,
+    biome: Optional[str],
+    encoding: str,
+) -> Optional[Path]:
+    """Fluxo antigo: exportador manual em raw/BDQUEIMADAS × CSV COIDS."""
+    manual_files = [p for (y, p) in list_manual_year_files(RAW_BDQ_DIR) if y == year]
+    if not manual_files:
+        log.warning(f"[{year}] Nenhum exportador_*_ref_{year}.csv em {RAW_BDQ_DIR}")
+        return None
+
+    manual_path = sorted(manual_files)[-1]
+    log.info(f"[{year}] [legacy] MANUAL: {manual_path.name}")
+    log.info(f"[{year}] [legacy] PROC:   {proc_file.name}")
+
+    if out_path.exists() and not overwrite:
+        log.info(f"[{year}] [SKIP] {out_path.name} já existe. Use --overwrite para refazer.")
+        return out_path
+
+    df_m, expected_rows = load_manual(manual_path, biome=biome, validation=validation)
+    if expected_rows == 0:
+        log.warning(f"[{year}] Após filtro de Bioma, nenhuma linha no MANUAL. Abortando ano.")
+        return None
+
+    df_p = load_processed(proc_file, restrict_pairs=None, validation=validation)
+    merged = merge_manual_processed(df_m, df_p)
+
+    matched_rows = int(merged["id_bdq"].notna().sum())
+    unmatched_rows = int(merged["id_bdq"].isna().sum())
+    log.info(f"[{year}] EXPECTED (MANUAL após filtro) = {expected_rows:,}")
+    log.info(f"[{year}] RESULT len(merge)            = {len(merged):,}  (deve == EXPECTED)")
+    log.info(f"[{year}] MATCHED (com ID_BDQ)         = {matched_rows:,}")
+    log.info(f"[{year}] UNMATCHED                    = {unmatched_rows:,}")
+
+    out_df = build_output(merged)
+    return write_output(out_df, out_path, encoding=encoding)
+
+
 def consolidate_year(
     year: int,
     overwrite: bool = False,
     validation: bool = False,
     biome: Optional[str] = None,
     encoding: str = "utf-8",
+    legacy_manual_merge: bool = False,
 ) -> Optional[Path]:
-    manual_files = [p for (y, p) in list_manual_year_files(RAW_BDQ_DIR) if y == year]
-    proc_file = processed_file_for_year(year, PROC_BDQ_DIR)
-
-    if not manual_files:
-        log.warning(f"[{year}] Nenhum exportador_*_ref_{year}.csv em {RAW_BDQ_DIR}")
-        return None
+    proc_file = resolve_processed_focos_csv(year, PROC_BDQ_DIR)
     if not proc_file:
-        log.warning(f"[{year}] Processado focos_br_ref_{year}.csv não encontrado em {PROC_BDQ_DIR}")
+        log.warning(
+            f"[{year}] focos_br_ref_{year}.csv não encontrado sob {PROC_BDQ_DIR} "
+            "(nem em subpastas — zip COIDS pode aninhar uma pasta extra)."
+        )
         return None
-
-    manual_path = sorted(manual_files)[-1]  # usa o mais recente
-    log.info(f"[{year}] MANUAL: {manual_path.name}")
-    log.info(f"[{year}] PROC:   {proc_file.name}")
 
     out_name = _resolve_output_filename([year], biome, prefix="bdq_targets")
     out_path = OUT_DIR / out_name
@@ -312,27 +577,20 @@ def consolidate_year(
         log.info(f"[{year}] [SKIP] {out_path.name} já existe. Use --overwrite para refazer.")
         return out_path
 
-    # 1) MANUAL (+ filtro opcional de bioma)
-    df_m, expected_rows = load_manual(manual_path, biome=biome, validation=validation)
-    if expected_rows == 0:
-        log.warning(f"[{year}] Após filtro de Bioma, nenhuma linha no MANUAL. Abortando ano.")
+    if legacy_manual_merge:
+        return _consolidate_year_legacy_manual_merge(
+            year, proc_file, out_path, overwrite, validation, biome, encoding
+        )
+
+    log.info(f"[{year}] Fonte: COIDS apenas → {proc_file}")
+    merged, _n = load_processed_sources_only(proc_file, biome=biome, validation=validation)
+    if len(merged) == 0:
+        log.warning(f"[{year}] Nenhuma linha após filtro/dedup. Abortando ano.")
         return None
 
-    # 2) PROCESSADO (dedup por __KEY)
-    df_p = load_processed(proc_file, restrict_pairs=None, validation=validation)
+    na_id = int(merged["id_bdq"].isna().sum()) if "id_bdq" in merged.columns else len(merged)
+    log.info(f"[{year}] linhas saída = {len(merged):,} | id_bdq ausente = {na_id:,}")
 
-    # 3) MERGE 1:1
-    merged = merge_manual_processed(df_m, df_p)
-
-    # 4) Métricas
-    matched_rows   = int(merged["id_bdq"].notna().sum())
-    unmatched_rows = int((merged["id_bdq"].isna()).sum())
-    log.info(f"[{year}] EXPECTED (MANUAL após filtro) = {expected_rows:,}")
-    log.info(f"[{year}] RESULT len(merge)            = {len(merged):,}  (deve == EXPECTED)")
-    log.info(f"[{year}] MATCHED (com ID_BDQ)         = {matched_rows:,}")
-    log.info(f"[{year}] UNMATCHED                    = {unmatched_rows:,}")
-
-    # 5) Saída
     out_df = build_output(merged)
     return write_output(out_df, out_path, encoding=encoding)
 
@@ -346,14 +604,22 @@ def run(
     biome: Optional[str] = None,
     output_filename: Optional[str] = None,
     encoding: str = "utf-8",
+    legacy_manual_merge: bool = False,
+    auto_extract_from_zips: bool = True,
 ) -> Optional[Path]:
+    # Modo legado também precisa dos CSV COIDS em processed/
+    maybe_extract_zips_from_raw(auto_extract_from_zips)
+
     if years:
         years = sorted({int(y) for y in years})
-    else:
+    elif legacy_manual_merge:
         years = sorted({y for (y, _) in list_manual_year_files(RAW_BDQ_DIR)})
+    else:
+        years = discover_processed_years(PROC_BDQ_DIR)
 
     if not years:
         log.warning("Nenhum ano encontrado para consolidar.")
+        log.warning(_hint_missing_focos_data())
         return None
 
     outs: List[Path] = []
@@ -365,6 +631,7 @@ def run(
                 validation=validation,
                 biome=biome,
                 encoding=encoding,
+                legacy_manual_merge=legacy_manual_merge,
             )
             if p:
                 outs.append(p)
@@ -398,10 +665,11 @@ def run(
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser(
-        description="Consolidação BDQueimadas (MANUAL × PROCESSADO) 1:1 por hora+local, com filtro opcional de bioma."
+        description="Consolida BDQueimadas a partir dos CSV COIDS em ID_BDQUEIMADAS "
+        "(opcionalmente cruza com exportador manual: --legacy-manual-merge)."
     )
     p.add_argument("--years", nargs="*", type=int, default=None,
-                   help="Lista de anos (ex.: --years 2012 2013). Se omitir, roda para todos com MANUAL.")
+                   help="Anos (ex.: --years 2012 2013). Se omitir, usa anos com focos_br_ref_* em ID_BDQUEIMADAS.")
     p.add_argument("--biome", type=str, default=None,
                    help="Filtrar por bioma (ex.: --biome 'Cerrado'). Se omitir, usa todos os biomas.")
     p.add_argument("--overwrite", action="store_true",
@@ -412,6 +680,18 @@ if __name__ == "__main__":
                    help="Nome do arquivo final multi-anos. Se omitido, usa regra de nomeação automática.")
     p.add_argument("--encoding", type=str, default="utf-8",
                    help="Encoding para leitura/escrita (default: utf-8).")
+    p.add_argument(
+        "--legacy-manual-merge",
+        action="store_true",
+        help="Usa exportador_* em raw/BDQUEIMADAS cruzado com COIDS (fluxo antigo). "
+        "Sem esta flag, só lê focos_br_ref_* em data/processed/ID_BDQUEIMADAS.",
+    )
+    p.add_argument(
+        "--no-auto-extract",
+        action="store_true",
+        help="Não extrair automaticamente *.zip de data/raw/ID_BDQUEIMADAS "
+        "quando não houver CSV em processed (default: extrai).",
+    )
     args = p.parse_args()
 
     run(
@@ -421,4 +701,6 @@ if __name__ == "__main__":
         biome=args.biome,
         output_filename=args.output_filename,
         encoding=args.encoding,
+        legacy_manual_merge=args.legacy_manual_merge,
+        auto_extract_from_zips=not args.no_auto_extract,
     )
