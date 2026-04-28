@@ -1,0 +1,339 @@
+{
+    "model_type": "XGBoost",
+    "variation": "base",
+    "variation_tags": [],
+    "variation_desc": "Base (sem SMOTE, sem GridSearch, sem balanceamento por peso)",
+    "scenario": "base_E_with_rad_knn_calculated",
+    "timestamp": "20260424_235219",
+    "metrics": {
+        "accuracy": 0.9943975,
+        "precision": 0.09246231155778895,
+        "recall": 0.008851260342505291,
+        "f1": 0.016155939942049346,
+        "specificity": 0.9995461412963169,
+        "roc_auc": 0.8915269644025201,
+        "pr_auc": 0.04429482565156321,
+        "brier_score": 0.005579688059307353,
+        "confusion_matrix": {
+            "tn": 1988703,
+            "fp": 903,
+            "fn": 10302,
+            "tp": 92
+        },
+        "proba_source": "predict_proba",
+        "threshold": 0.5
+    },
+    "importance": null,
+    "run_meta": {
+        "scenario_key": "base_E_with_rad_knn_calculated",
+        "scenario_folder": "base_E_with_rad_knn_calculated",
+        "parquet_source": "article",
+        "parquet_dir": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated",
+        "features_used": [
+            "PRECIPITAÇÃO TOTAL, HORÁRIO (mm)",
+            "RADIACAO GLOBAL (KJ/m²)",
+            "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)",
+            "UMIDADE RELATIVA DO AR, HORARIA (%)",
+            "VENTO, VELOCIDADE HORARIA (m/s)",
+            "PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)",
+            "VENTO, RAJADA MAXIMA (m/s)",
+            "precip_ewma",
+            "dias_sem_chuva",
+            "risco_temp_max",
+            "risco_umid_critica",
+            "risco_umid_alerta",
+            "fator_propagacao",
+            "NDVI_buffer",
+            "EVI_buffer"
+        ],
+        "n_features": 15,
+        "target": "HAS_FOCO",
+        "year_col": "ANO",
+        "split_train_max_year": 2022,
+        "split_test_size_years": 2,
+        "train_years": [
+            2003,
+            2004,
+            2005,
+            2006,
+            2007,
+            2008,
+            2009,
+            2010,
+            2011,
+            2012,
+            2013,
+            2014,
+            2015,
+            2016,
+            2017
+        ],
+        "test_years": [
+            2023,
+            2024
+        ],
+        "train_rows": 8000000,
+        "test_rows": 2000000,
+        "train_rows_total": 13056814,
+        "test_rows_total": 2544406,
+        "train_pos_rate": 0.00564575,
+        "test_pos_rate": 0.005197,
+        "settings": {
+            "cv_splits": 3,
+            "scoring": "average_precision",
+            "smote_sampling_strategy": 0.1,
+            "smote_k_neighbors": 5,
+            "thr": 0.5,
+            "optimize": false,
+            "use_smote": false,
+            "use_scale": false
+        },
+        "threshold": 0.5,
+        "host_snapshot": {
+            "psutil": true,
+            "pid": 15604,
+            "rss_gb": 2.192,
+            "vms_gb": 3.197,
+            "cpu_pct": 0.0,
+            "threads": 43,
+            "sys_mem_pct": 52.9,
+            "sys_avail_gb": 7.51
+        },
+        "train_wall_s": 43.816,
+        "data_audit": {
+            "scenario_key": "base_E_with_rad_knn_calculated",
+            "scenario_folder": "base_E_with_rad_knn_calculated",
+            "parquet_source": "article",
+            "n_parquets": 22,
+            "read_ok": 22,
+            "read_fail": 0,
+            "n_features": 15,
+            "downsample": true,
+            "max_train_rows": 8000000,
+            "max_test_rows": 2000000,
+            "train_max_year": 2022,
+            "test_size_years": 2,
+            "gap_years": 0,
+            "source": {
+                "per_file": [
+                    {
+                        "file": "inmet_bdq_2003_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2003_cerrado.parquet",
+                        "rows": 99014,
+                        "unique_keys": 99014,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2004_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2004_cerrado.parquet",
+                        "rows": 99122,
+                        "unique_keys": 99122,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2005_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2005_cerrado.parquet",
+                        "rows": 149476,
+                        "unique_keys": 149476,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2006_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2006_cerrado.parquet",
+                        "rows": 151065,
+                        "unique_keys": 151065,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2007_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2007_cerrado.parquet",
+                        "rows": 590793,
+                        "unique_keys": 590793,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2008_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2008_cerrado.parquet",
+                        "rows": 1000183,
+                        "unique_keys": 1000183,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2009_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2009_cerrado.parquet",
+                        "rows": 1092758,
+                        "unique_keys": 1092758,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2010_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2010_cerrado.parquet",
+                        "rows": 1105807,
+                        "unique_keys": 1105807,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2011_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2011_cerrado.parquet",
+                        "rows": 1149052,
+                        "unique_keys": 1149052,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2012_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2012_cerrado.parquet",
+                        "rows": 1221338,
+                        "unique_keys": 1221338,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2013_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2013_cerrado.parquet",
+                        "rows": 1252957,
+                        "unique_keys": 1252957,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2014_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2014_cerrado.parquet",
+                        "rows": 1255216,
+                        "unique_keys": 1255216,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2015_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2015_cerrado.parquet",
+                        "rows": 1231363,
+                        "unique_keys": 1231363,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2016_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2016_cerrado.parquet",
+                        "rows": 1291620,
+                        "unique_keys": 1291620,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2017_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2017_cerrado.parquet",
+                        "rows": 1367050,
+                        "unique_keys": 1367050,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2018_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2018_cerrado.parquet",
+                        "rows": 1526766,
+                        "unique_keys": 1526766,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2019_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2019_cerrado.parquet",
+                        "rows": 1684823,
+                        "unique_keys": 1684823,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2020_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2020_cerrado.parquet",
+                        "rows": 1695119,
+                        "unique_keys": 1695119,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2021_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2021_cerrado.parquet",
+                        "rows": 1708005,
+                        "unique_keys": 1708005,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2022_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2022_cerrado.parquet",
+                        "rows": 1567861,
+                        "unique_keys": 1567861,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2023_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2023_cerrado.parquet",
+                        "rows": 972249,
+                        "unique_keys": 972249,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2024_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_E_with_rad_knn_calculated\\inmet_bdq_2024_cerrado.parquet",
+                        "rows": 1572157,
+                        "unique_keys": 1572157,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    }
+                ],
+                "anomalies": [],
+                "total_source_rows": 23783794,
+                "total_source_unique_keys": 23783794,
+                "overall_dup_ratio": 1.0,
+                "source_clean": true
+            },
+            "train": {
+                "rows": 8000000,
+                "unique_rows": 8000000,
+                "dup_ratio": 1.0,
+                "years": [
+                    2003,
+                    2004,
+                    2005,
+                    2006,
+                    2007,
+                    2008,
+                    2009,
+                    2010,
+                    2011,
+                    2012,
+                    2013,
+                    2014,
+                    2015,
+                    2016,
+                    2017
+                ],
+                "pos_count": 45166,
+                "pos_rate": 0.005646
+            },
+            "test": {
+                "rows": 2000000,
+                "unique_rows": 1998803,
+                "dup_ratio": 1.0006,
+                "years": [
+                    2023,
+                    2024
+                ],
+                "pos_count": 10394,
+                "pos_rate": 0.005197
+            }
+        }
+    }
+}

@@ -1,0 +1,368 @@
+{
+  "scenario": "base_F_full_original_calculated",
+  "methods": [
+    "ewma_lags",
+    "minirocket"
+  ],
+  "top_k": 50,
+  "test_years_cutoff": 2023,
+  "n_train_rows": 21239388,
+  "weights": {
+    "spearman": 0.5,
+    "mi": 0.5
+  },
+  "max_nan_fraction": 0.5,
+  "redundancy_threshold": 0.85,
+  "selected_features": [
+    {
+      "name": "tsf_lag_rad_1h",
+      "method": "ewma_lags",
+      "target_var": "rad",
+      "score": 0.5816946410262581,
+      "rank": 1
+    },
+    {
+      "name": "tsf_minirocket_f012",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.5664670877632912,
+      "rank": 2
+    },
+    {
+      "name": "tsf_minirocket_f110",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.5615574792145055,
+      "rank": 3
+    },
+    {
+      "name": "tsf_minirocket_f116",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.5311537041958203,
+      "rank": 4
+    },
+    {
+      "name": "tsf_minirocket_f122",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.5246840181916271,
+      "rank": 5
+    },
+    {
+      "name": "tsf_lag_rad_24h",
+      "method": "ewma_lags",
+      "target_var": "rad",
+      "score": 0.5208564150144125,
+      "rank": 6
+    },
+    {
+      "name": "tsf_minirocket_f098",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.5128285848765344,
+      "rank": 7
+    },
+    {
+      "name": "tsf_lag_rad_168h",
+      "method": "ewma_lags",
+      "target_var": "rad",
+      "score": 0.47995901163075194,
+      "rank": 8
+    },
+    {
+      "name": "tsf_minirocket_f090",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.46614147648255,
+      "rank": 9
+    },
+    {
+      "name": "tsf_minirocket_f132",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.4514218846700626,
+      "rank": 10
+    },
+    {
+      "name": "tsf_minirocket_f088",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.4204981906779353,
+      "rank": 11
+    },
+    {
+      "name": "tsf_minirocket_f156",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.4188613442257475,
+      "rank": 12
+    },
+    {
+      "name": "tsf_minirocket_f109",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.41363816971703005,
+      "rank": 14
+    },
+    {
+      "name": "tsf_minirocket_f155",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.41332198569135825,
+      "rank": 15
+    },
+    {
+      "name": "tsf_lag_umid_1h",
+      "method": "ewma_lags",
+      "target_var": "umid",
+      "score": 0.3963699475119143,
+      "rank": 17
+    },
+    {
+      "name": "tsf_lag_umid_24h",
+      "method": "ewma_lags",
+      "target_var": "umid",
+      "score": 0.39445117416281356,
+      "rank": 18
+    },
+    {
+      "name": "tsf_minirocket_f033",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.3921483457787624,
+      "rank": 19
+    },
+    {
+      "name": "tsf_minirocket_f148",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.38977058560134686,
+      "rank": 20
+    },
+    {
+      "name": "tsf_lag_temp_1h",
+      "method": "ewma_lags",
+      "target_var": "temp",
+      "score": 0.3881227422005105,
+      "rank": 21
+    },
+    {
+      "name": "tsf_minirocket_f143",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.3861186333929715,
+      "rank": 25
+    },
+    {
+      "name": "tsf_minirocket_f160",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.3818082441350476,
+      "rank": 26
+    },
+    {
+      "name": "tsf_minirocket_f135",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.37419180341353986,
+      "rank": 27
+    },
+    {
+      "name": "tsf_minirocket_f134",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.3598160248845419,
+      "rank": 28
+    },
+    {
+      "name": "tsf_lag_umid_168h",
+      "method": "ewma_lags",
+      "target_var": "umid",
+      "score": 0.35021079636462843,
+      "rank": 29
+    },
+    {
+      "name": "tsf_lag_temp_168h",
+      "method": "ewma_lags",
+      "target_var": "temp",
+      "score": 0.3431357909327822,
+      "rank": 30
+    },
+    {
+      "name": "tsf_minirocket_f147",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.3391392715043206,
+      "rank": 31
+    },
+    {
+      "name": "tsf_minirocket_f106",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.3384920571010252,
+      "rank": 32
+    },
+    {
+      "name": "tsf_minirocket_f114",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.3348840818113235,
+      "rank": 33
+    },
+    {
+      "name": "tsf_minirocket_f141",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.2990590465648573,
+      "rank": 37
+    },
+    {
+      "name": "tsf_minirocket_f095",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.29644401807938064,
+      "rank": 38
+    },
+    {
+      "name": "tsf_minirocket_f157",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.2931550377050006,
+      "rank": 39
+    },
+    {
+      "name": "tsf_minirocket_f149",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.29153901219130346,
+      "rank": 40
+    },
+    {
+      "name": "tsf_ewma_rad_a01",
+      "method": "ewma_lags",
+      "target_var": "rad",
+      "score": 0.2823647049213474,
+      "rank": 41
+    },
+    {
+      "name": "tsf_minirocket_f111",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.27829374266351337,
+      "rank": 42
+    },
+    {
+      "name": "tsf_minirocket_f140",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.2687656141766948,
+      "rank": 43
+    },
+    {
+      "name": "tsf_minirocket_f079",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.26521902272215775,
+      "rank": 45
+    },
+    {
+      "name": "tsf_minirocket_f064",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.26304540641814,
+      "rank": 46
+    },
+    {
+      "name": "tsf_minirocket_f131",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.2608264959971824,
+      "rank": 47
+    },
+    {
+      "name": "tsf_minirocket_f087",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.25507763918279114,
+      "rank": 48
+    },
+    {
+      "name": "tsf_minirocket_f083",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.25371981504644453,
+      "rank": 49
+    },
+    {
+      "name": "tsf_minirocket_f139",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.25294840555185055,
+      "rank": 50
+    },
+    {
+      "name": "tsf_minirocket_f054",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.25023284351034303,
+      "rank": 51
+    },
+    {
+      "name": "tsf_minirocket_f023",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.24869568446574475,
+      "rank": 53
+    },
+    {
+      "name": "tsf_minirocket_f077",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.24086768105169512,
+      "rank": 54
+    },
+    {
+      "name": "tsf_minirocket_f051",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.24036329426995118,
+      "rank": 55
+    },
+    {
+      "name": "tsf_ewma_umid_a01",
+      "method": "ewma_lags",
+      "target_var": "umid",
+      "score": 0.23887624721056558,
+      "rank": 56
+    },
+    {
+      "name": "tsf_minirocket_f093",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.23864586124547899,
+      "rank": 57
+    },
+    {
+      "name": "tsf_minirocket_f137",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.23724188216996597,
+      "rank": 58
+    },
+    {
+      "name": "tsf_minirocket_f094",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.2336293247567019,
+      "rank": 60
+    },
+    {
+      "name": "tsf_minirocket_f123",
+      "method": "minirocket",
+      "target_var": "multicanal",
+      "score": 0.23300209698984792,
+      "rank": 61
+    }
+  ]
+}

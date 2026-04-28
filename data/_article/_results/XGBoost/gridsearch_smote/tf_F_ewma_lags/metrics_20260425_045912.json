@@ -1,0 +1,388 @@
+{
+    "model_type": "XGBoost",
+    "variation": "gridsearch_smote",
+    "variation_tags": [
+        "gridsearch",
+        "smote"
+    ],
+    "variation_desc": "GridSearchCV + SMOTE",
+    "scenario": "tf_F_ewma_lags",
+    "timestamp": "20260425_045912",
+    "metrics": {
+        "accuracy": 0.9884201881907484,
+        "precision": 0.23246096327248736,
+        "recall": 0.15537262972218138,
+        "f1": 0.18625550660792953,
+        "specificity": 0.9955867029509656,
+        "roc_auc": 0.9414261022696981,
+        "pr_auc": 0.16859104334065284,
+        "brier_score": 0.010381320934798722,
+        "confusion_matrix": {
+            "tn": 787302,
+            "fp": 3490,
+            "fn": 5746,
+            "tp": 1057
+        },
+        "proba_source": "predict_proba",
+        "threshold": 0.5
+    },
+    "importance": null,
+    "run_meta": {
+        "scenario_key": "tf_F_ewma_lags",
+        "scenario_folder": "tf_F_ewma_lags",
+        "parquet_source": "article",
+        "parquet_dir": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags",
+        "features_used": [
+            "PRECIPITAÇÃO TOTAL, HORÁRIO (mm)",
+            "RADIACAO GLOBAL (KJ/m²)",
+            "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)",
+            "UMIDADE RELATIVA DO AR, HORARIA (%)",
+            "VENTO, VELOCIDADE HORARIA (m/s)",
+            "PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)",
+            "VENTO, RAJADA MAXIMA (m/s)",
+            "precip_ewma",
+            "dias_sem_chuva",
+            "risco_temp_max",
+            "risco_umid_critica",
+            "risco_umid_alerta",
+            "fator_propagacao",
+            "tsf_ewma_evi_buffer_a01",
+            "tsf_ewma_evi_buffer_a03",
+            "tsf_ewma_evi_buffer_a08",
+            "tsf_ewma_ndvi_buffer_a01",
+            "tsf_ewma_ndvi_buffer_a03",
+            "tsf_ewma_ndvi_buffer_a08",
+            "tsf_ewma_precip_a01",
+            "tsf_ewma_precip_a03",
+            "tsf_ewma_precip_a08",
+            "tsf_ewma_rad_a01",
+            "tsf_ewma_rad_a03",
+            "tsf_ewma_rad_a08",
+            "tsf_ewma_temp_a01",
+            "tsf_ewma_temp_a03",
+            "tsf_ewma_temp_a08",
+            "tsf_ewma_umid_a01",
+            "tsf_ewma_umid_a03",
+            "tsf_ewma_umid_a08",
+            "tsf_lag_evi_buffer_168h",
+            "tsf_lag_evi_buffer_336h",
+            "tsf_lag_ndvi_buffer_168h",
+            "tsf_lag_ndvi_buffer_336h",
+            "tsf_lag_precip_168h",
+            "tsf_lag_precip_1h",
+            "tsf_lag_precip_24h",
+            "tsf_lag_rad_168h",
+            "tsf_lag_rad_1h",
+            "tsf_lag_rad_24h",
+            "tsf_lag_temp_168h",
+            "tsf_lag_temp_1h",
+            "tsf_lag_temp_24h",
+            "tsf_lag_umid_168h",
+            "tsf_lag_umid_1h",
+            "tsf_lag_umid_24h",
+            "NDVI_buffer",
+            "EVI_buffer"
+        ],
+        "n_features": 49,
+        "target": "HAS_FOCO",
+        "year_col": "ANO",
+        "split_train_max_year": 2022,
+        "split_test_size_years": 2,
+        "train_years": [
+            2003,
+            2004,
+            2005,
+            2006,
+            2007,
+            2008,
+            2009,
+            2010,
+            2011,
+            2012,
+            2013,
+            2014,
+            2015,
+            2016,
+            2017,
+            2018,
+            2019,
+            2020,
+            2021,
+            2022
+        ],
+        "test_years": [
+            2023,
+            2024
+        ],
+        "train_rows": 6692588,
+        "test_rows": 797595,
+        "train_rows_total": 21239388,
+        "test_rows_total": 2544406,
+        "train_pos_rate": 0.006775405866908287,
+        "test_pos_rate": 0.008529391483146208,
+        "settings": {
+            "cv_splits": 2,
+            "scoring": "average_precision",
+            "smote_sampling_strategy": 0.1,
+            "smote_k_neighbors": 5,
+            "thr": 0.5,
+            "grid_mode": "fast",
+            "model_n_jobs": null,
+            "optimize": true,
+            "use_smote": true,
+            "use_scale": false
+        },
+        "threshold": 0.5,
+        "host_snapshot": {
+            "psutil": true,
+            "pid": 15604,
+            "rss_gb": 2.824,
+            "vms_gb": 4.965,
+            "cpu_pct": 0.0,
+            "threads": 43,
+            "sys_mem_pct": 45.8,
+            "sys_avail_gb": 8.63
+        },
+        "train_wall_s": 1191.779,
+        "data_audit": {
+            "scenario_key": "tf_F_ewma_lags",
+            "scenario_folder": "tf_F_ewma_lags",
+            "parquet_source": "article",
+            "n_parquets": 22,
+            "read_ok": 22,
+            "read_fail": 0,
+            "n_features": 49,
+            "downsample": true,
+            "max_train_rows": 8000000,
+            "max_test_rows": 2000000,
+            "train_max_year": 2022,
+            "test_size_years": 2,
+            "gap_years": 0,
+            "source": {
+                "per_file": [
+                    {
+                        "file": "inmet_bdq_2003_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2003_cerrado.parquet",
+                        "rows": 99014,
+                        "unique_keys": 99014,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2004_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2004_cerrado.parquet",
+                        "rows": 99122,
+                        "unique_keys": 99122,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2005_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2005_cerrado.parquet",
+                        "rows": 149476,
+                        "unique_keys": 149476,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2006_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2006_cerrado.parquet",
+                        "rows": 151065,
+                        "unique_keys": 151065,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2007_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2007_cerrado.parquet",
+                        "rows": 590793,
+                        "unique_keys": 590793,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2008_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2008_cerrado.parquet",
+                        "rows": 1000183,
+                        "unique_keys": 1000183,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2009_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2009_cerrado.parquet",
+                        "rows": 1092758,
+                        "unique_keys": 1092758,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2010_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2010_cerrado.parquet",
+                        "rows": 1105807,
+                        "unique_keys": 1105807,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2011_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2011_cerrado.parquet",
+                        "rows": 1149052,
+                        "unique_keys": 1149052,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2012_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2012_cerrado.parquet",
+                        "rows": 1221338,
+                        "unique_keys": 1221338,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2013_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2013_cerrado.parquet",
+                        "rows": 1252957,
+                        "unique_keys": 1252957,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2014_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2014_cerrado.parquet",
+                        "rows": 1255216,
+                        "unique_keys": 1255216,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2015_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2015_cerrado.parquet",
+                        "rows": 1231363,
+                        "unique_keys": 1231363,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2016_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2016_cerrado.parquet",
+                        "rows": 1291620,
+                        "unique_keys": 1291620,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2017_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2017_cerrado.parquet",
+                        "rows": 1367050,
+                        "unique_keys": 1367050,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2018_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2018_cerrado.parquet",
+                        "rows": 1526766,
+                        "unique_keys": 1526766,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2019_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2019_cerrado.parquet",
+                        "rows": 1684823,
+                        "unique_keys": 1684823,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2020_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2020_cerrado.parquet",
+                        "rows": 1695119,
+                        "unique_keys": 1695119,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2021_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2021_cerrado.parquet",
+                        "rows": 1708005,
+                        "unique_keys": 1708005,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2022_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2022_cerrado.parquet",
+                        "rows": 1567861,
+                        "unique_keys": 1567861,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2023_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2023_cerrado.parquet",
+                        "rows": 972249,
+                        "unique_keys": 972249,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    },
+                    {
+                        "file": "inmet_bdq_2024_cerrado.parquet",
+                        "path": "D:\\Projetos\\TCC\\data\\_article\\1_datasets_with_fusion\\base_F_full_original_calculated\\ewma_lags\\inmet_bdq_2024_cerrado.parquet",
+                        "rows": 1572157,
+                        "unique_keys": 1572157,
+                        "dup_ratio": 1.0,
+                        "status": "OK"
+                    }
+                ],
+                "anomalies": [],
+                "total_source_rows": 23783794,
+                "total_source_unique_keys": 23783794,
+                "overall_dup_ratio": 1.0,
+                "source_clean": true
+            },
+            "train": {
+                "rows": 6692588,
+                "unique_rows": 6692588,
+                "dup_ratio": 1.0,
+                "years": [
+                    2003,
+                    2004,
+                    2005,
+                    2006,
+                    2007,
+                    2008,
+                    2009,
+                    2010,
+                    2011,
+                    2012,
+                    2013,
+                    2014,
+                    2015,
+                    2016,
+                    2017,
+                    2018,
+                    2019,
+                    2020,
+                    2021,
+                    2022
+                ],
+                "pos_count": 45345,
+                "pos_rate": 0.006775
+            },
+            "test": {
+                "rows": 797595,
+                "unique_rows": 797595,
+                "dup_ratio": 1.0,
+                "years": [
+                    2023,
+                    2024
+                ],
+                "pos_count": 6803,
+                "pos_rate": 0.008529
+            }
+        }
+    }
+}

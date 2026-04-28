@@ -1,0 +1,79 @@
+{
+    "model_type": "RandomForest",
+    "variation": "base",
+    "variation_tags": [],
+    "variation_desc": "Base (sem SMOTE, sem GridSearch, sem balanceamento por peso)",
+    "scenario": "base_D_with_rad_drop_rows_calculated",
+    "timestamp": "20260418_185037",
+    "metrics": {
+        "accuracy": 0.98553,
+        "precision": 0.24857142857142858,
+        "recall": 0.006086469847488457,
+        "f1": 0.011881999453701175,
+        "specificity": 0.9997331861630141,
+        "roc_auc": 0.86762039803542,
+        "pr_auc": 0.09879499011026328,
+        "brier_score": 0.013650125294444445,
+        "confusion_matrix": {
+            "tn": 1970886,
+            "fp": 526,
+            "fn": 28414,
+            "tp": 174
+        },
+        "proba_source": "predict_proba",
+        "threshold": 0.5
+    },
+    "importance": null,
+    "run_meta": {
+        "scenario_key": "base_D_with_rad_drop_rows_calculated",
+        "scenario_folder": "base_D_with_rad_drop_rows_calculated",
+        "parquet_source": "article",
+        "parquet_dir": "D:\\Projetos\\TCC\\data\\_article\\0_datasets_with_coords\\base_D_with_rad_drop_rows_calculated",
+        "features_used": [
+            "PRECIPITAÇÃO TOTAL, HORÁRIO (mm)",
+            "RADIACAO GLOBAL (KJ/m²)",
+            "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)",
+            "UMIDADE RELATIVA DO AR, HORARIA (%)",
+            "VENTO, VELOCIDADE HORARIA (m/s)",
+            "PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)",
+            "VENTO, RAJADA MAXIMA (m/s)",
+            "precip_ewma",
+            "dias_sem_chuva",
+            "risco_temp_max",
+            "risco_umid_critica",
+            "risco_umid_alerta",
+            "fator_propagacao",
+            "NDVI_buffer",
+            "EVI_buffer"
+        ],
+        "n_features": 15,
+        "target": "HAS_FOCO",
+        "year_col": "ANO",
+        "train_rows": 8000000,
+        "test_rows": 2000000,
+        "train_pos_rate": 0.0076465,
+        "test_pos_rate": 0.014294,
+        "settings": {
+            "cv_splits": 3,
+            "scoring": "average_precision",
+            "smote_sampling_strategy": 0.1,
+            "smote_k_neighbors": 5,
+            "thr": 0.5,
+            "optimize": false,
+            "use_smote": false,
+            "use_scale": false
+        },
+        "threshold": 0.5,
+        "host_snapshot": {
+            "psutil": true,
+            "pid": 3332,
+            "rss_gb": 1.917,
+            "vms_gb": 5.171,
+            "cpu_pct": 0.0,
+            "threads": 51,
+            "sys_mem_pct": 47.5,
+            "sys_avail_gb": 8.36
+        },
+        "train_wall_s": 3203.682
+    }
+}
