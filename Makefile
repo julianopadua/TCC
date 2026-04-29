@@ -205,6 +205,10 @@ consolidate: ## Consolida metrics_*.json em tabelas
 viz: ## Gera visualizacoes dos resultados
 	$(PY) $(SRC)/run_results_visualization.py $(EXTRA)
 
+.PHONY: model-eval-viz
+model-eval-viz: ## Visualizacoes por run (ROC/PR, importance, SHAP, CSV, report.md)
+	$(PY) -m src.model_eval_viz $(EXTRA)
+
 ##@ Utilitarios
 
 .PHONY: clean-logs

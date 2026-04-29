@@ -53,42 +53,70 @@ try:
     )
     from src.article.config import biomass_modeling_columns_for_schema
     from src.ml.core import MemoryMonitor, TemporalSplitter
-    from src.models.dummy import DummyTrainer
-    from src.models.logistic import LogisticTrainer
-    from src.models.xgboost_model import XGBoostTrainer
 except ImportError as e:
     sys.exit(f"[CRITICAL] Dependencias obrigatorias: {e}")
 
-# Modelos opcionais (presentes apenas se voce tiver criado os arquivos)
+# Load lazy dos trainers para permitir import de utilitarios (ex.: eval/viz)
+# mesmo em ambientes sem todas as libs de treino em runtime.
+DummyTrainer = None
+LogisticTrainer = None
+XGBoostTrainer = None
 NaiveBayesTrainer = None
 SVMTrainer = None
 RandomForestTrainer = None
 
-try:
-    from src.models.naive_bayes import NaiveBayesTrainer as _NB  # type: ignore
 
-    NaiveBayesTrainer = _NB
-except Exception:
-    NaiveBayesTrainer = None
+def _ensure_trainers_loaded() -> None:
+    global DummyTrainer, LogisticTrainer, XGBoostTrainer
+    global NaiveBayesTrainer, SVMTrainer, RandomForestTrainer
 
-try:
-    from src.models.svm_linear import SVMLinearTrainer as _SVM  # type: ignore
+    if DummyTrainer is None:
+        try:
+            from src.models.dummy import DummyTrainer as _DummyTrainer  # type: ignore
 
-    SVMTrainer = _SVM
-except Exception:
-    try:
-        from src.models.svm import SVMTrainer as _SVM2  # type: ignore
+            DummyTrainer = _DummyTrainer
+        except Exception:
+            DummyTrainer = None
+    if LogisticTrainer is None:
+        try:
+            from src.models.logistic import LogisticTrainer as _LogisticTrainer  # type: ignore
 
-        SVMTrainer = _SVM2
-    except Exception:
-        SVMTrainer = None
+            LogisticTrainer = _LogisticTrainer
+        except Exception:
+            LogisticTrainer = None
+    if XGBoostTrainer is None:
+        try:
+            from src.models.xgboost_model import XGBoostTrainer as _XGBoostTrainer  # type: ignore
 
-try:
-    from src.models.random_forest import RandomForestTrainer as _RF  # type: ignore
+            XGBoostTrainer = _XGBoostTrainer
+        except Exception:
+            XGBoostTrainer = None
+    if NaiveBayesTrainer is None:
+        try:
+            from src.models.naive_bayes import NaiveBayesTrainer as _NB  # type: ignore
 
-    RandomForestTrainer = _RF
-except Exception:
-    RandomForestTrainer = None
+            NaiveBayesTrainer = _NB
+        except Exception:
+            NaiveBayesTrainer = None
+    if SVMTrainer is None:
+        try:
+            from src.models.svm_linear import SVMLinearTrainer as _SVM  # type: ignore
+
+            SVMTrainer = _SVM
+        except Exception:
+            try:
+                from src.models.svm import SVMTrainer as _SVM2  # type: ignore
+
+                SVMTrainer = _SVM2
+            except Exception:
+                SVMTrainer = None
+    if RandomForestTrainer is None:
+        try:
+            from src.models.random_forest import RandomForestTrainer as _RF  # type: ignore
+
+            RandomForestTrainer = _RF
+        except Exception:
+            RandomForestTrainer = None
 
 
 # ----------------------------
@@ -344,6 +372,18 @@ class VariationOption:
 
 class TrainRunnerOutputExistsError(Exception):
     """Saida ja existe e o modo --on-exist error foi pedido."""
+
+
+@dataclass
+class EvalSplitData:
+    """Pacote reutilizavel com os dados de treino/teste preparados."""
+
+    X_train: pd.DataFrame
+    y_train: pd.Series
+    X_test: pd.DataFrame
+    y_test: pd.Series
+    valid_features: List[str]
+    data_audit: Dict[str, Any]
 
 
 def _variation_menu_legacy(model_key: str) -> List[VariationOption]:
@@ -1173,6 +1213,56 @@ class TrainingOrchestrator:
 
         return train_df, test_df, valid_features
 
+    def prepare_eval_split_data(
+        self,
+        *,
+        test_size_years: int,
+        gap_years: int = 0,
+        max_train_rows: Optional[int] = None,
+        max_test_rows: Optional[int] = None,
+        neg_pos_ratio: int = 200,
+        min_neg_keep_per_chunk: int = 50_000,
+        batch_rows: Optional[int] = None,
+    ) -> EvalSplitData:
+        """Carrega split temporal e retorna X/y prontos para treino/avaliacao."""
+        train_df, test_df, valid = self.load_split_batched(
+            test_size_years=test_size_years,
+            gap_years=gap_years,
+            max_train_rows=max_train_rows,
+            max_test_rows=max_test_rows,
+            neg_pos_ratio=neg_pos_ratio,
+            min_neg_keep_per_chunk=min_neg_keep_per_chunk,
+            batch_rows=batch_rows,
+        )
+        if len(train_df) == 0 or len(test_df) == 0:
+            raise ValueError("[DATA] train/test vazio. Nao da para treinar/avaliar.")
+
+        X_tr = train_df[valid]
+        y_tr = train_df[self.target].astype("int8")
+        X_te = test_df[valid]
+        y_te = test_df[self.target].astype("int8")
+
+        # Forca float32 nas features (evita float64 inesperado)
+        _downcast_floats(X_tr)
+        _downcast_floats(X_te)
+
+        self.log.info(
+            f"[SPLIT] train={len(X_tr)} (pos_rate={_pos_rate(y_tr):.4%}) | "
+            f"test={len(X_te)} (pos_rate={_pos_rate(y_te):.4%}) | features={len(valid)}"
+        )
+        del train_df, test_df
+        gc.collect()
+        MemoryMonitor.log_usage(self.log, "apos preparar X/y")
+
+        return EvalSplitData(
+            X_train=X_tr,
+            y_train=y_tr,
+            X_test=X_te,
+            y_test=y_te,
+            valid_features=valid,
+            data_audit=getattr(self, "_last_data_audit", None) or {},
+        )
+
     def run(
         self,
         plan: List[Dict[str, Any]],
@@ -1184,6 +1274,7 @@ class TrainingOrchestrator:
         max_test_rows_override: Optional[int] = None,
     ) -> Tuple[bool, bool]:
         """
+        _ensure_trainers_loaded()
         overwrite_all:
           - True: nao pergunta, limpa pasta do run e sobrescreve.
         skip_all:
@@ -1217,7 +1308,7 @@ class TrainingOrchestrator:
         )
 
         try:
-            train_df, test_df, valid = self.load_split_batched(
+            split_data = self.prepare_eval_split_data(
                 test_size_years=_article_temporal_test_size_years(self.cfg),
                 gap_years=0,
                 max_train_rows=max_train,
@@ -1230,29 +1321,11 @@ class TrainingOrchestrator:
             self.log.error(f"[CRITICAL] load_split_batched: {e}")
             return overwrite_all, skip_all
 
-        if len(train_df) == 0 or len(test_df) == 0:
-            self.log.error("[DATA] train/test vazio. Nao da para treinar.")
-            return overwrite_all, skip_all
-
-        # X/y
-        X_tr = train_df[valid]
-        y_tr = train_df[self.target].astype("int8")
-
-        X_te = test_df[valid]
-        y_te = test_df[self.target].astype("int8")
-
-        # Forca float32 nas features (evita float64 inesperado)
-        _downcast_floats(X_tr)
-        _downcast_floats(X_te)
-
-        self.log.info(
-            f"[SPLIT] train={len(X_tr)} (pos_rate={_pos_rate(y_tr):.4%}) | "
-            f"test={len(X_te)} (pos_rate={_pos_rate(y_te):.4%}) | features={len(valid)}"
-        )
-
-        del train_df, test_df
-        gc.collect()
-        MemoryMonitor.log_usage(self.log, "apos preparar X/y")
+        X_tr = split_data.X_train
+        y_tr = split_data.y_train
+        X_te = split_data.X_test
+        y_te = split_data.y_test
+        valid = split_data.valid_features
 
         for item in plan:
             m: str = item["type"]
@@ -1432,7 +1505,12 @@ class TrainingOrchestrator:
 # ----------------------------
 def available_model_names() -> List[str]:
     """Modelos que o runner pode usar (mesma ordem logica do menu legado)."""
-    names: List[str] = ["dummy_stratified", "dummy_prior", "logistic", "xgboost"]
+    _ensure_trainers_loaded()
+    names: List[str] = ["dummy_stratified", "dummy_prior"]
+    if LogisticTrainer is not None:
+        names.append("logistic")
+    if XGBoostTrainer is not None:
+        names.append("xgboost")
     if NaiveBayesTrainer is not None:
         names.append("naive_bayes")
     if SVMTrainer is not None:
