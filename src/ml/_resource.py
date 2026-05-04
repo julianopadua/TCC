@@ -192,6 +192,47 @@ def fractions_for_dataset(n_rows: int) -> list:
     return [0.6, 0.4, 0.25]
 
 
+def cpu_thread_budget(*, cpu_target: float = 0.9, max_threads: Optional[int] = None) -> int:
+    """Numero de threads BLAS/OMP a permitir para nao passar de cpu_target.
+
+    Para LogisticRegression com solver=lbfgs (single-process, BLAS-multithreaded),
+    a saturacao de CPU vem de OPENBLAS/MKL/OMP. Limitar a ceil(target * cores)
+    evita 100% sustentado de CPU sem perder performance perceptivel.
+    """
+    cores = physical_cores()
+    if max_threads is None:
+        max_threads = cores
+    # floor para nao estourar o teto: e.g. cores=6, target=0.9 -> 5 threads (~83%).
+    n = max(1, int(math.floor(float(cpu_target) * cores)))
+    # Em maquinas de 1-2 cores, garante pelo menos 1 thread.
+    return max(1, min(max_threads, n))
+
+
+def apply_thread_limits(n_threads: int) -> None:
+    """Ajusta variaveis de ambiente das BLAS comuns. Idempotente.
+
+    Deve ser chamada antes do fit para que numpy/scipy/sklearn respeitem
+    o limite. Nao afeta processos ja iniciados se a BLAS ja foi inicializada,
+    mas a maior parte dos backends le no momento da operacao.
+    """
+    n = str(max(1, int(n_threads)))
+    for k in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "BLIS_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+    ):
+        os.environ[k] = n
+    try:
+        from threadpoolctl import threadpool_limits  # type: ignore
+
+        threadpool_limits(limits=int(n_threads))
+    except Exception:
+        pass
+
+
 def estimate_xgb_workers(n_rows: int, n_features: int, *, max_threads: Optional[int] = None) -> int:
     """Numero de threads para XGBoost (intra-fit). XGB compartilha RAM (nao
     fork de workers), entao podemos usar todos os cores fisicos com seguranca.

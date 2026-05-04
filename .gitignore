@@ -30,3 +30,5 @@ data/modeling/results/
 .vscode
 data/_article/_caches
 data/_article/_audits
+data/_article/
+data/

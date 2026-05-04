@@ -10,6 +10,7 @@ from .core import (
     ModelOptimizer,
     MemoryMonitor
 )
+from .scaling import ChunkedStandardScaler
 from . import _resource as resource
 from . import _gs_cache as gs_cache
 
@@ -19,6 +20,7 @@ __all__ = [
     "TemporalSplitter",
     "ModelOptimizer",
     "MemoryMonitor",
+    "ChunkedStandardScaler",
     "resource",
     "gs_cache",
 ]

@@ -47,7 +47,8 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from sklearn.pipeline import Pipeline as SkPipeline
-from sklearn.preprocessing import StandardScaler
+
+from src.ml.scaling import ChunkedStandardScaler
 
 # Imbalanced-learn (opcional)
 try:
@@ -298,7 +299,11 @@ class ModelOptimizer:
             )
 
         if use_scaler:
-            steps.append(("scaler", StandardScaler()))
+            # ChunkedStandardScaler evita o upcast float32->float64 que
+            # StandardScaler faz internamente em _incremental_mean_and_var
+            # (alocaria ~8 GiB em datasets minirocket-like). Pico extra:
+            # ~chunk_rows * n_features * 8 bytes.
+            steps.append(("scaler", ChunkedStandardScaler(chunk_rows=200_000, copy=False)))
 
         steps.append(("model", self.est))
         pipe = (ImbPipeline if use_smote else SkPipeline)(steps)

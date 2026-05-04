@@ -10,9 +10,9 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline as SkPipeline
-from sklearn.preprocessing import StandardScaler
 
-from src.ml import BaseModelTrainer, ModelOptimizer, MemoryMonitor
+from src.ml import BaseModelTrainer, ChunkedStandardScaler, ModelOptimizer, MemoryMonitor
+from src.ml import resource as _resource
 
 # imbalanced-learn (opcional, apenas se usar SMOTE)
 try:
@@ -42,6 +42,8 @@ class LogisticTrainer(BaseModelTrainer):
         random_state: int = 42,
         C: float = 1.0,
         max_iter: int = 1000,
+        solver: str = "lbfgs",
+        tol: float = 1e-4,
         *,
         article_results: bool = False,
     ):
@@ -50,11 +52,12 @@ class LogisticTrainer(BaseModelTrainer):
         )
         self.C = float(C)
         self.max_iter = int(max_iter)
+        self.solver = str(solver)
+        self.tol = float(tol)
 
-        # Grid mais conservador para bases gigantes:
-        # - remove max_iter do grid (na pratica, isso explode tempo e raramente vale o custo)
-        # - por default, testa somente l2 (l1 com saga em 8M tende a travar/convergir mal)
-        # Se quiser l1 depois, rode um "grid_l1" pequeno em subset.
+        # Grid: apenas C (penalty=l2 fixo). lbfgs e ~5-10x mais rapido que saga
+        # em binario L2 com 7.5M x 183, e satura CPU via BLAS (single-process,
+        # multi-thread).
         self.param_grid = {
             "C": [0.01, 0.1, 1.0, 10.0],
             "penalty": ["l2"],
@@ -91,20 +94,24 @@ class LogisticTrainer(BaseModelTrainer):
 
         class_weight = "balanced" if use_scale else None
 
-        # IMPORTANTE:
-        # - Em GridSearch, n_jobs=-1 dentro do modelo costuma elevar muito CPU/temperatura
-        #   e gerar instabilidade. Por isso, no optimize=True, vamos forcar n_jobs=1.
-        # - Fora do grid (fast), voce pode usar mais threads se quiser.
-        model_n_jobs = 1 if optimize else -1
+        # CPU/RAM budget: lbfgs satura via BLAS (single-process, multi-thread).
+        # Limitamos threads BLAS a ~90% dos cores fisicos para nao sustentar
+        # 100% de CPU. n_jobs do estimador nao afeta binario com lbfgs/saga.
+        n_threads = _resource.cpu_thread_budget(cpu_target=0.9)
+        _resource.apply_thread_limits(n_threads)
+        self.log.info(
+            f"[CPU] threads BLAS/OMP={n_threads} (cores_fisicos={_resource.physical_cores()}, target=90%)"
+        )
 
         base_model = LogisticRegression(
             C=self.C,
             penalty="l2",
             class_weight=class_weight,
-            solver="saga",
+            solver=self.solver,
             max_iter=self.max_iter,
+            tol=self.tol,
             random_state=self.random_state,
-            n_jobs=model_n_jobs,
+            n_jobs=1,
         )
 
         t0 = time.time()
@@ -144,7 +151,9 @@ class LogisticTrainer(BaseModelTrainer):
                 )
 
             if feature_scaling:
-                steps.append(("scaler", StandardScaler()))
+                # ChunkedStandardScaler evita upcast float32->float64 que
+                # estoura RAM em datasets minirocket-like (>8 GiB de pico).
+                steps.append(("scaler", ChunkedStandardScaler(chunk_rows=200_000, copy=False)))
 
             steps.append(("model", base_model))
 
